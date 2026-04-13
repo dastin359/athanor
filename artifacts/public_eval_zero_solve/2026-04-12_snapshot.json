@@ -1,0 +1,216 @@
+{
+  "snapshot_date": "2026-04-12",
+  "source": {
+    "dataset": "arcprize/arc_agi_v2_public_eval",
+    "config": "attempts",
+    "split": "test",
+    "dataset_revision": "e321bbebaae20fa6432ca13c77ba21d9031c25e1",
+    "dataset_last_modified": "2026-03-19T19:47:29.000Z",
+    "num_examples": 10529,
+    "dataset_info_api": "https://datasets-server.huggingface.co/info?dataset=arcprize/arc_agi_v2_public_eval",
+    "parquet_api": "https://datasets-server.huggingface.co/parquet?dataset=arcprize%2Farc_agi_v2_public_eval",
+    "parquet_url": "https://huggingface.co/datasets/arcprize/arc_agi_v2_public_eval/resolve/refs%2Fconvert%2Fparquet/attempts/test/0000.parquet"
+  },
+  "parsing_protocol": {
+    "attempt_columns": [
+      "attempt_1",
+      "attempt_2"
+    ],
+    "task_id_regex": "\"task_id\":\"([0-9a-f]+)\"",
+    "model_regex": "\"model\":\"([^\"]+)\"",
+    "solve_rule": "A row counts as solved if the attempt payload contains the substring \"\\\"correct\\\":true\"."
+  },
+  "notes": [
+    "Zero-solve here means zero successful attempts in the frozen public attempts corpus, not a proof of impossibility.",
+    "The claude-opus-4-6 slice is an exact model filter over the same frozen corpus.",
+    "The pair-level frontier below uses the additional coverage filter num_attempt_logs >= 80."
+  ],
+  "high_coverage_pair_level_frontier": {
+    "min_attempt_logs": 80,
+    "num_unsolved_test_outputs": 9,
+    "num_puzzles": 8,
+    "rows": [
+      {
+        "task_id": "13e47133",
+        "pair_index": 0,
+        "num_attempt_logs": 117
+      },
+      {
+        "task_id": "269e22fb",
+        "pair_index": 0,
+        "num_attempt_logs": 119
+      },
+      {
+        "task_id": "269e22fb",
+        "pair_index": 1,
+        "num_attempt_logs": 119
+      },
+      {
+        "task_id": "8b7bacbf",
+        "pair_index": 0,
+        "num_attempt_logs": 125
+      },
+      {
+        "task_id": "9bbf930d",
+        "pair_index": 0,
+        "num_attempt_logs": 117
+      },
+      {
+        "task_id": "a32d8b75",
+        "pair_index": 0,
+        "num_attempt_logs": 118
+      },
+      {
+        "task_id": "abc82100",
+        "pair_index": 0,
+        "num_attempt_logs": 121
+      },
+      {
+        "task_id": "da515329",
+        "pair_index": 0,
+        "num_attempt_logs": 120
+      },
+      {
+        "task_id": "faa9f03d",
+        "pair_index": 0,
+        "num_attempt_logs": 127
+      }
+    ],
+    "counts_per_task": {
+      "269e22fb": 2,
+      "13e47133": 1,
+      "8b7bacbf": 1,
+      "9bbf930d": 1,
+      "a32d8b75": 1,
+      "abc82100": 1,
+      "da515329": 1,
+      "faa9f03d": 1
+    }
+  },
+  "global_zero_solve_subset": [
+    {
+      "task_id": "269e22fb",
+      "solves": 0,
+      "attempts": 238,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "faa9f03d",
+      "solves": 0,
+      "attempts": 133,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "abc82100",
+      "solves": 0,
+      "attempts": 127,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "da515329",
+      "solves": 0,
+      "attempts": 120,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "9bbf930d",
+      "solves": 0,
+      "attempts": 117,
+      "solve_rate_pct": 0.0
+    }
+  ],
+  "claude_opus_4_6_zero_solve_subset": [
+    {
+      "task_id": "269e22fb",
+      "solves": 0,
+      "attempts": 16,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "62593bfd",
+      "solves": 0,
+      "attempts": 16,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "16b78196",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "2b83f449",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "5545f144",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "9bbf930d",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "abc82100",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "da515329",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "dbff022c",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "faa9f03d",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    }
+  ],
+  "claude_opus_4_6_extra_over_global": [
+    {
+      "task_id": "62593bfd",
+      "solves": 0,
+      "attempts": 16,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "16b78196",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "2b83f449",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "5545f144",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    },
+    {
+      "task_id": "dbff022c",
+      "solves": 0,
+      "attempts": 8,
+      "solve_rate_pct": 0.0
+    }
+  ]
+}

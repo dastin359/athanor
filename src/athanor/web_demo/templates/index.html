@@ -1,0 +1,3601 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agentic ARC-AGI-2 Puzzle Solver</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/vs2015.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/lib/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/lib/languages/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/lib/languages/json.min.js"></script>
+  <style>
+    :root {
+      --topbar-h: 80px;
+      --bg: #063a35;
+      --bg2: #0a4a43;
+      --card: rgba(12, 88, 77, 0.58);
+      --card-2: rgba(10, 70, 61, 0.86);
+      --stroke: rgba(138, 227, 190, 0.30);
+      --label: #c7f3df;
+      --white: #ffffff;
+      --tab: rgba(255, 255, 255, 0.09);
+      --tab-active: rgba(18, 174, 131, 0.42);
+      --tab-active-stroke: rgba(120, 238, 192, 0.55);
+      --glow: rgba(16, 185, 129, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, var(--bg2), var(--bg));
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, sans-serif;
+      color: var(--white);
+      overflow: hidden;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: transparent;
+    }
+
+    .tabs {
+      position: fixed;
+      top: 13px;
+      right: 10px;
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-radius: 30px;
+      background: var(--tab);
+      border: 1px solid rgba(160, 241, 210, 0.18);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .tab-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 20px;
+      padding: 11px 18px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(126, 233, 188, 0.44);
+      box-shadow: 0 0 18px var(--glow);
+      transform: translateY(-1px);
+    }
+
+    .tab-btn.active {
+      background: var(--tab-active);
+      border-color: var(--tab-active-stroke);
+      box-shadow: inset 0 0 0 1px rgba(226, 255, 244, 0.2), 0 0 20px rgba(16, 185, 129, 0.32);
+    }
+
+    .content {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      padding: 0 40px 10px 40px;
+    }
+
+    .panel {
+      width: 100%;
+      height: 100%;
+      display: none;
+      overflow-y: auto;
+      overflow-x: visible;
+      padding-top: calc(var(--topbar-h) + 10px);
+      padding-bottom: 96px;
+      scroll-behavior: auto;
+      scroll-padding-top: calc(var(--topbar-h) + 18px);
+    }
+    .panel.active { display: block; }
+
+    .panel.markdown {
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      /* Keep content below fixed topbar (same behavior as agent panel). */
+      padding: calc(var(--topbar-h) + 10px) 14px 96px 14px;
+      background: rgba(4, 48, 41, 0.44);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      max-width: 1420px;
+      margin: 0 auto;
+    }
+    .panel.markdown.prompt-panel {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      max-width: 100%;
+      padding: calc(var(--topbar-h) + 10px) 14px 96px 14px;
+    }
+
+    .agent-wrap {
+      width: 100%;
+      max-width: 1420px;
+      margin: 0 auto;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .msg-row {
+      display: flex;
+      width: 100%;
+      padding: 0 14px;
+    }
+    .msg-row.assistant { justify-content: flex-start; }
+    .msg-row.orchestrator { justify-content: flex-end; }
+    .msg-row.user { justify-content: flex-end; }
+    .msg-row.center { justify-content: center; }
+    .card {
+      max-width: min(88%, 1200px);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      padding: 12px;
+      background: var(--card);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+      position: relative;
+    }
+    .source-chip {
+      display: inline-block;
+      padding: 4px 10px;
+      margin: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(140, 232, 196, 0.42);
+      background: rgba(8, 66, 56, 0.72);
+      color: #d6f7ea;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      position: absolute;
+      top: 8px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .token-chip {
+      top: 38px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.95;
+    }
+    .cost-chip {
+      top: 64px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+    }
+    .msg-row.assistant .source-chip {
+      right: calc(100% + 10px);
+    }
+    .msg-row.orchestrator .source-chip,
+    .msg-row.user .source-chip {
+      left: calc(100% + 10px);
+    }
+
+    .card.thinking, .bundle-panel.single.thinking { background: linear-gradient(135deg, rgba(26, 124, 88, 0.54), rgba(12, 95, 77, 0.62)); }
+    .card.tool-call, .bundle-panel.single.tool-call { background: linear-gradient(135deg, rgba(16, 118, 96, 0.60), rgba(9, 86, 76, 0.74)); }
+    .card.tool-result, .bundle-panel.single.tool-result { background: linear-gradient(135deg, rgba(38, 122, 82, 0.64), rgba(20, 92, 62, 0.80)); }
+    .card.reflection-prompt, .bundle-panel.single.reflection-prompt { background: linear-gradient(135deg, rgba(138, 86, 28, 0.58), rgba(102, 62, 18, 0.72)); border-color: rgba(255, 200, 120, 0.40); }
+    .card.response, .bundle-panel.single.response { background: linear-gradient(135deg, rgba(7, 83, 70, 0.52), rgba(8, 70, 58, 0.60)); }
+    .card.bundle {
+      background: linear-gradient(135deg, rgba(18, 120, 88, 0.52), rgba(10, 93, 76, 0.66));
+      width: fit-content;
+      max-width: min(88%, 1200px);
+    }
+    .card.analysis-bundle {
+      background: linear-gradient(135deg, rgba(16, 118, 96, 0.56), rgba(10, 92, 78, 0.66));
+      width: fit-content;
+      max-width: min(88%, 1200px);
+    }
+    .card.bundle .bundle-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .analysis-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .bundle-panel {
+      border-radius: 14px;
+      border: 1px solid rgba(130, 224, 186, 0.30);
+      padding: 12px;
+      background: rgba(5, 68, 56, 0.52);
+    }
+    .bundle-panel.single {
+      position: relative;
+      width: fit-content;
+      max-width: min(88%, 1200px);
+      border-radius: 16px;
+      border: 1px solid var(--stroke);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    }
+    .rollback-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 100, 100, 0.5);
+      background: rgba(180, 40, 40, 0.3);
+      color: rgba(255, 120, 120, 0.9);
+      font-size: 18px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s, background 0.2s, border-color 0.2s;
+      z-index: 10;
+      pointer-events: auto;
+    }
+    .bundle-panel.single:hover .rollback-btn {
+      opacity: 1;
+    }
+    .rollback-btn:hover {
+      background: rgba(220, 60, 60, 0.5);
+      border-color: rgba(255, 120, 120, 0.7);
+    }
+    .bundle-panel.system { background: rgba(17, 116, 72, 0.50); }
+    .bundle-panel.user { background: rgba(19, 106, 84, 0.52); }
+    .bundle-panel.analysis-thinking { background: rgba(21, 118, 82, 0.52); }
+    .bundle-panel.analysis-tool { background: rgba(18, 104, 92, 0.54); }
+    .bundle-label {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--label);
+      letter-spacing: 0.3px;
+      margin-bottom: 9px;
+      text-transform: uppercase;
+    }
+    .bundle-body {
+      border-radius: 12px;
+      border: 1px solid rgba(120, 224, 170, 0.25);
+      background: rgba(2, 34, 31, 0.9);
+      padding: 12px 14px;
+      overflow-x: auto;
+    }
+    .bundle-body.flat-code-body {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    .tool-details {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .tool-panel {
+      border: 1px solid rgba(130, 224, 186, 0.30);
+      border-radius: 12px;
+      background: rgba(4, 42, 35, 0.82);
+      padding: 10px;
+    }
+    .tool-panel .sub-label {
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #bff0db;
+      margin-bottom: 6px;
+    }
+
+    .turn-divider-row {
+      width: 100%;
+      padding: 6px 14px 2px 14px;
+      display: flex;
+      justify-content: center;
+    }
+    .turn-divider {
+      width: min(92%, 1260px);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      opacity: 0.62;
+      color: #b9ecd8;
+      font-size: 0.80rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .turn-divider::before,
+    .turn-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(132, 225, 189, 0.00), rgba(132, 225, 189, 0.35), rgba(132, 225, 189, 0.00));
+    }
+
+    .verdict-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.73rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      margin-left: 6px;
+    }
+    .verdict-badge.approve { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.45); }
+    .verdict-badge.reject  { background: rgba(239, 68, 68, 0.22);  color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); }
+    .verdict-badge.error   { background: rgba(245, 158, 11, 0.22); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.45); }
+    .verdict-badge.unknown { background: rgba(148, 163, 184, 0.18); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.35); }
+    .reflector-card {
+      background: linear-gradient(135deg, rgba(60, 80, 70, 0.38), rgba(40, 60, 50, 0.48));
+      border: 1px solid rgba(160, 200, 180, 0.25);
+    }
+    .reflector-card .bundle-label { color: #e2e8f0; }
+
+    /* Pure white non-code chat text */
+    .md-content {
+      color: #ffffff;
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    .md-content :not(pre):not(code):not(pre *):not(code *) {
+      color: #ffffff !important;
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    .md-content img {
+      max-width: min(100%, 1200px);
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid rgba(130, 224, 186, 0.24);
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .md-content code { font-family: "JetBrains Mono", Menlo, Monaco, Consolas, monospace; }
+    .md-content pre {
+      margin: 0.5em 0;
+      padding: 0.8em;
+      border-radius: 10px;
+      border: 1px solid rgba(130, 224, 186, 0.28);
+      background: rgba(0, 18, 15, 0.92);
+      overflow-x: auto;
+    }
+    .terminal-output {
+      margin: 0.5em 0;
+      padding: 0.8em;
+      border-radius: 10px;
+      border: 1px solid rgba(130, 224, 186, 0.28);
+      background: rgba(0, 18, 15, 0.92);
+      color: #dff7ec;
+      font-family: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 0.95rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      word-break: break-word;
+    }
+    .terminal-output.tool-result-terminal {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    .md-content pre code, .md-content pre code * {
+      opacity: 1 !important;
+      text-shadow: none !important;
+    }
+    .md-content pre code.hljs {
+      background: transparent !important;
+    }
+
+    @keyframes cardBreathing {
+      0% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); }
+      50% { box-shadow: 0 10px 34px rgba(90, 224, 167, 0.28); }
+      100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); }
+    }
+    .card.breathing,
+    .bundle-panel.single.breathing {
+      animation: cardBreathing 1.8s ease-in-out infinite;
+    }
+
+    /* Fallback token colors to guarantee visible Python syntax highlighting. */
+    .md-content pre code.hljs { color: #d4d4d4 !important; }
+    .md-content pre code .hljs-keyword,
+    .md-content pre code .hljs-selector-tag { color: #569cd6 !important; }
+    .md-content pre code .hljs-string,
+    .md-content pre code .hljs-title,
+    .md-content pre code .hljs-section { color: #ce9178 !important; }
+    .md-content pre code .hljs-number,
+    .md-content pre code .hljs-literal,
+    .md-content pre code .hljs-symbol { color: #b5cea8 !important; }
+    .md-content pre code .hljs-comment,
+    .md-content pre code .hljs-quote { color: #6a9955 !important; }
+    .md-content pre code .hljs-built_in,
+    .md-content pre code .hljs-type,
+    .md-content pre code .hljs-attr { color: #4ec9b0 !important; }
+    .md-content pre code .hljs-function,
+    .md-content pre code .hljs-params { color: #dcdcaa !important; }
+    .md-content.code-only pre {
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      border-radius: 0 !important;
+    }
+    .md-content.code-only pre code.hljs {
+      padding: 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      border-radius: 0 !important;
+    }
+
+    .floating-solve {
+      width: 140px;
+      height: 48px;
+      margin-left: 40px;
+      border-radius: 24px;
+      border: 2px solid rgba(16, 185, 129, 0.8);
+      background: linear-gradient(135deg, rgba(22, 143, 108, 0.50), rgba(14, 122, 94, 0.42));
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      z-index: 3000;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
+      backdrop-filter: blur(22px) saturate(185%) brightness(1.05);
+      -webkit-backdrop-filter: blur(22px) saturate(185%) brightness(1.05);
+      flex: 0 0 auto;
+    }
+
+    .floating-solve:hover {
+      transform: scale(1.04);
+    }
+    .floating-solve:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+    }
+
+    .clear-history-btn {
+      height: 48px;
+      padding: 0 18px;
+      border-radius: 24px;
+      border: 1.6px solid rgba(255, 207, 160, 0.58);
+      background: linear-gradient(135deg, rgba(117, 74, 24, 0.56), rgba(82, 48, 13, 0.52));
+      color: #fff7ed;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      -webkit-backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+    }
+    .clear-history-btn:hover:not(:disabled) {
+      transform: translateY(-1px) scale(1.03);
+      border-color: rgba(255, 224, 186, 0.8);
+      background: linear-gradient(135deg, rgba(138, 86, 29, 0.66), rgba(97, 55, 16, 0.6));
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.40), 0 0 20px rgba(251, 191, 36, 0.18);
+    }
+    .clear-history-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+    }
+
+    .canvas-controls {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 3200;
+    }
+
+    .scroll-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 21px;
+      border: 1.6px solid rgba(132, 231, 196, 0.70);
+      background: linear-gradient(135deg, rgba(25, 128, 103, 0.38), rgba(15, 96, 78, 0.30));
+      color: #fff;
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 3200;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+      text-shadow: none;
+      backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      -webkit-backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    }
+    .scroll-btn:hover {
+      transform: translateY(-1px) scale(1.04);
+      border-color: rgba(172, 244, 214, 0.92);
+      background: linear-gradient(135deg, rgba(30, 146, 118, 0.46), rgba(20, 111, 90, 0.36));
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.40), 0 0 22px rgba(16, 185, 129, 0.28);
+    }
+    .scroll-btn:active {
+      transform: scale(0.98);
+    }
+    .scroll-btn.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .iteration-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 24px;
+      border: 1.6px solid rgba(132, 231, 196, 0.50);
+      background: linear-gradient(135deg, rgba(20, 110, 90, 0.75), rgba(12, 85, 70, 0.80));
+      backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      -webkit-backdrop-filter: blur(20px) saturate(175%) brightness(1.06);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    }
+    .iter-nav-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 16px;
+      border: 1px solid rgba(132, 231, 196, 0.40);
+      background: rgba(15, 90, 75, 0.60);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .iter-nav-btn:hover:not(:disabled) {
+      background: rgba(25, 120, 100, 0.70);
+      border-color: rgba(172, 244, 214, 0.70);
+    }
+    .iter-nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .iter-nav-btn.iter-nav-all {
+      width: auto;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+    .iter-nav-btn.iter-nav-all.active {
+      background: rgba(16, 185, 129, 0.50);
+      border-color: rgba(16, 185, 129, 0.80);
+    }
+    .iter-nav-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #d6f7ea;
+      min-width: 80px;
+      text-align: center;
+    }
+    .iter-nav-label-btn {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .iter-nav-label-btn:hover {
+      border-color: rgba(132, 231, 196, 0.40);
+      background: rgba(15, 90, 75, 0.40);
+    }
+    .iter-nav-picker-wrap {
+      position: relative;
+    }
+    .canvas-picker-dropdown {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      min-width: 260px;
+      max-height: 360px;
+      overflow-y: auto;
+      background: rgba(12, 50, 42, 0.96);
+      border: 1.5px solid rgba(132, 231, 196, 0.50);
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(20px);
+      z-index: 100;
+      padding: 4px 0;
+    }
+    .canvas-picker-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      font-size: 15px;
+      color: #c8e6dc;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .canvas-picker-item:hover {
+      background: rgba(16, 185, 129, 0.20);
+    }
+    .canvas-picker-item.active {
+      background: rgba(16, 185, 129, 0.35);
+      color: #fff;
+      font-weight: 600;
+    }
+    .canvas-picker-item.reflector {
+      border-left: 3px solid rgba(250, 204, 21, 0.6);
+    }
+    .canvas-picker-iter {
+      display: inline-block;
+      min-width: 24px;
+      text-align: right;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+      color: rgba(132, 231, 196, 0.8);
+      font-size: 13px;
+    }
+    .canvas-picker-name {
+      flex: 1;
+    }
+
+    .config-grid {
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px 24px;
+    }
+    .config-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .config-section-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: rgba(120, 224, 170, 0.6);
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid rgba(120, 224, 170, 0.15);
+      padding-bottom: 4px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #c9f5e2;
+    }
+    .field input, .field select {
+      border-radius: 10px;
+      border: 1px solid rgba(120, 224, 170, 0.35);
+      background: rgba(4, 42, 35, 0.9);
+      color: #fff;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+    }
+    .autocomplete-wrap {
+      position: relative;
+    }
+    .task-suggestion-list {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(120, 224, 170, 0.35);
+      background: rgba(4, 42, 35, 0.98);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .task-suggestion-item {
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #dffcf1;
+      text-align: left;
+      padding: 9px 10px;
+      font-size: 0.93rem;
+      cursor: pointer;
+    }
+    .task-suggestion-item:hover,
+    .task-suggestion-item.active {
+      background: rgba(31, 162, 121, 0.28);
+      color: #ffffff;
+    }
+    .budget-controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .budget-controls input[type="range"] {
+      width: 100%;
+      accent-color: #2ac08c;
+      padding: 0;
+    }
+    .run-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .run-actions button {
+      border-radius: 9px;
+      border: 1px solid rgba(120, 224, 170, 0.35);
+      background: rgba(12, 87, 67, 0.9);
+      color: #fff;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .status {
+      margin: 8px auto 0 auto;
+      max-width: 900px;
+      color: #d7f8ea;
+      opacity: 0.88;
+      font-size: 0.92rem;
+    }
+    /* When embedded in batch dashboard iframe, keep tab bar right-aligned */
+    .embedded .tabs .tab-btn { flex-shrink: 0; }
+  </style>
+  <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
+</head>
+<body>
+  <div id="app">
+    <div class="tabs">
+      <button class="tab-btn" :class="{active: activePanel==='agent'}" @click="activePanel='agent'">Agent Conversation</button>
+      <button class="tab-btn" :class="{active: activePanel==='user'}" @click="activePanel='user'">Puzzle Data</button>
+      <button class="tab-btn" :class="{active: activePanel==='system'}" @click="activePanel='system'">Solver Prompt</button>
+      <button class="tab-btn" :class="{active: activePanel==='reflector'}" @click="activePanel='reflector'">Reflector Prompt</button>
+      <button class="tab-btn" :class="{active: activePanel==='tools'}" @click="activePanel='tools'">Tool Definition</button>
+      <button class="tab-btn" :class="{active: activePanel==='config'}" @click="activePanel='config'">Configuration</button>
+    </div>
+
+    <main class="content">
+      <section class="panel active" v-if="activePanel==='agent'" ref="agentPanel" @scroll.passive="onAgentScroll">
+        <div class="agent-wrap">
+          <template v-for="(m, idx) in displayHistory" :key="idx">
+            <div v-if="m.kind==='turn_divider'" class="turn-divider-row">
+              <div class="turn-divider">{{ m.context_label || ('Turn ' + m.turn_number) }}</div>
+            </div>
+
+            <template v-else-if="m.kind==='reflector_context'">
+
+
+              <!-- System Prompt -->
+              <div class="msg-row orchestrator" v-if="m.system_md">
+                <div class="bundle-panel single system reflector-card">
+                  <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                  <div class="bundle-label">SYSTEM PROMPT</div>
+                  <div class="bundle-body md-content" v-html="renderMarkdown(m.system_md)"></div>
+                </div>
+              </div>
+
+              <!-- Prior conversation turns (stateful multi-turn reflector) -->
+              <template v-for="(pt, pti) in getPriorReflectorTurns(m)" :key="'rc-pt-'+pti">
+                <!-- Prior user message (multimodal with interleaved_blocks) -->
+                <div class="msg-row orchestrator" v-if="pt.role==='user'">
+                  <div class="bundle-panel single user reflector-card">
+                    <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                    <div class="bundle-label">ITERATION {{ pt.turnNumber }}</div>
+                    <div class="bundle-body" v-if="pt.interleaved_blocks && pt.interleaved_blocks.length">
+                      <template v-for="(block, bi) in pt.interleaved_blocks" :key="'rc-pt-ib-'+pti+'-'+bi">
+                        <div v-if="block.type==='text'" class="md-content" v-html="renderMarkdown(block.content || '', 'python')"></div>
+                        <div v-else-if="block.type==='image'" style="margin:6px 0;">
+                          <img :src="block.content" :alt="'prior-img-'+pti+'-'+bi" style="max-height:300px;border-radius:4px;border:1px solid #334155;">
+                        </div>
+                      </template>
+                    </div>
+                    <div class="bundle-body md-content" v-else v-html="renderMarkdown(pt.content || '', 'python')"></div>
+                  </div>
+                </div>
+                <!-- Prior reflector thinking + response -->
+                <template v-else-if="pt.role==='assistant'">
+                  <div class="msg-row assistant" v-if="pt.thinking">
+                    <div class="bundle-panel single thinking">
+                      <div class="source-chip">AGENT MESSAGE</div>
+                      <div class="bundle-label">THINKING</div>
+                      <div class="bundle-body md-content" v-html="renderMarkdown(pt.thinking)"></div>
+                    </div>
+                  </div>
+                  <div class="msg-row assistant">
+                    <div class="bundle-panel single response">
+                      <div class="source-chip">AGENT MESSAGE</div>
+                      <div class="bundle-label">MESSAGE</div>
+                      <div class="bundle-body md-content" v-html="renderMarkdown(pt.content || '', 'python')"></div>
+                    </div>
+                  </div>
+                </template>
+              </template>
+
+              <!-- User Prompt: interleaved blocks (built dynamically if not pre-computed) -->
+              <div class="msg-row orchestrator" v-if="buildReflectorBlocks(m).length">
+                <div class="bundle-panel single user reflector-card">
+                  <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                  <div class="bundle-label">USER MESSAGE{{ m.reflector_turn > 1 ? ' (ITERATION ' + m.reflector_turn + ')' : '' }}</div>
+                  <div class="bundle-body">
+                    <template v-for="(block, bi) in buildReflectorBlocks(m)" :key="'rc-ib-'+bi">
+                      <div v-if="block.type==='text'" class="md-content" v-html="renderMarkdown(block.content || '', 'python')"></div>
+                      <div v-else-if="block.type==='image'" style="margin:6px 0;">
+                        <img :src="block.content" :alt="'reflector-img-'+bi" style="max-height:300px;border-radius:4px;border:1px solid #334155;">
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Legacy: Hypothesis display (kept for backwards compatibility) -->
+              <div class="msg-row orchestrator" v-if="m.hypothesis && !m.user_md">
+                <div class="bundle-panel single user reflector-card">
+                  <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                  <div class="bundle-label">USER MESSAGE — TRANSFORM HYPOTHESIS + CODE</div>
+                  <div class="bundle-body">
+                    <div class="sub-label" style="color:#93c5fd;">Transform Hypothesis</div>
+                    <div class="md-content" v-html="renderMarkdown(m.hypothesis)"></div>
+                    <div style="margin-top:10px;">
+                      <div class="sub-label" style="color:#93c5fd;">Training Examples: {{ (m.train_inputs || []).length }} · Test Examples: {{ (m.test_inputs || []).length }}</div>
+                    </div>
+                    <!-- Training grid images -->
+                    <template v-if="m.train_input_images && m.train_input_images.length">
+                      <div style="margin-top:8px;">
+                        <div class="sub-label" style="color:#93c5fd;margin-bottom:4px;">Training Inputs → Outputs</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                          <template v-for="(img, ti) in m.train_input_images" :key="'tr-in-'+ti">
+                            <div style="display:flex;align-items:center;gap:4px;">
+                              <img v-if="img" :src="'data:image/png;base64,'+img" :alt="'train-in-'+ti" style="max-height:80px;border-radius:4px;">
+                              <span style="color:#6b7280;">→</span>
+                              <img v-if="m.train_output_images && m.train_output_images[ti]" :src="'data:image/png;base64,'+m.train_output_images[ti]" :alt="'train-out-'+ti" style="max-height:80px;border-radius:4px;">
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                    <!-- Test input images -->
+                    <template v-if="m.test_input_images && m.test_input_images.length">
+                      <div style="margin-top:8px;">
+                        <div class="sub-label" style="color:#93c5fd;margin-bottom:4px;">Test Inputs → Predictions</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                          <template v-for="(img, ti) in m.test_input_images" :key="'te-in-'+ti">
+                            <div style="display:flex;align-items:center;gap:4px;">
+                              <img v-if="img" :src="'data:image/png;base64,'+img" :alt="'test-in-'+ti" style="max-height:80px;border-radius:4px;">
+                              <span style="color:#6b7280;">→</span>
+                              <img v-if="m.test_prediction_images && m.test_prediction_images[ti]" :src="'data:image/png;base64,'+m.test_prediction_images[ti]" :alt="'test-pred-'+ti" style="max-height:80px;border-radius:4px;">
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Loading indicator while reflector is processing -->
+              <div class="msg-row assistant" v-if="m.status === 'running' && !m.thinking && !m.response">
+                <div class="bundle-panel single thinking">
+                  <div class="bundle-label">THINKING</div>
+                  <div class="bundle-body" style="color: #9ca3af; font-style: italic;">
+                    Reflector is analyzing the submission…
+                  </div>
+                </div>
+              </div>
+
+              <!-- Thinking (reflector's internal reasoning) -->
+              <div class="msg-row assistant" v-if="m.thinking">
+                <div class="bundle-panel single thinking">
+                  <div class="source-chip">AGENT MESSAGE</div>
+                  <div class="source-chip token-chip" v-if="tokenLabel(m)">{{ tokenLabel(m) }}</div>
+                  <div class="source-chip cost-chip" v-if="costLabel(m)">{{ costLabel(m) }}</div>
+                  <button
+                    v-if="canRemoveReflectorCanvas()"
+                    class="rollback-btn"
+                    @click="removeReflectorCanvas()"
+                    title="Remove reflector messages so you can retry"
+                  >⊖</button>
+                  <div class="bundle-label">THINKING</div>
+                  <div class="bundle-body md-content" v-html="renderMarkdown(m.thinking)"></div>
+                </div>
+              </div>
+
+              <!-- Response: render the reflector's original output plainly, like a normal assistant reply -->
+              <div class="msg-row assistant" v-if="m.response">
+                <div class="bundle-panel single response">
+                  <div class="source-chip">AGENT MESSAGE</div>
+                  <div class="source-chip token-chip" v-if="!m.thinking && tokenLabel(m)">{{ tokenLabel(m) }}</div>
+                  <div class="source-chip token-chip" v-if="!m.thinking && costLabel(m)">{{ costLabel(m) }}</div>
+                  <button
+                    v-if="canRemoveReflectorCanvas()"
+                    class="rollback-btn"
+                    @click="removeReflectorCanvas()"
+                    title="Remove reflector messages so you can retry"
+                  >⊖</button>
+                  <div class="bundle-label">MESSAGE<span v-if="m.verdict" class="verdict-badge" :class="(m.verdict||'').toLowerCase().replace('expand_candidates','reject')">{{ m.verdict }}</span></div>
+                  <div class="bundle-body md-content" v-html="renderMarkdown(m.response)"></div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="m.kind==='prompt_bundle'">
+              <div class="msg-row orchestrator">
+                <div class="bundle-panel single system">
+                  <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                  <div class="source-chip token-chip" v-if="tokenLabelForKey(`${idx}:system`)">{{ tokenLabelForKey(`${idx}:system`) }}</div>
+                  <div class="bundle-label">SYSTEM PROMPT</div>
+                  <div class="bundle-body md-content" v-html="renderMarkdown(m.system_md || '', 'python')"></div>
+                </div>
+              </div>
+              <div class="msg-row orchestrator">
+                <div class="bundle-panel single user">
+                  <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                  <div class="source-chip token-chip" v-if="tokenLabelForKey(`${idx}:user`)">{{ tokenLabelForKey(`${idx}:user`) }}</div>
+                  <div class="bundle-label">USER PROMPT</div>
+                  <div class="bundle-body md-content" v-html="renderMarkdown(m.user_md || '')"></div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="m.kind==='analysis_bundle'">
+              <div
+                v-for="(child, cidx) in m.items"
+                :key="`analysis-${idx}-${cidx}`"
+                class="msg-row assistant"
+              >
+                <div class="bundle-panel single" :class="[child.kind==='thinking' ? 'analysis-thinking' : 'analysis-tool', { breathing: isBreathingIndex(idx) }]">
+                  <div class="source-chip">{{ sourceLabelFor(m) }}</div>
+                  <div class="source-chip token-chip" v-if="tokenLabelForKey(`analysis-${idx}-${cidx}`)">{{ tokenLabelForKey(`analysis-${idx}-${cidx}`) }}</div>
+                  <div class="source-chip cost-chip" v-if="costLabel(child)">{{ costLabel(child) }}</div>
+                  <button
+                    v-if="cidx === 0 && canRollbackBundle(idx)"
+                    class="rollback-btn"
+                    @click="rollbackFrom(idx)"
+                    title="Remove all chat history from here on"
+                  >⊖</button>
+                  <div class="bundle-label">{{ labelFor(child) }}</div>
+                  <div class="bundle-body" v-if="child.kind!=='tool_result'">
+                    <template v-if="child.kind==='tool_call' && child.tool_name==='submit_transform_hypothesis'">
+                      <div class="tool-details">
+                        <template v-if="child.tool_transform">
+                          <div class="tool-panel">
+                            <div class="sub-label">Hypothesis</div>
+                            <div class="md-content" v-html="renderMarkdown(child.tool_transform)"></div>
+                          </div>
+                        </template>
+                        <template v-else-if="!child.tool_secondary_transform && !child.tool_ambiguity_rationale && !child.tool_target_branch_id && !child.tool_target_branch_transform && !child.tool_updated_failed_transform && !child.tool_updated_ambiguity_rationale && !child.tool_withdraw_failed_branch">
+                          <div class="tool-panel">
+                            <div class="sub-label">Hypothesis</div>
+                            <div class="md-content" style="color:#aaa;font-style:italic">(streaming...)</div>
+                          </div>
+                        </template>
+                        <div class="tool-panel" v-if="child.tool_secondary_transform">
+                          <div class="sub-label">Branch B Hypothesis</div>
+                          <div class="md-content" v-html="renderMarkdown(child.tool_secondary_transform)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_ambiguity_rationale">
+                          <div class="sub-label">Ambiguity Rationale</div>
+                          <div class="md-content" v-html="renderMarkdown(child.tool_ambiguity_rationale)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_target_branch_id">
+                          <div class="sub-label">Target Branch ID</div>
+                          <div class="md-content">{{ child.tool_target_branch_id }}</div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_target_branch_transform">
+                          <div class="sub-label">Target Branch Hypothesis</div>
+                          <div class="md-content" v-html="renderMarkdown(child.tool_target_branch_transform)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_updated_failed_transform">
+                          <div class="sub-label">Updated Failed-Branch Hypothesis</div>
+                          <div class="md-content" v-html="renderMarkdown(child.tool_updated_failed_transform)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_updated_ambiguity_rationale">
+                          <div class="sub-label">Updated Ambiguity Rationale</div>
+                          <div class="md-content" v-html="renderMarkdown(child.tool_updated_ambiguity_rationale)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_withdraw_failed_branch">
+                          <div class="sub-label">Repair Action</div>
+                          <div class="md-content">Withdraw failed branch</div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else-if="child.kind==='tool_call' && child.tool_name==='execute_python_solution'">
+                      <div class="tool-details">
+                        <div class="tool-panel" v-if="child.tool_target_branch_id">
+                          <div class="sub-label">Target Branch ID</div>
+                          <div class="md-content">{{ child.tool_target_branch_id }}</div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_target_branch_code">
+                          <div class="sub-label">Target Branch Code</div>
+                          <div class="md-content code-only" v-html="renderPythonCode(child.tool_target_branch_code)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_code">
+                          <div class="sub-label">Code</div>
+                          <div class="md-content code-only" v-html="renderPythonCode(child.tool_code)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_secondary_code">
+                          <div class="sub-label">Branch B Code</div>
+                          <div class="md-content code-only" v-html="renderPythonCode(child.tool_secondary_code)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.tool_updated_failed_code">
+                          <div class="sub-label">Updated Failed-Branch Code</div>
+                          <div class="md-content code-only" v-html="renderPythonCode(child.tool_updated_failed_code)"></div>
+                        </div>
+                        <div class="tool-panel" v-if="child.content">
+                          <div class="sub-label">Details</div>
+                          <div class="md-content" v-html="renderMarkdown(child.content)"></div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else-if="child.kind==='tool_call' && (child.tool_name==='run_code' || child.tool_name==='run_code_in_previous_runtime') && child.tool_code">
+                      <div class="md-content code-only" v-html="renderPythonCode(child.tool_code)"></div>
+                    </template>
+                    <template v-else-if="child.kind==='tool_call' && child.tool_raw_json">
+                      <div class="md-content code-only" v-html="renderJsonCode(child.tool_raw_json)"></div>
+                    </template>
+
+                    <template v-else>
+                      <div class="md-content" v-html="renderMarkdown(child.content || '')"></div>
+                    </template>
+
+                    <div v-if="child.images && child.images.length" class="md-content" style="margin-top:10px;">
+                      <img v-for="(img, ii) in child.images" :key="ii" :src="img" :alt="'image-'+ii">
+                    </div>
+                  </div>
+                  <div v-else class="bundle-body" style="padding:10px 12px;">
+                    <template v-if="child.interleaved_blocks && child.interleaved_blocks.length">
+                      <template v-for="(block, bi) in child.interleaved_blocks" :key="'ib-'+bi">
+                        <pre v-if="block.type==='text'" class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(block.content || '')"></pre>
+                        <div v-else-if="block.type==='image'" class="md-content" style="margin:10px 0;">
+                          <img :src="block.content" :alt="'image-'+bi">
+                        </div>
+                      </template>
+                    </template>
+                    <pre v-else class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(child.content || '')"></pre>
+                  </div>
+                  <div v-if="child.kind==='tool_result' && !child.interleaved_blocks && child.images && child.images.length" class="md-content" style="margin-top:10px;">
+                    <img v-for="(img, ii) in child.images" :key="ii" :src="img" :alt="'image-'+ii">
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="m.kind === 'iteration_context'">
+              <template v-if="iterationContextMode(m) === 'snapshot'">
+                <div v-if="m.system_md" class="msg-row orchestrator">
+                  <div class="bundle-panel single system">
+                    <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                    <div class="bundle-label">SYSTEM PROMPT</div>
+                    <div class="bundle-body md-content" v-html="renderMarkdown(m.system_md, 'python')"></div>
+                  </div>
+                </div>
+                <div
+                  v-for="(card, si) in snapshotCardsFor(m)"
+                  :key="'snapshot-'+idx+'-'+si"
+                  class="msg-row"
+                  :class="snapshotRowClass(card)"
+                >
+                  <div class="bundle-panel single" :class="[snapshotCardClass(card), { breathing: isBreathingIndex(idx) && si === snapshotCardsFor(m).length - 1 }]">
+                    <div class="source-chip">{{ snapshotSourceLabelFor(card) }}</div>
+                    <button
+                      v-if="si === 0 && canRollbackFrom(m, idx)"
+                      class="rollback-btn"
+                      @click="rollbackFrom(idx)"
+                      title="Remove all chat history from here on"
+                    >⊖</button>
+                    <div class="bundle-label">{{ snapshotLabelFor(card) }}</div>
+                    <div class="bundle-body" v-if="card.kind !== 'tool_result'">
+                      <template v-if="card.kind==='tool_call' && card.tool_name==='submit_transform_hypothesis'">
+                        <div class="tool-details">
+                          <template v-if="card.tool_transform">
+                            <div class="tool-panel">
+                              <div class="sub-label">Hypothesis</div>
+                              <div class="md-content" v-html="renderMarkdown(card.tool_transform)"></div>
+                            </div>
+                          </template>
+                          <template v-else-if="!card.tool_secondary_transform && !card.tool_ambiguity_rationale && !card.tool_target_branch_id && !card.tool_target_branch_transform && !card.tool_updated_failed_transform && !card.tool_updated_ambiguity_rationale && !card.tool_withdraw_failed_branch">
+                            <div class="tool-panel">
+                              <div class="sub-label">Hypothesis</div>
+                              <div class="md-content" style="color:#aaa;font-style:italic">(streaming...)</div>
+                            </div>
+                          </template>
+                          <div class="tool-panel" v-if="card.tool_secondary_transform">
+                            <div class="sub-label">Branch B Hypothesis</div>
+                            <div class="md-content" v-html="renderMarkdown(card.tool_secondary_transform)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_ambiguity_rationale">
+                            <div class="sub-label">Ambiguity Rationale</div>
+                            <div class="md-content" v-html="renderMarkdown(card.tool_ambiguity_rationale)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_target_branch_id">
+                            <div class="sub-label">Target Branch ID</div>
+                            <div class="md-content">{{ card.tool_target_branch_id }}</div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_target_branch_transform">
+                            <div class="sub-label">Target Branch Hypothesis</div>
+                            <div class="md-content" v-html="renderMarkdown(card.tool_target_branch_transform)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_updated_failed_transform">
+                            <div class="sub-label">Updated Failed-Branch Hypothesis</div>
+                            <div class="md-content" v-html="renderMarkdown(card.tool_updated_failed_transform)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_updated_ambiguity_rationale">
+                            <div class="sub-label">Updated Ambiguity Rationale</div>
+                            <div class="md-content" v-html="renderMarkdown(card.tool_updated_ambiguity_rationale)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_withdraw_failed_branch">
+                            <div class="sub-label">Repair Action</div>
+                            <div class="md-content">Withdraw failed branch</div>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else-if="card.kind==='tool_call' && card.tool_name==='execute_python_solution'">
+                        <div class="tool-details">
+                          <div class="tool-panel" v-if="card.tool_target_branch_id">
+                            <div class="sub-label">Target Branch ID</div>
+                            <div class="md-content">{{ card.tool_target_branch_id }}</div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_target_branch_code">
+                            <div class="sub-label">Target Branch Code</div>
+                            <div class="md-content code-only" v-html="renderPythonCode(card.tool_target_branch_code)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_code">
+                            <div class="sub-label">Code</div>
+                            <div class="md-content code-only" v-html="renderPythonCode(card.tool_code)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_secondary_code">
+                            <div class="sub-label">Branch B Code</div>
+                            <div class="md-content code-only" v-html="renderPythonCode(card.tool_secondary_code)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.tool_updated_failed_code">
+                            <div class="sub-label">Updated Failed-Branch Code</div>
+                            <div class="md-content code-only" v-html="renderPythonCode(card.tool_updated_failed_code)"></div>
+                          </div>
+                          <div class="tool-panel" v-if="card.content">
+                            <div class="sub-label">Details</div>
+                            <div class="md-content" v-html="renderMarkdown(card.content)"></div>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else-if="card.kind==='tool_call' && (card.tool_name==='run_code' || card.tool_name==='run_code_in_previous_runtime') && card.tool_code">
+                        <div class="md-content code-only" v-html="renderPythonCode(card.tool_code)"></div>
+                      </template>
+                      <template v-else-if="card.kind==='tool_call' && card.tool_raw_json">
+                        <div class="md-content code-only" v-html="renderJsonCode(card.tool_raw_json)"></div>
+                      </template>
+                      <template v-else-if="card.interleaved_blocks && card.interleaved_blocks.length">
+                        <template v-for="(block, bi) in card.interleaved_blocks" :key="'sic-'+idx+'-'+si+'-'+bi">
+                          <div v-if="block.type==='text'" class="md-content" v-html="renderIterationContext(block.content || '')"></div>
+                          <div v-else-if="block.type==='image'" class="md-content" style="margin:10px 0;">
+                            <img :src="block.content" :alt="'snapshot-image-'+bi" style="max-width:100%;">
+                          </div>
+                        </template>
+                      </template>
+                      <template v-else>
+                        <div class="md-content" v-html="renderMarkdown(card.content || '')"></div>
+                      </template>
+                      <div v-if="card.images && card.images.length && !(card.interleaved_blocks && card.interleaved_blocks.length)" class="md-content" style="margin-top:10px;">
+                        <img v-for="(img, ii) in card.images" :key="ii" :src="img" :alt="'snapshot-card-image-'+ii">
+                      </div>
+                    </div>
+                    <div v-else class="bundle-body" style="padding:10px 12px;">
+                      <template v-if="card.interleaved_blocks && card.interleaved_blocks.length">
+                        <template v-for="(block, bi) in card.interleaved_blocks" :key="'sit-'+idx+'-'+si+'-'+bi">
+                          <pre v-if="block.type==='text'" class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(block.content || '')"></pre>
+                          <div v-else-if="block.type==='image'" class="md-content" style="margin:10px 0;">
+                            <img :src="block.content" :alt="'snapshot-tool-image-'+bi">
+                          </div>
+                        </template>
+                      </template>
+                      <pre v-else class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(card.content || '')"></pre>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <!-- System prompt as separate row above user prompt (mirrors prompt_bundle layout) -->
+                <div v-if="m.system_md" class="msg-row orchestrator">
+                  <div class="bundle-panel single system">
+                    <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                    <div class="bundle-label">SYSTEM PROMPT</div>
+                    <div class="bundle-body md-content" v-html="renderMarkdown(m.system_md, 'python')"></div>
+                  </div>
+                </div>
+                <!-- User prompt row: puzzle grids + compressed context -->
+                <div class="msg-row orchestrator">
+                  <div class="bundle-panel single user" :class="{ breathing: isBreathingIndex(idx) }">
+                    <div class="source-chip">ORCHESTRATOR MESSAGE</div>
+                    <button v-if="canRollbackFrom(m, idx)" class="rollback-btn" @click="rollbackFrom(idx)" title="Remove all chat history from here on">⊖</button>
+                    <div class="bundle-label">{{ sourceLabelFor(m) }}</div>
+                    <div class="bundle-body">
+                      <template v-if="iterationPromptBlocks(m).length">
+                        <template v-for="(block, bi) in iterationPromptBlocks(m)" :key="'ic-'+bi">
+                          <div v-if="iterationPromptBlockType(block)==='text'" class="md-content" v-html="renderIterationContext(iterationPromptBlockText(block))"></div>
+                          <div v-else-if="iterationPromptBlockType(block)==='image'" class="md-content" style="margin:10px 0;">
+                            <img :src="iterationPromptBlockImage(block)" :alt="'puzzle-image-'+bi" style="max-width:100%;">
+                          </div>
+                        </template>
+                      </template>
+                      <div v-else class="md-content" v-html="renderIterationContext(m.content || '')"></div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </template>
+
+            <div v-else class="msg-row" :class="rowClass(m)">
+              <div class="bundle-panel single" :class="[cardClass(m), { breathing: isBreathingIndex(idx) }, m.kind==='thinking' ? 'analysis-thinking' : (m.kind==='tool_call' ? 'analysis-tool' : '')]">
+                <div class="source-chip">{{ sourceLabelFor(m) }}</div>
+                <div class="source-chip token-chip" v-if="tokenLabelForKey(`msg-${idx}`)">{{ tokenLabelForKey(`msg-${idx}`) }}</div>
+                <div class="source-chip cost-chip" v-if="costLabel(m)">{{ costLabel(m) }}</div>
+                <button
+                  v-if="canRollbackFrom(m, idx)"
+                  class="rollback-btn"
+                  @click="rollbackFrom(idx)"
+                  title="Remove all chat history from here on"
+                >⊖</button>
+                <div class="bundle-label">{{ labelFor(m) }}</div>
+                <div class="bundle-body" v-if="m.kind!=='tool_result'">
+                  <template v-if="m.kind==='tool_call' && m.tool_name==='submit_transform_hypothesis'">
+                    <div class="tool-details">
+                      <template v-if="m.tool_transform">
+                        <div class="tool-panel">
+                          <div class="sub-label">Hypothesis</div>
+                          <div class="md-content" v-html="renderMarkdown(m.tool_transform)"></div>
+                        </div>
+                      </template>
+                      <template v-else-if="!m.tool_secondary_transform && !m.tool_ambiguity_rationale && !m.tool_target_branch_id && !m.tool_target_branch_transform && !m.tool_updated_failed_transform && !m.tool_updated_ambiguity_rationale && !m.tool_withdraw_failed_branch">
+                        <div class="tool-panel">
+                          <div class="sub-label">Hypothesis</div>
+                          <div class="md-content" style="color:#aaa;font-style:italic">(streaming...)</div>
+                        </div>
+                      </template>
+                      <div class="tool-panel" v-if="m.tool_secondary_transform">
+                        <div class="sub-label">Branch B Hypothesis</div>
+                        <div class="md-content" v-html="renderMarkdown(m.tool_secondary_transform)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_ambiguity_rationale">
+                        <div class="sub-label">Ambiguity Rationale</div>
+                        <div class="md-content" v-html="renderMarkdown(m.tool_ambiguity_rationale)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_target_branch_id">
+                        <div class="sub-label">Target Branch ID</div>
+                        <div class="md-content">{{ m.tool_target_branch_id }}</div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_target_branch_transform">
+                        <div class="sub-label">Target Branch Hypothesis</div>
+                        <div class="md-content" v-html="renderMarkdown(m.tool_target_branch_transform)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_updated_failed_transform">
+                        <div class="sub-label">Updated Failed-Branch Hypothesis</div>
+                        <div class="md-content" v-html="renderMarkdown(m.tool_updated_failed_transform)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_updated_ambiguity_rationale">
+                        <div class="sub-label">Updated Ambiguity Rationale</div>
+                        <div class="md-content" v-html="renderMarkdown(m.tool_updated_ambiguity_rationale)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_withdraw_failed_branch">
+                        <div class="sub-label">Repair Action</div>
+                        <div class="md-content">Withdraw failed branch</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="m.kind==='tool_call' && m.tool_name==='execute_python_solution'">
+                    <div class="tool-details">
+                      <div class="tool-panel" v-if="m.tool_target_branch_id">
+                        <div class="sub-label">Target Branch ID</div>
+                        <div class="md-content">{{ m.tool_target_branch_id }}</div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_target_branch_code">
+                        <div class="sub-label">Target Branch Code</div>
+                        <div class="md-content code-only" v-html="renderPythonCode(m.tool_target_branch_code)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_code">
+                        <div class="sub-label">Code</div>
+                        <div class="md-content code-only" v-html="renderPythonCode(m.tool_code)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_secondary_code">
+                        <div class="sub-label">Branch B Code</div>
+                        <div class="md-content code-only" v-html="renderPythonCode(m.tool_secondary_code)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.tool_updated_failed_code">
+                        <div class="sub-label">Updated Failed-Branch Code</div>
+                        <div class="md-content code-only" v-html="renderPythonCode(m.tool_updated_failed_code)"></div>
+                      </div>
+                      <div class="tool-panel" v-if="m.content">
+                        <div class="sub-label">Details</div>
+                        <div class="md-content" v-html="renderMarkdown(m.content)"></div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else-if="m.kind==='tool_call' && (m.tool_name==='run_code' || m.tool_name==='run_code_in_previous_runtime') && m.tool_code">
+                    <div class="md-content code-only" v-html="renderPythonCode(m.tool_code)"></div>
+                  </template>
+                  <template v-else-if="m.kind==='tool_call' && m.tool_raw_json">
+                    <div class="md-content code-only" v-html="renderJsonCode(m.tool_raw_json)"></div>
+                  </template>
+
+                  <template v-else-if="m.kind === 'iteration_context'">
+                    <!-- iteration_context is now rendered as its own top-level template above -->
+                  </template>
+                  <template v-else>
+                    <div class="md-content" v-html="renderMarkdown(m.content || '')"></div>
+                  </template>
+
+                  <div v-if="m.images && m.images.length" class="md-content" style="margin-top:10px;">
+                    <img v-for="(img, ii) in m.images" :key="ii" :src="img" :alt="'image-'+ii">
+                  </div>
+                </div>
+                <div v-else class="bundle-body" style="padding:10px 12px;">
+                  <template v-if="m.interleaved_blocks && m.interleaved_blocks.length">
+                    <template v-for="(block, bi) in m.interleaved_blocks" :key="'ib-'+bi">
+                      <pre v-if="block.type==='text'" class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(block.content || '')"></pre>
+                      <div v-else-if="block.type==='image'" class="md-content" style="margin:10px 0;">
+                        <img :src="block.content" :alt="'image-'+bi">
+                      </div>
+                    </template>
+                  </template>
+                  <pre v-else class="terminal-output tool-result-terminal" v-html="renderTerminalOutput(m.content || '')"></pre>
+                </div>
+                <div v-if="m.kind==='tool_result' && !m.interleaved_blocks && m.images && m.images.length" class="md-content" style="margin-top:10px;">
+                  <img v-for="(img, ii) in m.images" :key="ii" :src="img" :alt="'image-'+ii">
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='system'">
+        <div class="msg-row center">
+          <div class="bundle-panel single system">
+            <div class="bundle-label">SOLVER PROMPT</div>
+            <div class="bundle-body md-content" v-html="renderMarkdown(panels.system_prompt, 'python')"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='reflector'">
+        <div class="msg-row center">
+          <div class="bundle-panel single system reflector-card">
+            <div class="bundle-label">REFLECTOR PROMPT</div>
+            <div class="bundle-body md-content" v-html="renderMarkdown(panels.reflector_prompt || '*Reflector prompt not loaded yet.*', 'python')"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='user'">
+        <div class="msg-row center">
+          <div class="bundle-panel single user">
+            <div class="bundle-label">PUZZLE DATA</div>
+            <div class="bundle-body md-content" v-html="renderMarkdown(panels.user_prompt)"></div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='code'">
+        <div class="agent-wrap">
+          <div class="msg-row center" v-if="latestCodeView.cards.length === 0">
+            <div class="bundle-panel single analysis-tool">
+              <div class="bundle-label">{{ latestCodeView.title }}</div>
+              <div class="bundle-body md-content" v-html="renderMarkdown(latestCodeView.raw || panels.latest_code)"></div>
+            </div>
+          </div>
+          <div class="msg-row center" v-for="(codeCard, cidx) in latestCodeView.cards" :key="'latest-code-'+cidx">
+            <div class="bundle-panel single analysis-tool">
+              <div class="bundle-label">{{ codeCard.name }}</div>
+              <div class="bundle-body md-content" :class="{ 'flat-code-body': String(codeCard.name || '').toUpperCase() === 'CODE' }" v-html="renderMarkdown(codeCard.content, codeCard.lang)"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='tool'">
+        <div class="agent-wrap">
+          <div class="msg-row center">
+            <div class="bundle-panel single analysis-tool">
+              <div class="bundle-label">{{ latestToolView.title }}</div>
+              <div class="bundle-body md-content" v-if="!latestToolView.cards.length" v-html="renderMarkdown(latestToolView.callBody || panels.latest_tool, 'python')"></div>
+            </div>
+          </div>
+          <div class="msg-row center" v-for="(toolCard, tidx) in latestToolView.cards" :key="'latest-tool-arg-'+tidx">
+            <div class="bundle-panel single analysis-tool">
+              <div class="bundle-label">{{ toolCard.name }}</div>
+              <div class="bundle-body md-content" :class="{ 'flat-code-body': String(toolCard.name || '').toUpperCase() === 'CODE' }" v-html="renderMarkdown(toolCard.content, toolCard.lang)"></div>
+            </div>
+          </div>
+          <div class="msg-row center" v-if="latestToolView.resultBody">
+            <div class="bundle-panel single tool-result">
+              <div class="bundle-label">TOOL RESULT</div>
+              <div class="bundle-body md-content" v-html="renderMarkdown(latestToolView.resultBody, 'json')"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='tools'">
+        <div class="agent-wrap">
+          <div class="msg-row center" v-for="(toolCard, tidx) in toolDefinitionCards" :key="'tooldef-'+tidx">
+            <div class="bundle-panel single user">
+              <div class="bundle-label">{{ toolCard.name }}</div>
+              <div class="bundle-body md-content" v-html="renderMarkdown(toolCard.content, 'json')"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="panel markdown prompt-panel active" v-if="activePanel==='config'">
+        <div class="msg-row center">
+          <div class="bundle-panel single user">
+            <div class="bundle-label">CONFIGURATION</div>
+            <div class="bundle-body">
+              <div class="config-grid">
+                <!-- LEFT COL: Puzzle -->
+                <div class="config-section">
+                  <div class="config-section-title">Puzzle</div>
+                  <div class="field">
+                    <label>Task ID</label>
+                    <div class="autocomplete-wrap">
+                      <input
+                        type="text"
+                        v-model="config.puzzle_path"
+                        @focus="onPuzzlePathFocus"
+                        @blur="onPuzzlePathBlur"
+                        @keydown.down.prevent="moveTaskSuggestion(1)"
+                        @keydown.up.prevent="moveTaskSuggestion(-1)"
+                        @keydown.enter.prevent="applyActiveTaskSuggestion"
+                        @keydown.escape.prevent="hideTaskSuggestions"
+                      >
+                      <div class="task-suggestion-list" v-if="showTaskSuggestions">
+                        <button
+                          v-for="(taskId, idx) in taskIdSuggestions"
+                          :key="'task-suggestion-'+taskId"
+                          type="button"
+                          class="task-suggestion-item"
+                          :class="{ active: idx === activeTaskSuggestionIndex }"
+                          @mousedown.prevent="selectTaskSuggestion(taskId)"
+                        >{{ taskId }}</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Split</label>
+                    <select v-model="config.split">
+                      <option value="public_eval">public_eval</option>
+                      <option value="evaluation">evaluation</option>
+                      <option value="public_train">public_train</option>
+                      <option value="training">training</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Dataset Root</label>
+                    <input type="text" v-model="config.dataset_root" placeholder="/path/to/ARC-AGI-2">
+                  </div>
+                </div>
+
+                <!-- RIGHT COL: Model -->
+                <div class="config-section">
+                  <div class="config-section-title">Model</div>
+                  <div class="field">
+                    <label>Model</label>
+                    <select v-model="config.model">
+                      <option value="claude-opus-4-6">claude-opus-4-6</option>
+                      <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+                      <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                      <option value="kimi-k2p5">kimi-k2.5 (Fireworks)</option>
+                      <option value="glm-5">glm-5 (Fireworks, text-only)</option>
+                    </select>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                    <div class="field">
+                      <label>Main</label>
+                      <select v-model="config.thinking_effort" :disabled="isHaikuModel">
+                        <option v-for="effort in thinkingEffortOptions" :key="effort" :value="effort">{{ effort }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Reflection</label>
+                      <select v-model="config.reflection_thinking_effort" :disabled="isHaikuModel">
+                        <option v-for="effort in thinkingEffortOptions" :key="effort" :value="effort">{{ effort }}</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Compression</label>
+                      <select v-model="config.compression_thinking_effort" :disabled="isHaikuModel">
+                        <option v-for="effort in thinkingEffortOptions" :key="effort" :value="effort">{{ effort }}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="field" v-if="isHaikuModel">
+                    <label>Thinking Budget Tokens</label>
+                    <div class="budget-controls">
+                      <input type="number" :min="thinkingBudgetMin" :max="thinkingBudgetMax" step="1" v-model.number="config.thinking_budget">
+                      <input type="range" :min="thinkingBudgetMin" :max="thinkingBudgetMax" step="1" v-model.number="config.thinking_budget">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- LEFT COL: Limits -->
+                <div class="config-section">
+                  <div class="config-section-title">Limits</div>
+                  <div class="field">
+                    <label>Compression Threshold (tokens)</label>
+                    <div class="budget-controls">
+                      <input type="number" :min="1000" :max="200000" step="1000" v-model.number="config.compression_threshold">
+                      <input type="range" :min="1000" :max="200000" step="1000" v-model.number="config.compression_threshold">
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Compression Bypass Threshold (tokens)</label>
+                    <div class="budget-controls">
+                      <input type="number" :min="0" :max="200000" step="1000" v-model.number="config.compression_bypass_threshold">
+                      <input type="range" :min="0" :max="200000" step="1000" v-model.number="config.compression_bypass_threshold">
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Max Turns</label>
+                    <div class="budget-controls">
+                      <input type="number" :min="1" :max="1000" step="1" v-model.number="config.max_turns">
+                      <input type="range" :min="1" :max="1000" step="1" v-model.number="config.max_turns">
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Max Test Predictions</label>
+                    <select v-model.number="config.max_test_predictions">
+                      <option :value="1">1</option>
+                      <option :value="2">2</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- RIGHT COL: Independent Reflector -->
+                <div class="config-section">
+                  <div class="config-section-title">Independent Reflector</div>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <input id="reflector" type="checkbox" v-model="config.enable_independent_reflector">
+                    <label for="reflector" style="margin:0;">Enable Independent Reflector</label>
+                  </div>
+                  <div class="field" v-if="config.enable_independent_reflector">
+                    <label>Provider</label>
+                    <select v-model="config.reflector_provider">
+                      <option value="gemini">Gemini</option>
+                      <option value="claude">Claude</option>
+                    </select>
+                  </div>
+                  <div class="field" v-if="config.enable_independent_reflector">
+                    <label>Model</label>
+                    <select v-model="config.reflector_model">
+                      <option v-if="config.reflector_provider==='gemini'" value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                      <option v-if="config.reflector_provider==='gemini'" value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                      <option v-if="config.reflector_provider==='claude'" value="claude-opus-4-6">claude-opus-4-6</option>
+                      <option v-if="config.reflector_provider==='claude'" value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+                    </select>
+                  </div>
+                  <div class="field" v-if="config.enable_independent_reflector">
+                    <label>Thinking Effort</label>
+                    <select v-model="config.reflector_thinking_effort">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option v-if="config.reflector_provider==='claude'" value="max">Max</option>
+                    </select>
+                  </div>
+                  <div class="field" v-if="config.enable_independent_reflector && config.reflector_provider==='gemini'">
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                      <input type="checkbox" v-model="config.reflector_code_execution"> Code Execution
+                    </label>
+                  </div>
+                </div>
+
+                <!-- LEFT COL: Toggles -->
+                <div class="config-section">
+                  <div class="config-section-title">Options</div>
+                  <div style="display:flex; flex-wrap:wrap; gap:14px;">
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                      <input type="checkbox" v-model="config.unsafe_local_exec"> Unsafe Exec
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                      <input type="checkbox" v-model="config.auto_save"> Auto-save
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                      <input type="checkbox" v-model="config.enable_phoenix"> Phoenix
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                      <input type="checkbox" v-model="config.semi_cot_first_turn"> No Code 1st Turn
+                    </label>
+                  </div>
+                  <div class="field" v-if="config.semi_cot_first_turn">
+                    <label>1st Turn Thinking Effort</label>
+                    <select v-model="config.semi_cot_thinking_effort">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="max">Max</option>
+                    </select>
+                  </div>
+                  <div class="field" v-if="config.enable_phoenix">
+                    <label>Phoenix Project</label>
+                    <input type="text" v-model="config.phoenix_project">
+                  </div>
+                </div>
+
+                <!-- RIGHT COL: Save / Load -->
+                <div class="config-section">
+                  <div class="config-section-title">Save / Load</div>
+                  <div class="field">
+                    <label>Save Current Run</label>
+                    <div style="display:flex; gap:8px;">
+                      <input type="text" v-model="saveRunLabel" placeholder="Checkpoint label" style="flex:1;">
+                      <button type="button" @click="saveCurrentRun" style="white-space:nowrap;">Save</button>
+                    </div>
+                    <div class="status" v-if="lastSaveResult">{{ lastSaveResult }}</div>
+                  </div>
+                  <div class="field">
+                    <label>Load Saved Run</label>
+                    <div style="display:flex; gap:8px;">
+                      <select v-model="selectedRunId" style="flex:1;">
+                        <option value="">Select a saved run...</option>
+                        <option v-for="r in savedRuns" :key="r.id" :value="r.id">
+                          {{ r.label ? `${r.label} (${r.saved_at || r.id})` : (r.saved_at || r.id) }}
+                        </option>
+                      </select>
+                      <button type="button" @click="loadSelectedRun" :disabled="!selectedRunId">Load</button>
+                      <button type="button" @click="refreshSavedRuns" title="Refresh list" style="padding:8px;">↻</button>
+                    </div>
+                  </div>
+                  <div class="status">Status: {{ status }}</div>
+                </div>
+              </div>
+              <div class="status" v-if="usage.total_tokens > 0">
+                Real Tokens:
+                In {{ formatInteger(usage.input_tokens) }},
+                Out {{ formatInteger(usage.output_tokens) }},
+                <span v-if="usage.thinking_tokens">Think {{ formatInteger(usage.thinking_tokens) }},</span>
+                Total {{ formatInteger(usage.total_tokens) }}
+                <span v-if="usage.requests"> ({{ formatInteger(usage.requests) }} requests)</span>
+                <span v-if="usage.reasoning_breakdown_incomplete"> — separate thinking breakdown unavailable for some Anthropic turns</span>
+              </div>
+              <div class="status" v-if="usage.total_cost > 0">
+                Estimated Cost: ${{ usage.total_cost.toFixed(4) }}
+              </div>
+              <div class="status" v-if="usage.pricing_estimate_incomplete">
+                Pricing fallback used for one or more requests
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div v-if="activePanel==='agent'" class="canvas-controls">
+      <button
+        class="scroll-btn"
+                  :class="{ 'is-hidden': lastAgentScrollTop <= 4 }"
+        @click="scrollToTop"
+        title="Jump to top"
+      >↑</button>
+
+      <!-- Iteration Navigation -->
+      <div v-if="canvasViews.length > 0" class="iteration-nav">
+        <button
+          class="iter-nav-btn"
+          :disabled="selectedCanvasId !== null && selectedCanvasIndex <= 0"
+          @click="prevCanvas"
+          title="Previous Canvas"
+        >◀</button>
+        <div class="iter-nav-picker-wrap" style="position:relative;">
+          <button
+            class="iter-nav-label iter-nav-label-btn"
+            @click="canvasPickerOpen = !canvasPickerOpen"
+            title="Jump to canvas"
+          >{{ currentCanvasNavLabel() }} ▾</button>
+          <div v-if="canvasPickerOpen" class="canvas-picker-dropdown" @mouseleave="canvasPickerOpen = false">
+            <div
+              class="canvas-picker-item"
+              :class="{ active: selectedCanvasId === null }"
+              @click="showAllCanvases(); canvasPickerOpen = false"
+            >All Canvases</div>
+            <div
+              v-for="(cv, ci) in canvasPickerItems"
+              :key="'cpick-'+ci"
+              class="canvas-picker-item"
+              :class="{
+                active: selectedCanvasId === cv.id,
+                reflector: cv.owner === 'independent_reflector'
+              }"
+              @click="selectedCanvasId = cv.id; canvasPickerOpen = false; scrollToTop()"
+            >
+              <span class="canvas-picker-name">{{ cv.logicalLabel }}</span>
+            </div>
+          </div>
+        </div>
+        <button
+          class="iter-nav-btn"
+          :disabled="selectedCanvasId !== null && selectedCanvasIndex >= canvasViews.length - 1"
+          @click="nextCanvas"
+          title="Next Canvas"
+        >▶</button>
+        <button
+          class="iter-nav-btn iter-nav-all"
+          :class="{ active: selectedCanvasId === null }"
+          @click="showAllCanvases"
+          title="Show All"
+        >All</button>
+      </div>
+
+      <button
+        class="scroll-btn"
+        :class="{ 'is-hidden': followBottom }"
+        @click="enableFollow"
+        title="Jump to latest and follow"
+      >↓</button>
+
+      <button class="floating-solve" @click="toggleSolve" :disabled="isPausePending">
+        {{ solveButtonLabel }}
+      </button>
+
+      <button
+        class="clear-history-btn"
+        :disabled="running ? false : !canClearAllHistory()"
+        @click="running ? terminateRun() : clearAllHistory()"
+        :title="running ? 'Hard stop immediately by dropping the current inference connection' : 'Clear all turns and keep only the initial main-agent prompt'"
+      >{{ running ? 'Terminate' : 'Clear All' }}</button>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const vueRuntime = window.Vue;
+      if (!vueRuntime || typeof vueRuntime.createApp !== "function") {
+        console.error("Vue runtime failed to load");
+        const btn = document.querySelector(".floating-solve");
+        if (btn) btn.textContent = "▶ Solve";
+        return;
+      }
+      const { createApp, nextTick } = vueRuntime;
+
+      const md = window.marked;
+      const hasPrism = !!(window.Prism && typeof window.Prism.highlight === "function");
+      const hasHljs = !!(window.hljs && typeof window.hljs.highlight === "function");
+
+      if (md && typeof md.setOptions === "function") {
+        md.setOptions({
+          breaks: true,
+          gfm: true,
+          highlight: (code, lang) => {
+            if (!hasHljs) return code;
+            try {
+              if (lang && window.hljs.getLanguage(lang)) {
+                return window.hljs.highlight(code, { language: lang }).value;
+              }
+              return window.hljs.highlightAuto(code).value;
+            } catch (_) {
+              return code;
+            }
+          },
+        });
+      }
+
+      createApp({
+      data() {
+        return {
+          ws: null,
+          running: false,
+          paused: false,
+          status: "idle",
+          activePanel: "agent",
+          history: [],
+          followBottom: true,
+          selectedCanvasId: null,
+          canvasPickerOpen: false,
+          canvasPickerOpen: false,
+          programmaticScroll: false,
+          lastAgentScrollTop: 0,
+          suspendConfigSync: false,
+          configSyncTimer: null,
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            thinking_tokens: 0,
+            total_tokens: 0,
+            requests: 0,
+            total_cost: 0,
+          },
+          savedRuns: [],
+          saveRunLabel: "",
+          selectedRunId: "",
+          checkpointRollbackPending: false,
+          lastSaveResult: "none yet",
+          saveToastPending: false,
+          panels: {
+            system_prompt: "*Loading system prompt...*",
+            user_prompt: "*Loading user prompt...*",
+            latest_tool: "*No tool calls yet*",
+            latest_code: "*No code submitted yet*",
+            available_tools: "*No tool schemas available.*",
+          },
+          config: {
+            puzzle_path: "16b78196",
+            split: "public_eval",
+            dataset_root: "",
+            unsafe_local_exec: true,
+            model: "claude-opus-4-6",
+            thinking_effort: "medium",
+            reflection_thinking_effort: "max",
+            compression_thinking_effort: "max",
+            thinking_budget: 16000,
+            compression_threshold: 170000,
+            compression_bypass_threshold: 120000,
+            max_turns: 200,
+            max_test_predictions: 2,
+            phoenix_project: "ARC_Athanor",
+            enable_phoenix: true,
+            enable_independent_reflector: true,
+            reflector_provider: "gemini",
+            reflector_model: "gemini-3.1-pro-preview",
+            reflector_thinking_effort: "high",
+            reflector_code_execution: false,
+            semi_cot_first_turn: false,
+            semi_cot_thinking_effort: "high",
+            auto_save: true,
+          },
+          taskIds: [],
+          puzzlePathFocused: false,
+          puzzlePathBlurTimer: null,
+          activeTaskSuggestionIndex: -1,
+        };
+      },
+      computed: {
+        canvasViews() {
+          const source = Array.isArray(this.history) ? this.history : [];
+          const byId = new Map();
+          for (const m of source) {
+            if (!m || typeof m !== "object") continue;
+            const canvasId = String(m.canvas_id || "").trim();
+            if (!canvasId) continue;
+            if (!byId.has(canvasId)) {
+              byId.set(canvasId, {
+                id: canvasId,
+                seq: Number(m.canvas_seq || 0),
+                iteration: Number(m.iteration || 0),
+                label: String(m.canvas_label || this.canvasLabelFromMeta(m.canvas_owner, m.canvas_phase)),
+                owner: String(m.canvas_owner || ""),
+                phase: String(m.canvas_phase || ""),
+                items: [],
+              });
+            }
+            byId.get(canvasId).items.push(m);
+          }
+          return Array.from(byId.values())
+            .filter((canvas) => canvas.items.some((m) => this.canvasMessageVisible(m) && m.kind !== "turn_divider" && !(m.kind === "iteration_context" && this.iterationContextMode(m) === "handoff")))
+            .sort((a, b) => {
+              if (a.seq !== b.seq) return a.seq - b.seq;
+              if (a.iteration !== b.iteration) return a.iteration - b.iteration;
+              return a.id.localeCompare(b.id);
+            });
+        },
+        canvasPickerItems() {
+          // Assign logical labels: "Iteration 1 Solver", "Iteration 1 Reflector", etc.
+          let solverCount = 0;
+          let reflectorCount = 0;
+          return this.canvasViews.map((cv) => {
+            const isReflector = cv.owner === 'independent_reflector';
+            const isPostReflector = cv.phase === 'post_reflector';
+            let logicalIndex, logicalLabel;
+            if (isReflector) {
+              reflectorCount++;
+              logicalIndex = reflectorCount;
+              logicalLabel = 'Reflector Iteration ' + reflectorCount;
+            } else if (isPostReflector) {
+              logicalLabel = 'Solver Iteration ' + solverCount + ' (revised)';
+              logicalIndex = solverCount;
+            } else {
+              solverCount++;
+              logicalIndex = solverCount;
+              logicalLabel = 'Solver Iteration ' + solverCount;
+            }
+            return { ...cv, logicalIndex, logicalLabel };
+          });
+        },
+        canvasPickerItems() {
+          // Assign logical labels: "Iteration 1 Solver", "Iteration 1 Reflector", etc.
+          let solverCount = 0;
+          let reflectorCount = 0;
+          return this.canvasViews.map((cv) => {
+            const isReflector = cv.owner === 'independent_reflector';
+            const isPostReflector = cv.phase === 'post_reflector';
+            let logicalIndex, logicalLabel;
+            if (isReflector) {
+              reflectorCount++;
+              logicalIndex = reflectorCount;
+              logicalLabel = 'Reflector Iteration ' + reflectorCount;
+            } else if (isPostReflector) {
+              logicalLabel = 'Solver Iteration ' + solverCount + ' (revised)';
+              logicalIndex = solverCount;
+            } else {
+              solverCount++;
+              logicalIndex = solverCount;
+              logicalLabel = 'Solver Iteration ' + solverCount;
+            }
+            return { ...cv, logicalIndex, logicalLabel };
+          });
+        },
+        initialPromptCanvasId() {
+          const firstMainCanvas = this.canvasViews.find((canvas) => {
+            return canvas.owner === "main_agent" && canvas.phase === "main";
+          });
+          return firstMainCanvas ? firstMainCanvas.id : null;
+        },
+        selectedCanvas() {
+          if (!this.selectedCanvasId) return null;
+          return this.canvasViews.find((canvas) => canvas.id === this.selectedCanvasId) || null;
+        },
+        resumeReady() {
+          if (this.running) return false;
+          if (this.paused || this.checkpointRollbackPending) return true;
+          return String(this.status || "").toLowerCase() === "loaded";
+        },
+        solveButtonLabel() {
+          if (this.running) {
+            return this.isPausePending ? "Pausing…" : "❚❚ Pause";
+          }
+          return this.resumeReady ? "▶ Resume" : "▶ Solve";
+        },
+        selectedCanvasIndex() {
+          if (!this.selectedCanvasId) return -1;
+          return this.canvasViews.findIndex((canvas) => canvas.id === this.selectedCanvasId);
+        },
+        displayHistory() {
+          const source = Array.isArray(this.history) ? this.history : [];
+          let filtered = source;
+
+          if (this.selectedCanvasId) {
+            filtered = source.filter((m) => {
+              if (!m || typeof m !== "object") return false;
+              if (m.kind === "prompt_bundle") {
+                // Show initial prompt_bundle for the initial canvas,
+                // or match by iteration for post-reflector prompt bundles
+                if (this.selectedCanvasId === this.initialPromptCanvasId && !m.iteration) return true;
+                const sc = this.selectedCanvas;
+                if (sc && m.iteration != null && Number(m.iteration) === sc.iteration) return true;
+                return false;
+              }
+              if (String(m.canvas_id || "") !== this.selectedCanvasId) return false;
+              return this.canvasMessageVisible(m);
+            });
+          } else {
+            filtered = source.filter((m, idx) => {
+              if (m.kind === "prompt_bundle") {
+                // Keep the initial system/user prompt visible in the
+                // aggregated "All" view even after the first canvas starts.
+                return true;
+              }
+              return this.canvasMessageVisible(m);
+            });
+          }
+
+          const out = [];
+          let i = 0;
+          while (i < filtered.length) {
+            const item = filtered[i] || {};
+            if (item.kind === "prompt_bundle") {
+              out.push(item);
+              i += 1;
+              continue;
+            }
+
+            const isAnalysis = item.role === "assistant" && (item.kind === "thinking" || item.kind === "tool_call");
+            if (!isAnalysis) {
+              out.push(item);
+              i += 1;
+              continue;
+            }
+
+            const group = [];
+            const kinds = new Set();
+            let j = i;
+            while (j < filtered.length) {
+              const n = filtered[j] || {};
+              if (n.role === "assistant" && (n.kind === "thinking" || n.kind === "tool_call")) {
+                group.push(n);
+                kinds.add(n.kind);
+                j += 1;
+                continue;
+              }
+              break;
+            }
+
+            if (group.length >= 2 && kinds.has("thinking") && kinds.has("tool_call")) {
+              out.push({ kind: "analysis_bundle", role: "assistant", items: group });
+            } else {
+              out.push(...group);
+            }
+            i = j;
+          }
+          return out;
+        },
+        maxIteration() {
+          let max = 0;
+          for (const m of this.history) {
+            if (m.iteration && typeof m.iteration === 'number' && m.iteration > max) {
+              max = m.iteration;
+            }
+          }
+          return max;
+        },
+        toolDefinitionCards() {
+          const raw = String((this.panels && this.panels.available_tools) || "").trim();
+          if (!raw) {
+            return [{ name: "TOOL DEFINITION", content: "*No tool schemas available.*" }];
+          }
+          const sectionRe = /^###\s+`([^`]+)`\s*$/gm;
+          const cards = [];
+          let match = null;
+          let currentName = null;
+          let contentStart = 0;
+          while ((match = sectionRe.exec(raw)) !== null) {
+            if (currentName !== null) {
+              const body = raw.slice(contentStart, match.index).trim();
+              cards.push({ name: currentName, content: body || "*No details provided.*" });
+            }
+            currentName = String(match[1] || "TOOL DEFINITION").toUpperCase();
+            contentStart = sectionRe.lastIndex;
+          }
+          if (currentName !== null) {
+            const body = raw.slice(contentStart).trim();
+            cards.push({ name: currentName, content: body || "*No details provided.*" });
+          }
+          if (cards.length > 0) return cards;
+          return [{ name: "TOOL DEFINITION", content: raw }];
+        },
+        latestToolView() {
+          const raw = String((this.panels && this.panels.latest_tool) || "").trim();
+          if (!raw) {
+            return { title: "LATEST TOOL", callBody: "*No tool calls yet*", resultBody: "", cards: [] };
+          }
+          const nameMatch = raw.match(/\*\*Name:\*\*\s*`([^`]+)`/i);
+          const toolName = nameMatch && nameMatch[1] ? String(nameMatch[1]).toUpperCase() : "";
+          const timeMatch = raw.match(/\*\*Time:\*\*\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
+          const toolTime = timeMatch && timeMatch[1] ? String(timeMatch[1]) : "";
+          const resultIdx = raw.search(/^###\s+Tool Result\s*$/im);
+          const rawCallBody = (resultIdx >= 0 ? raw.slice(0, resultIdx) : raw).trim();
+          const callBody = rawCallBody
+            .replace(/^##\s+Latest Tool Call\s*$/gim, "")
+            .replace(/^\*\*Name:\*\*.*$/gim, "")
+            .replace(/^\*\*Time:\*\*.*$/gim, "")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+          const sectionRe = /^###\s+([^\n]+)\s*$/gm;
+          const cards = [];
+          let match = null;
+          let currentName = null;
+          let contentStart = 0;
+          while ((match = sectionRe.exec(callBody)) !== null) {
+            if (currentName !== null) {
+              const body = callBody.slice(contentStart, match.index).trim();
+              if (body) {
+                const lname = String(currentName).toLowerCase();
+                const lang = lname === "code" ? "python" : "json";
+                cards.push({ name: String(currentName).toUpperCase(), content: body, lang });
+              }
+            }
+            currentName = String(match[1] || "ARGUMENT");
+            contentStart = sectionRe.lastIndex;
+          }
+          if (currentName !== null) {
+            const body = callBody.slice(contentStart).trim();
+            if (body) {
+              const lname = String(currentName).toLowerCase();
+              const lang = lname === "code" ? "python" : "json";
+              cards.push({ name: String(currentName).toUpperCase(), content: body, lang });
+            }
+          }
+          let resultBody = "";
+          if (resultIdx >= 0) {
+            resultBody = raw.slice(resultIdx).replace(/^###\s+Tool Result\s*$/im, "").trim();
+          }
+          return {
+            title: toolName
+              ? `TOOL CALL: ${toolName}${toolTime ? `@${toolTime}` : ""}`
+              : "LATEST TOOL CALL",
+            callBody: callBody || "*No tool calls yet*",
+            resultBody: resultBody || "",
+            cards,
+          };
+        },
+        latestCodeView() {
+          const raw = String((this.panels && this.panels.latest_code) || "").trim();
+          if (!raw || /^\*No code submitted yet\*/i.test(raw)) {
+            return { title: "LATEST CODE", raw: raw || "*No code submitted yet*", cards: [] };
+          }
+
+          const timeMatch = raw.match(/\*\*Time:\*\*\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
+          const codeTime = timeMatch && timeMatch[1] ? String(timeMatch[1]) : "";
+
+          const sectionRe = /^###\s+([^\n]+)\s*$/gm;
+          const cards = [];
+          let match = null;
+          let currentName = null;
+          let contentStart = 0;
+          while ((match = sectionRe.exec(raw)) !== null) {
+            if (currentName !== null) {
+              const body = raw.slice(contentStart, match.index).trim();
+              if (body) {
+                const lname = String(currentName).toLowerCase();
+                const lang = lname === "code" ? "python" : (lname.includes("result") ? "json" : "");
+                cards.push({ name: String(currentName).toUpperCase(), content: body, lang });
+              }
+            }
+            currentName = String(match[1] || "FIELD");
+            contentStart = sectionRe.lastIndex;
+          }
+          if (currentName !== null) {
+            const body = raw.slice(contentStart).trim();
+            if (body) {
+              const lname = String(currentName).toLowerCase();
+              const lang = lname === "code" ? "python" : (lname.includes("result") ? "json" : "");
+              cards.push({ name: String(currentName).toUpperCase(), content: body, lang });
+            }
+          }
+
+          const title = `EXECUTE_PYTHON_SOLUTION${codeTime ? `@${codeTime}` : ""}`;
+          return { title, raw, cards };
+        },
+        normalizedPuzzleTaskQuery() {
+          const raw = String((this.config && this.config.puzzle_path) || "").trim().toLowerCase();
+          if (!raw) return "";
+          if (raw.includes("/") || raw.includes("\\") || raw.endsWith(".json")) return "";
+          return raw;
+        },
+        taskIdSuggestions() {
+          const query = this.normalizedPuzzleTaskQuery;
+          if (!query) return [];
+          const ids = Array.isArray(this.taskIds) ? this.taskIds : [];
+          const matches = ids.filter((taskId) => String(taskId || "").toLowerCase().startsWith(query));
+          if (matches.length === 1 && String(matches[0] || "").toLowerCase() === query) {
+            return [];
+          }
+          return matches.slice(0, 12);
+        },
+        showTaskSuggestions() {
+          return this.activePanel === "config"
+            && this.puzzlePathFocused
+            && this.taskIdSuggestions.length > 0;
+        },
+        thinkingEffortOptions() {
+          const model = String((this.config && this.config.model) || "").toLowerCase();
+          if (model.includes("haiku-4-5")) return ["low"];
+          if (model.includes("kimi")) return ["low", "medium", "high"];
+          return ["low", "medium", "high", "max"];
+        },
+        thinkingBudgetMin() {
+          return 1024;
+        },
+        thinkingBudgetMax() {
+          const model = String((this.config && this.config.model) || "").toLowerCase();
+          if (model.includes("haiku-4-5")) return 63999;
+          if (model.includes("kimi")) return 127999;
+          return 127999;
+        },
+        isHaikuModel() {
+          const model = String((this.config && this.config.model) || "").toLowerCase();
+          return model.includes("haiku-4-5") || model.includes("kimi") || model.includes("glm");
+        },
+        tokenLabelsByKey() {
+          // Token chip format: "input / thinking / output"
+          // For some Anthropic turns, the API only exposes billed output_tokens
+          // and does not provide a separate thinking-token breakdown.
+          const items = Array.isArray(this.displayHistory) ? this.displayHistory : [];
+          const out = {};
+          for (let i = 0; i < items.length; i += 1) {
+            const m = items[i] || {};
+            if (m.kind === "turn_divider" || m.kind === "prompt_bundle") continue;
+            if (m.kind === "analysis_bundle") {
+              const children = Array.isArray(m.items) ? m.items : [];
+              for (let cidx = 0; cidx < children.length; cidx += 1) {
+                const label = this.tokenLabel(children[cidx]);
+                if (label) out[`analysis-${i}-${cidx}`] = label;
+              }
+              continue;
+            }
+            const label = this.tokenLabel(m);
+            if (label) out[`msg-${i}`] = label;
+          }
+          return out;
+        },
+        isPausePending() {
+          return !!this.running && String(this.status || "").toLowerCase().includes("pausing");
+        },
+      },
+      methods: {
+        canvasLabelFromMeta(owner, phase) {
+          if (String(owner || "") === "independent_reflector") return "Independent Reflector";
+          if (String(phase || "") === "post_reflector") return "Main Agent (post-reflector)";
+          return "Main Agent";
+        },
+        canvasMessageVisible(m) {
+          if (!m || typeof m !== "object") return false;
+          if (m.kind === "prompt_bundle") return false;
+          if (m.kind === "iteration_context") return this.shouldRenderIterationContext(m);
+          return true;
+        },
+        ensureValidCanvasSelection() {
+          if (!this.selectedCanvasId) return;
+          const exists = this.canvasViews.some((canvas) => canvas.id === this.selectedCanvasId);
+          if (!exists) {
+            this.selectedCanvasId = null;
+          }
+        },
+        currentCanvasNavLabel() {
+          if (!this.selectedCanvas) return "All";
+          const pick = this.canvasPickerItems.find((p) => p.id === this.selectedCanvas.id);
+          if (pick) return pick.logicalLabel;
+          return this.selectedCanvas.label;
+        },
+        onPuzzlePathFocus() {
+          if (this.puzzlePathBlurTimer) {
+            clearTimeout(this.puzzlePathBlurTimer);
+            this.puzzlePathBlurTimer = null;
+          }
+          this.puzzlePathFocused = true;
+          this.activeTaskSuggestionIndex = this.taskIdSuggestions.length ? 0 : -1;
+        },
+        onPuzzlePathBlur() {
+          if (this.puzzlePathBlurTimer) {
+            clearTimeout(this.puzzlePathBlurTimer);
+          }
+          this.puzzlePathBlurTimer = setTimeout(() => {
+            this.puzzlePathFocused = false;
+            this.activeTaskSuggestionIndex = -1;
+            this.puzzlePathBlurTimer = null;
+          }, 120);
+        },
+        hideTaskSuggestions() {
+          if (this.puzzlePathBlurTimer) {
+            clearTimeout(this.puzzlePathBlurTimer);
+            this.puzzlePathBlurTimer = null;
+          }
+          this.puzzlePathFocused = false;
+          this.activeTaskSuggestionIndex = -1;
+        },
+        moveTaskSuggestion(delta) {
+          if (!this.showTaskSuggestions) return;
+          const total = this.taskIdSuggestions.length;
+          if (!total) return;
+          const current = this.activeTaskSuggestionIndex >= 0 ? this.activeTaskSuggestionIndex : 0;
+          this.activeTaskSuggestionIndex = (current + delta + total) % total;
+        },
+        selectTaskSuggestion(taskId) {
+          this.config.puzzle_path = String(taskId || "");
+          this.hideTaskSuggestions();
+        },
+        applyActiveTaskSuggestion() {
+          if (!this.showTaskSuggestions) return;
+          const idx = this.activeTaskSuggestionIndex;
+          const taskId = idx >= 0 ? this.taskIdSuggestions[idx] : this.taskIdSuggestions[0];
+          if (taskId) {
+            this.selectTaskSuggestion(taskId);
+          }
+        },
+        connect() {
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          this.ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
+          this.ws.onopen = () => {};
+          this.ws.onmessage = (evt) => {
+            const msg = JSON.parse(evt.data);
+            this.handleServerMessage(msg);
+          };
+          this.ws.onclose = () => setTimeout(() => this.connect(), 1000);
+        },
+        send(payload) {
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.status = "WebSocket not connected";
+            return;
+          }
+          this.ws.send(JSON.stringify(payload));
+        },
+        effortDefaultsForModel(modelName) {
+          const model = String(modelName || "").toLowerCase();
+          if (model.includes("opus-4") || model.includes("sonnet-4")) {
+            return {
+              thinking_effort: "medium",
+              reflection_thinking_effort: "max",
+              compression_thinking_effort: "max",
+            };
+          }
+          return {
+            thinking_effort: "low",
+            reflection_thinking_effort: "medium",
+            compression_thinking_effort: "medium",
+          };
+        },
+        normalizeThinkingEffortForModel() {
+          const defaults = this.effortDefaultsForModel(this.config.model);
+          const allowed = this.thinkingEffortOptions || [];
+          if (!allowed.length) return;
+          if (!allowed.includes(this.config.thinking_effort)) {
+            this.config.thinking_effort = allowed.includes(defaults.thinking_effort)
+              ? defaults.thinking_effort
+              : allowed[0];
+          }
+          if (this.isHaikuModel) {
+            let budget = Number(this.config.thinking_budget);
+            if (!Number.isFinite(budget)) budget = 4096;
+            budget = Math.round(budget);
+            budget = Math.max(this.thinkingBudgetMin, Math.min(this.thinkingBudgetMax, budget));
+            this.config.thinking_budget = budget;
+          }
+          // Update Phoenix project name based on model
+          this.updatePhoenixProjectName();
+        },
+        updatePhoenixProjectName() {
+          const model = this.config.model || "claude-opus-4-6";
+          if (model.includes("opus-4")) {
+            this.config.phoenix_project = "ARC_Opus_4_6";
+          } else if (model.includes("sonnet-4")) {
+            this.config.phoenix_project = "ARC_Sonnet_4_6";
+          } else if (model.includes("haiku-4")) {
+            this.config.phoenix_project = "ARC_Haiku_4_5";
+          } else if (model.includes("kimi")) {
+            this.config.phoenix_project = "ARC_Kimi_K2p5";
+          } else if (model.includes("glm")) {
+            this.config.phoenix_project = "ARC_GLM_5";
+          }
+        },
+        toggleSolve() {
+          if (this.running) {
+            this.send({ type: "pause" });
+            this.status = "Pausing after current message...";
+          } else {
+            const payload = { type: "start", config: this.config };
+            if (this.resumeReady) {
+              payload.history = this.history;
+            }
+            this.checkpointRollbackPending = false;
+            this.send(payload);
+            this.activePanel = "agent";
+            this.followBottom = true;
+            this.selectedCanvasId = null;
+          }
+        },
+        terminateRun() {
+          if (!this.running) return;
+          if (!confirm("Terminate the current run immediately? This drops the current inference connection and cannot be undone.")) {
+            return;
+          }
+          this.send({ type: "terminate" });
+          this.status = "Terminating...";
+        },
+        prevCanvas() {
+          if (!this.canvasViews.length) return;
+          if (!this.selectedCanvasId) {
+            this.selectedCanvasId = this.canvasViews[this.canvasViews.length - 1].id;
+            return;
+          }
+          const idx = this.selectedCanvasIndex;
+          if (idx > 0) {
+            this.selectedCanvasId = this.canvasViews[idx - 1].id;
+          }
+        },
+        nextCanvas() {
+          if (!this.canvasViews.length) return;
+          if (!this.selectedCanvasId) {
+            this.selectedCanvasId = this.canvasViews[0].id;
+            return;
+          }
+          const idx = this.selectedCanvasIndex;
+          if (idx >= 0 && idx < this.canvasViews.length - 1) {
+            this.selectedCanvasId = this.canvasViews[idx + 1].id;
+          }
+        },
+        showAllCanvases() {
+          this.selectedCanvasId = null;
+        },
+        saveCurrentRun() {
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.saveToastPending = false;
+            this.lastSaveResult = "WebSocket not connected";
+            this.status = "WebSocket not connected";
+            return;
+          }
+          this.saveToastPending = true;
+          this.lastSaveResult = "Saving run...";
+          this.status = "Saving run...";
+          this.send({ type: "save_run", label: this.saveRunLabel || this.config.puzzle_path || "" });
+        },
+        refreshSavedRuns() {
+          this.status = "Refreshing saved runs...";
+          this.send({ type: "list_runs" });
+        },
+        loadSelectedRun() {
+          if (!this.selectedRunId) return;
+          this.status = `Loading ${this.selectedRunId}...`;
+          this.send({ type: "load_run", run_id: this.selectedRunId });
+        },
+        canRollbackFrom(m, idx) {
+          if (this.running) return false;
+          // Model-emitted blocks and orchestrator messages can be rollback points.
+          // analysis_bundle uses canRollbackBundle instead.
+          if (!m || !m.role) return false;
+          // Allow rollback from reflection_prompt and iteration_context (orchestrator user messages)
+          if (m.kind === "reflection_prompt" || m.kind === "iteration_context") return true;
+          if (m.role !== "assistant") return false;
+          if (m.kind === "tool_result") return false;
+          if (m.kind === "turn_divider") return false;
+          if (m.kind === "prompt_bundle") return false;
+          if (m.kind === "analysis_bundle") return false;
+          return m.kind === "thinking" || m.kind === "tool_call" || m.kind === "assistant_response";
+        },
+        canRollbackBundle(displayIdx) {
+          if (this.running) return false;
+          return displayIdx >= 0;
+        },
+        canRemoveReflectorCanvas() {
+          return !this.running;
+        },
+        removeReflectorCanvas() {
+          if (this.running) return;
+          if (!confirm("Remove the current reflector messages so you can retry from the same checkpoint?")) {
+            return;
+          }
+          this.checkpointRollbackPending = true;
+          this.status = "Removing reflector messages...";
+          this.send({ type: "remove_reflector_canvas" });
+        },
+        rollbackFrom(displayIdx) {
+          if (this.running) return;
+          // displayHistory[displayIdx] is the block the user clicked.
+          // We need to find the corresponding position in this.history (raw)
+          // and cut so the conversation ends in a valid Anthropic API state.
+          //
+          // Anthropic API rules:
+          //   - Messages alternate user / assistant
+          //   - After assistant[tool_use], next must be user[tool_result]
+          //   - Conversation sent to API should end with a user message
+          //
+          // Strategy: find the raw history index of the clicked display item,
+          // then scan backwards to find the last valid cut point:
+          //   - After a tool_result (user message)
+          //   - After the prompt_bundle (initial state)
+          //   - After a reflection_prompt (user message from orchestrator)
+
+          const display = this.displayHistory;
+          const clicked = display[displayIdx];
+          if (!clicked) return;
+
+          // For analysis_bundle, get the first child item to find in raw history
+          const needle = clicked.kind === "analysis_bundle" ? clicked.items[0] : clicked;
+
+          // Find needle's index in raw this.history
+          let rawIdx = -1;
+          for (let i = 0; i < this.history.length; i++) {
+            if (this.history[i] === needle) { rawIdx = i; break; }
+          }
+          if (rawIdx < 0) {
+            // Fallback: try matching by content identity for analysis_bundle items
+            for (let i = 0; i < this.history.length; i++) {
+              const h = this.history[i];
+              if (h.kind === needle.kind && h.content === needle.content && h.role === needle.role) {
+                rawIdx = i;
+                break;
+              }
+            }
+          }
+          if (rawIdx < 0) return;
+
+          // Now find the valid API cut point.
+          // We want to cut so the last remaining message is a user-role message
+          // (tool_result, reflection_prompt) or the prompt_bundle.
+          let cutIdx = rawIdx; // We will keep history[0..cutIdx-1]
+
+          if (needle.kind === "reflection_prompt") {
+            // Delete the prompt itself and everything after it.
+            // On resume, orchestrator will rebuild the prompt with latest logic.
+            cutIdx = rawIdx;
+          } else if (needle.kind === "iteration_context") {
+            if (this.iterationContextMode(needle) === "handoff") {
+              // Keep the consolidated context — resume FROM it, not before it.
+              cutIdx = rawIdx + 1;
+            } else {
+              cutIdx = rawIdx;
+            }
+          } else {
+            // Walk backwards to find the nearest valid boundary BEFORE this assistant block
+            for (let i = rawIdx - 1; i >= 0; i--) {
+              const h = this.history[i];
+              // Valid cut points: after tool_result, after reflection_prompt, after prompt_bundle
+              if (h.kind === "tool_result" || h.kind === "reflection_prompt" || h.kind === "prompt_bundle") {
+                cutIdx = i + 1;
+                break;
+              }
+              // Also valid: if we reach index 0 (the prompt_bundle), keep just that
+              if (i === 0) {
+                cutIdx = h.kind === "prompt_bundle" ? 1 : 0;
+                break;
+              }
+            }
+          }
+
+          if (cutIdx <= 0) return;
+
+          const removedCount = this.history.length - cutIdx;
+          if (!confirm(`Remove ${removedCount} message(s) from this point onwards? This cannot be undone.`)) {
+            return;
+          }
+
+          this.history = this.history.slice(0, cutIdx);
+          this.checkpointRollbackPending = true;
+          this.status = `Rolled back (removed ${removedCount} messages). Click Solve to continue from checkpoint.`;
+          // Immediately notify the server so its snapshot stays in sync.
+          // Without this, a hard refresh would restore all "deleted" blocks from the stale server history.
+          this.send({ type: "history_rollback", history: this.history });
+        },
+        canClearAllHistory() {
+          if (!Array.isArray(this.history) || this.history.length <= 1) return false;
+          const first = this.history[0];
+          return first && first.kind === "prompt_bundle";
+        },
+        clearAllHistory() {
+          if (!this.canClearAllHistory() || this.running) return;
+          const removedCount = Math.max(0, this.history.length - 1);
+          if (removedCount === 0) return;
+          if (!confirm(`Clear all turns and keep only the initial main-agent prompt? This will remove ${removedCount} message(s).`)) {
+            return;
+          }
+          this.history = this.history.slice(0, 1);
+          this.checkpointRollbackPending = true;
+          this.selectedCanvasId = null;
+          this.followBottom = true;
+          this.status = `Cleared all turns (removed ${removedCount} messages). Click Solve to restart from the initial prompt.`;
+          this.send({ type: "history_rollback", history: this.history });
+          this.$nextTick(() => {
+            this.ensureValidCanvasSelection();
+            this.maybeAutoScroll(true);
+          });
+        },
+        handleServerMessage(msg) {
+          if (msg.type === "snapshot") {
+            const st = msg.state || {};
+            this.running = !!st.running;
+            this.paused = !!st.paused;
+            this.status = st.status || "idle";
+            this.history = Array.isArray(st.history) ? st.history : [];
+            this.panels = Object.assign({}, this.panels, st.panels || {});
+            this.usage = Object.assign({}, this.usage, st.usage || {});
+            this.savedRuns = Array.isArray(st.saved_runs) ? st.saved_runs : [];
+            this.taskIds = Array.isArray(st.task_ids) ? st.task_ids : [];
+            this.suspendConfigSync = true;
+            this.config = Object.assign({}, this.config, st.config || {});
+            this.normalizeThinkingEffortForModel();
+            this.$nextTick(() => { this.suspendConfigSync = false; });
+            this.ensureValidCanvasSelection();
+            this.applyCodeHighlighting();
+            this.maybeAutoScroll(true);
+            return;
+          }
+          if (msg.type === "run_state") {
+            this.running = !!msg.running;
+            this.paused = !!msg.paused;
+            this.status = msg.status || "idle";
+            return;
+          }
+          if (msg.type === "panels_update") {
+            this.panels = Object.assign({}, this.panels, msg.updates || {});
+            this.applyCodeHighlighting();
+            return;
+          }
+          if (msg.type === "config_update") {
+            this.suspendConfigSync = true;
+            this.config = Object.assign({}, this.config, msg.config || {});
+            this.taskIds = Array.isArray(msg.task_ids) ? msg.task_ids : this.taskIds;
+            this.normalizeThinkingEffortForModel();
+            this.$nextTick(() => { this.suspendConfigSync = false; });
+            return;
+          }
+          if (msg.type === "usage_update") {
+            this.usage = Object.assign({}, this.usage, msg.usage || {});
+            return;
+          }
+          if (msg.type === "saved_runs") {
+            this.savedRuns = Array.isArray(msg.runs) ? msg.runs : [];
+            return;
+          }
+          if (msg.type === "toast") {
+            this.status = String(msg.message || this.status || "idle");
+            if (this.saveToastPending) {
+              this.lastSaveResult = this.status;
+              this.saveToastPending = false;
+            }
+            if (String(msg.level || "") === "info" && this.saveRunLabel) {
+              this.saveRunLabel = "";
+            }
+            return;
+          }
+          if (msg.type === "history_reset") {
+            this.history = Array.isArray(msg.history) ? msg.history : [];
+            this.ensureValidCanvasSelection();
+            this.applyCodeHighlighting();
+            this.maybeAutoScroll(false);
+            return;
+          }
+          if (msg.type === "history_add") {
+            this.history.push(msg.message);
+            this.ensureValidCanvasSelection();
+            if (this.messageNeedsHighlight(msg.message)) {
+              this.applyCodeHighlighting();
+            }
+            this.maybeAutoScroll(false);
+            return;
+          }
+          if (msg.type === "history_patch") {
+            if (typeof msg.index === "number" && msg.index >= 0 && msg.index < this.history.length) {
+              this.history[msg.index] = msg.message;
+              this.ensureValidCanvasSelection();
+              if (this.messageNeedsHighlight(msg.message)) {
+                this.applyCodeHighlighting();
+              }
+              this.maybeAutoScroll(false);
+            }
+            return;
+          }
+          if (msg.type === "history_append_delta") {
+            if (typeof msg.index === "number" && msg.index >= 0 && msg.index < this.history.length) {
+              const existing = this.history[msg.index] || {};
+              const prev = String(existing.content || "");
+              const delta = String(msg.delta || "");
+              this.history[msg.index] = Object.assign({}, existing, { content: prev + delta });
+              this.ensureValidCanvasSelection();
+              this.maybeAutoScroll(false);
+            }
+            return;
+          }
+        },
+        rowClass(m) {
+          if (m && m.kind === "tool_result") return "orchestrator";
+          if (m && m.source === "orchestrator") return "orchestrator";
+          if (m && m.source === "agent") return "assistant";
+          return m.role === "user" ? "user" : "assistant";
+        },
+        cardClass(m) {
+          if (m.kind === "thinking") return "thinking";
+          if (m.kind === "tool_call") return "tool-call";
+          if (m.kind === "tool_result") return "tool-result";
+          if (m.kind === "reflection_prompt") return "reflection-prompt";
+          if (m.kind === "iteration_context") return "response";
+          return "response";
+        },
+        sourceLabelFor(m) {
+          if (m && m.source === "orchestrator") return "ORCHESTRATOR MESSAGE";
+          if (m && m.source === "agent") return "AGENT MESSAGE";
+          if (m && m.kind === "tool_result") return "ORCHESTRATOR MESSAGE";
+          return "AGENT MESSAGE";
+        },
+        labelFor(m) {
+          if (m.kind === "thinking") return "THINKING";
+          if (m.kind === "tool_call") return `TOOL CALL: ${(m.tool_name || "unknown").toUpperCase()}`;
+          if (m.kind === "tool_result") {
+            const toolName = String(m.tool_name || "").trim();
+            return toolName
+              ? `TOOL RESULT: ${toolName.toUpperCase()}`
+              : "TOOL RESULT";
+          }
+          if (m.kind === "reflection_prompt") return "REFLECTION PROMPT";
+          if (m.kind === "iteration_context") return m.ui_title ? String(m.ui_title).replace(/\*\*/g, '').replace(/📋\s*/, '') : "ITERATION CONTEXT";
+          if (m.kind === "image") return "IMAGE";
+          return "MESSAGE";
+        },
+        iterationContextMode(m) {
+          const explicit = String((m && m.context_mode) || "").trim().toLowerCase();
+          if (explicit === "handoff" || explicit === "snapshot") return explicit;
+          if (Array.isArray(m && m.snapshot_messages) && m.snapshot_messages.length) return "snapshot";
+          if (Array.isArray(m && m.prompt_blocks) && m.prompt_blocks.length) return "handoff";
+          const blocks = Array.isArray(m && m.interleaved_blocks) ? m.interleaved_blocks : [];
+          for (const block of blocks) {
+            if (!block || block.type !== "text") continue;
+            const text = String(block.content || "").trim();
+            if (text === "## User Message" || text === "## Assistant Message") return "snapshot";
+          }
+          return "handoff";
+        },
+        shouldRenderIterationContext(m) {
+          if (!m || m.kind !== "iteration_context") return false;
+          if (this.iterationContextMode(m) === "snapshot") {
+            return this.snapshotCardsFor(m).length > 0 || !!String(m.system_md || "").trim();
+          }
+          if (this.iterationPromptBlocks(m).length > 0) return true;
+          return !!String(m.content || "").trim() || !!String(m.system_md || "").trim();
+        },
+        iterationPromptBlocks(m) {
+          if (!m || this.iterationContextMode(m) !== "handoff") return [];
+          if (Array.isArray(m.prompt_blocks) && m.prompt_blocks.length) return m.prompt_blocks;
+          const legacyBlocks = this.normalizeInterleavedBlocks(m.interleaved_blocks);
+          if (legacyBlocks.length) return legacyBlocks;
+          const content = String(m.content || "");
+          return content.trim() ? [{ type: "text", text: content }] : [];
+        },
+        iterationPromptBlockType(block) {
+          if (!block || typeof block !== "object") return "text";
+          return block.type === "image" ? "image" : "text";
+        },
+        iterationPromptBlockText(block) {
+          if (!block || typeof block !== "object") return "";
+          return String(block.text ?? block.content ?? "");
+        },
+        iterationPromptBlockImage(block) {
+          return this.imageUrlFromBlock(block);
+        },
+        imageUrlFromBlock(block) {
+          if (!block || typeof block !== "object") return "";
+          if (block.type === "image" && typeof block.content === "string" && block.content.startsWith("data:image/")) {
+            return block.content;
+          }
+          const source = block.source && typeof block.source === "object" ? block.source : null;
+          if (!source) return "";
+          if (typeof source.url === "string" && source.url) return source.url;
+          const data = String(source.data || "");
+          if (!data) return "";
+          const mediaType = String(source.media_type || "image/png");
+          if (data.startsWith("data:image/")) return data;
+          return `data:${mediaType};base64,${data}`;
+        },
+        normalizeInterleavedBlocks(blocks) {
+          if (!Array.isArray(blocks)) return [];
+          const out = [];
+          for (const block of blocks) {
+            if (!block || typeof block !== "object") continue;
+            if (block.type === "text") {
+              const text = String(block.text ?? block.content ?? "");
+              if (text.trim()) out.push({ type: "text", content: text });
+              continue;
+            }
+            if (block.type === "image") {
+              const url = this.imageUrlFromBlock(block);
+              if (url) out.push({ type: "image", content: url });
+            }
+          }
+          return out;
+        },
+        snapshotCardsFor(m) {
+          if (!m) return [];
+          if (Array.isArray(m.snapshot_messages) && m.snapshot_messages.length) {
+            return this.snapshotCardsFromMessages(m.snapshot_messages);
+          }
+          if (this.iterationContextMode(m) === "snapshot") {
+            return this.legacySnapshotCardsFromInterleaved(m.interleaved_blocks);
+          }
+          return [];
+        },
+        snapshotCardsFromMessages(messages) {
+          if (!Array.isArray(messages)) return [];
+          const cards = [];
+          const toolNamesById = {};
+          for (const message of messages) {
+            if (!message || typeof message !== "object") continue;
+            const role = String(message.role || "").trim().toLowerCase() === "assistant" ? "assistant" : "user";
+            const content = Array.isArray(message.content)
+              ? message.content
+              : (String(message.content || "").trim() ? [{ type: "text", text: String(message.content || "") }] : []);
+            let pendingBlocks = [];
+            const flushPending = () => {
+              const normalized = this.normalizeInterleavedBlocks(pendingBlocks);
+              pendingBlocks = [];
+              if (!normalized.length) return;
+              const text = normalized
+                .filter((b) => b.type === "text")
+                .map((b) => String(b.content || ""))
+                .join("\n\n")
+                .trim();
+              const images = normalized
+                .filter((b) => b.type === "image")
+                .map((b) => b.content)
+                .filter(Boolean);
+              cards.push({
+                role,
+                source: role === "assistant" ? "agent" : "user",
+                kind: role === "assistant" ? "assistant_response" : "user_message",
+                content: text,
+                interleaved_blocks: normalized,
+                images,
+              });
+            };
+
+            for (const block of content) {
+              if (!block || typeof block !== "object") continue;
+              if (role === "assistant" && block.type === "thinking") {
+                flushPending();
+                const thinking = String(block.thinking || block.text || "");
+                if (thinking.trim()) {
+                  cards.push({
+                    role: "assistant",
+                    source: "agent",
+                    kind: "thinking",
+                    content: thinking,
+                  });
+                }
+                continue;
+              }
+              if (role === "assistant" && block.type === "tool_use") {
+                flushPending();
+                const toolCard = this.snapshotToolCallCard(block);
+                cards.push(toolCard);
+                if (block.id && block.name) {
+                  toolNamesById[String(block.id)] = String(block.name);
+                }
+                continue;
+              }
+              if (block.type === "tool_result") {
+                flushPending();
+                cards.push(this.snapshotToolResultCard(block, toolNamesById[String(block.tool_use_id || "")] || ""));
+                continue;
+              }
+              if (block.type === "text" || block.type === "image") {
+                pendingBlocks.push(block);
+                continue;
+              }
+              if (block.content !== undefined) {
+                pendingBlocks.push({ type: "text", content: JSON.stringify(block.content, null, 2) });
+              }
+            }
+            flushPending();
+          }
+          return cards.filter((card) => card && (card.content || (Array.isArray(card.interleaved_blocks) && card.interleaved_blocks.length) || (Array.isArray(card.images) && card.images.length) || card.kind === "tool_call"));
+        },
+        snapshotToolCallCard(block) {
+          const toolName = String(block.name || "").trim();
+          const toolInput = block.input && typeof block.input === "object" ? block.input : {};
+          const card = {
+            role: "assistant",
+            source: "agent",
+            kind: "tool_call",
+            tool_name: toolName,
+            content: "",
+          };
+          if ((toolName === "run_code" || toolName === "run_code_in_previous_runtime") && toolInput.code) {
+            card.tool_code = String(toolInput.code || "");
+            return card;
+          }
+          if (toolName === "submit_transform_hypothesis") {
+            if (String(toolInput.branch_id || "").trim()) {
+              card.tool_target_branch_id = String(toolInput.branch_id || "").trim();
+            }
+            if (String(toolInput.branch_hypothesis || "").trim()) {
+              card.tool_target_branch_transform = String(toolInput.branch_hypothesis || "");
+            }
+            const hypothesis = toolInput.hypothesis ?? toolInput.branch_a_hypothesis ?? "";
+            if (String(hypothesis || "").trim()) {
+              card.tool_transform = String(hypothesis);
+            }
+            if (String(toolInput.branch_b_hypothesis || "").trim()) {
+              card.tool_secondary_transform = String(toolInput.branch_b_hypothesis || "");
+            }
+            if (String(toolInput.ambiguity_rationale || "").trim()) {
+              card.tool_ambiguity_rationale = String(toolInput.ambiguity_rationale || "");
+            }
+            if (String(toolInput.updated_failed_hypothesis || "").trim()) {
+              card.tool_updated_failed_transform = String(toolInput.updated_failed_hypothesis || "");
+            }
+            if (String(toolInput.updated_ambiguity_rationale || "").trim()) {
+              card.tool_updated_ambiguity_rationale = String(toolInput.updated_ambiguity_rationale || "");
+            }
+            if (toolInput.withdraw_failed_branch === true) {
+              card.tool_withdraw_failed_branch = true;
+            }
+            if (
+              !card.tool_transform &&
+              !card.tool_secondary_transform &&
+              !card.tool_ambiguity_rationale &&
+              !card.tool_updated_failed_transform &&
+              !card.tool_updated_ambiguity_rationale &&
+              !card.tool_withdraw_failed_branch &&
+              Object.keys(toolInput).length
+            ) {
+              card.tool_raw_json = JSON.stringify(toolInput, null, 2);
+            }
+            return card;
+          }
+          if (toolName === "execute_python_solution") {
+            if (String(toolInput.branch_id || "").trim()) {
+              card.tool_target_branch_id = String(toolInput.branch_id || "").trim();
+            }
+            if (toolInput.branch_code) {
+              card.tool_target_branch_code = String(toolInput.branch_code || "");
+            }
+            if (toolInput.code || toolInput.branch_a_code) {
+              card.tool_code = String(toolInput.code || toolInput.branch_a_code || "");
+            }
+            if (toolInput.branch_b_code) {
+              card.tool_secondary_code = String(toolInput.branch_b_code || "");
+            }
+            if (toolInput.updated_failed_code) {
+              card.tool_updated_failed_code = String(toolInput.updated_failed_code || "");
+            }
+            const extras = {};
+            for (const [key, value] of Object.entries(toolInput)) {
+              if (["code","branch_id","branch_code","branch_a_code","branch_b_code","updated_failed_code"].includes(key)) continue;
+              extras[key] = value;
+            }
+            if (Object.keys(extras).length) {
+              card.tool_raw_json = JSON.stringify(extras, null, 2);
+            }
+            return card;
+          }
+          if (Object.keys(toolInput).length) {
+            card.tool_raw_json = JSON.stringify(toolInput, null, 2);
+          }
+          return card;
+        },
+        snapshotToolResultCard(block, toolName) {
+          let rawContent = block.content;
+          if (rawContent === undefined || rawContent === null || rawContent === "") {
+            rawContent = [];
+          }
+          const normalizedBlocks = Array.isArray(rawContent)
+            ? this.normalizeInterleavedBlocks(rawContent)
+            : [{ type: "text", content: typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent, null, 2) }];
+          const content = normalizedBlocks
+            .filter((b) => b.type === "text")
+            .map((b) => String(b.content || ""))
+            .join("\n\n")
+            .trim();
+          const images = normalizedBlocks
+            .filter((b) => b.type === "image")
+            .map((b) => b.content)
+            .filter(Boolean);
+          return {
+            role: "user",
+            source: "user",
+            kind: "tool_result",
+            tool_name: toolName,
+            content,
+            interleaved_blocks: normalizedBlocks,
+            images,
+          };
+        },
+        legacySnapshotCardsFromInterleaved(blocks) {
+          const normalized = this.normalizeInterleavedBlocks(blocks);
+          if (!normalized.length) return [];
+          const sections = [];
+          let currentRole = "";
+          let currentBlocks = [];
+          const flushSection = () => {
+            if (!currentRole || !currentBlocks.length) {
+              currentBlocks = [];
+              return;
+            }
+            sections.push(...this.legacySnapshotSectionCards(currentRole, currentBlocks));
+            currentBlocks = [];
+          };
+          for (const block of normalized) {
+            if (block.type === "text") {
+              const heading = String(block.content || "").trim();
+              if (heading === "## User Message" || heading === "## Assistant Message") {
+                flushSection();
+                currentRole = heading.includes("Assistant") ? "assistant" : "user";
+                continue;
+              }
+            }
+            if (!currentRole) currentRole = "user";
+            currentBlocks.push(block);
+          }
+          flushSection();
+          return sections;
+        },
+        legacySnapshotSectionCards(role, blocks) {
+          const cards = [];
+          let currentKind = role === "assistant" ? "assistant_response" : "user_message";
+          let currentToolName = "";
+          let currentBlocks = [];
+          const flushChunk = () => {
+            const normalized = this.normalizeInterleavedBlocks(currentBlocks);
+            currentBlocks = [];
+            if (!normalized.length) return;
+            cards.push(this.legacySnapshotCardFromChunk(role, currentKind, currentToolName, normalized));
+            currentKind = role === "assistant" ? "assistant_response" : "user_message";
+            currentToolName = "";
+          };
+          for (const block of blocks) {
+            if (block.type === "text") {
+              const text = String(block.content || "");
+              const toolCallMatch = text.match(/^###\s+Tool Call:\s*`?([^`\n]+)`?\s*/i);
+              if (toolCallMatch) {
+                flushChunk();
+                currentKind = "tool_call";
+                currentToolName = String(toolCallMatch[1] || "").trim();
+                const remainder = text.replace(/^###\s+Tool Call:\s*`?([^`\n]+)`?\s*/i, "").trim();
+                if (remainder) currentBlocks.push({ type: "text", content: remainder });
+                continue;
+              }
+              if (/^###\s+Tool Result\b/i.test(text.trim())) {
+                flushChunk();
+                currentKind = "tool_result";
+                currentToolName = "";
+                const remainder = text.replace(/^###\s+Tool Result\b\s*/i, "").trim();
+                if (remainder) currentBlocks.push({ type: "text", content: remainder });
+                continue;
+              }
+            }
+            currentBlocks.push(block);
+          }
+          flushChunk();
+          return cards;
+        },
+        legacySnapshotCardFromChunk(role, kind, toolName, blocks) {
+          const content = blocks
+            .filter((b) => b.type === "text")
+            .map((b) => String(b.content || ""))
+            .join("\n\n")
+            .trim();
+          const hasInlineImages = blocks.some((b) => b && b.type === "image");
+          const images = blocks
+            .filter((b) => b.type === "image")
+            .map((b) => b.content)
+            .filter(Boolean);
+          if (kind === "tool_result") {
+            return {
+              role: "user",
+              source: "user",
+              kind: "tool_result",
+              tool_name: toolName,
+              content,
+              interleaved_blocks: blocks,
+              images: hasInlineImages ? [] : images,
+            };
+          }
+          if (kind === "tool_call") {
+            const card = {
+              role: "assistant",
+              source: "agent",
+              kind: "tool_call",
+              tool_name: toolName,
+              content,
+              interleaved_blocks: blocks,
+              images: hasInlineImages ? [] : images,
+            };
+            if (toolName === "run_code" || toolName === "run_code_in_previous_runtime") {
+              const code = this.extractFirstCodeFence(content);
+              if (code) card.tool_code = code;
+            } else if (toolName === "submit_transform_hypothesis") {
+              card.tool_transform = content;
+            } else if (toolName === "execute_python_solution") {
+              const code = this.extractFirstCodeFence(content);
+              if (code) card.tool_code = code;
+            }
+            return card;
+          }
+          return {
+            role,
+            source: role === "assistant" ? "agent" : "user",
+            kind,
+            content,
+            interleaved_blocks: blocks,
+            images: hasInlineImages ? [] : images,
+          };
+        },
+        extractFirstCodeFence(text) {
+          const match = String(text || "").match(/```(?:python)?\s*([\s\S]*?)```/i);
+          return match ? String(match[1] || "").trim() : "";
+        },
+        extractLegacyExecuteHypothesis(text) {
+          const raw = String(text || "");
+          const match = raw.match(/####\s+Transform Hypothesis\s*([\s\S]*?)(```|$)/i);
+          if (!match) return "";
+          return String(match[1] || "").trim();
+        },
+        snapshotRowClass(card) {
+          if (!card) return "assistant";
+          return card.role === "assistant" ? "assistant" : "user";
+        },
+        snapshotCardClass(card) {
+          if (!card) return "response";
+          if (card.kind === "thinking") return "thinking";
+          if (card.kind === "tool_call") return "tool-call";
+          if (card.kind === "tool_result") return "tool-result";
+          if (card.role === "user") return "user";
+          return "response";
+        },
+        snapshotSourceLabelFor(card) {
+          if (!card) return "MESSAGE";
+          return card.role === "assistant" ? "ASSISTANT MESSAGE" : "USER MESSAGE";
+        },
+        snapshotLabelFor(card) {
+          if (!card) return "MESSAGE";
+          if (card.kind === "thinking") return "ASSISTANT THINKING";
+          if (card.kind === "tool_call") return `TOOL CALL: ${String(card.tool_name || "unknown").toUpperCase()}`;
+          if (card.kind === "tool_result") {
+            const toolName = String(card.tool_name || "").trim();
+            return toolName ? `TOOL RESULT: ${toolName.toUpperCase()}` : "TOOL RESULT";
+          }
+          return card.role === "assistant" ? "ASSISTANT MESSAGE" : "USER MESSAGE";
+        },
+        tokenLabelForKey(key) {
+          const map = this.tokenLabelsByKey || {};
+          return map[key] || "";
+        },
+        formatInteger(n) {
+          const v = Number(n || 0);
+          return Number.isFinite(v) ? v.toLocaleString() : "0";
+        },
+        formatTokenCompact(n) {
+          const v = Number(n || 0);
+          if (!Number.isFinite(v) || v <= 0) return "0";
+          if (v < 1000) return `${Math.round(v)}`;
+          const k = v / 1000;
+          if (k < 10) return `${k.toFixed(1).replace(/\.0$/, "")}k`;
+          if (k < 100) return `${Math.round(k)}k`;
+          return `${k.toFixed(1).replace(/\.0$/, "")}k`;
+        },
+        tokenLabel(m) {
+          if (!m) return "";
+          const input = Number(m.usage_input_tokens || 0);
+          const thinking = Number(m.usage_thinking_tokens || 0);
+          const output = Number(m.usage_output_tokens || 0);
+          const outputIncludesReasoning = Boolean(m.usage_output_includes_reasoning);
+          if (input <= 0 && thinking <= 0 && output <= 0) return "";
+          if (outputIncludesReasoning && output > 0) {
+            return `${this.formatTokenCompact(input)}/${this.formatTokenCompact(output)}`;
+          }
+          return `${this.formatTokenCompact(input)}/${this.formatTokenCompact(thinking)}/${this.formatTokenCompact(output)}`;
+        },
+        costLabel(m) {
+          if (!m) return "";
+          const inputCost = Number(m.usage_input_cost_usd || 0);
+          const outputCost = Number(m.usage_output_cost_usd || 0);
+          const totalCost = Number(m.usage_cost_usd || 0);
+          if (totalCost <= 0) return "";
+          const fmt = (v) => v < 0.01 ? v.toFixed(3) : v.toFixed(2);
+          return `$${fmt(inputCost)}/$${fmt(outputCost)}/$${fmt(totalCost)}`;
+        },
+        isBreathingIndex(displayIdx) {
+          if (!this.running) return false;
+          const items = this.displayHistory || [];
+          for (let i = items.length - 1; i >= 0; i -= 1) {
+            const item = items[i] || {};
+            if (item.kind === "turn_divider" || item.kind === "reflector_context") continue;
+            return i === displayIdx;
+          }
+          return false;
+        },
+        messageNeedsHighlight(m) {
+          if (!m) return false;
+          if (m.kind === "tool_call" && m.tool_code) return true;
+          if (m.kind === "tool_call" && m.tool_raw_json) return true;
+          const txt = String(m.content || "");
+          return txt.includes("```");
+        },
+        getPriorReflectorTurns(m) {
+          // Find prior completed reflector_context entries in history
+          // and return them as [{role, turnNumber, content, interleaved_blocks}]
+          const history = Array.isArray(this.history) ? this.history : [];
+          const myIdx = history.indexOf(m);
+          if (myIdx < 0) return [];
+          const turns = [];
+          let turnNum = 0;
+          for (let i = 0; i < myIdx; i++) {
+            const h = history[i];
+            if (h && h.kind === 'reflector_context' && h.status === 'done' && h.response) {
+              turnNum++;
+              turns.push({
+                role: 'user',
+                turnNumber: turnNum,
+                content: '',
+                interleaved_blocks: this.buildReflectorBlocks(h),
+              });
+              turns.push({
+                role: 'assistant',
+                turnNumber: turnNum,
+                content: h.response || '',
+                thinking: h.thinking || '',
+              });
+            }
+          }
+          // Fallback: if nothing found in history, use prior_turns from emit
+          if (!turns.length && m.prior_turns && m.prior_turns.length) {
+            for (let i = 0; i < m.prior_turns.length; i++) {
+              const pt = m.prior_turns[i];
+              turns.push({
+                ...pt,
+                turnNumber: Math.floor(i / 2) + 1,
+              });
+            }
+          }
+          return turns;
+        },
+        ordinal(n) {
+          if (n >= 11 && n <= 13) return n + 'th';
+          const s = ['th','st','nd','rd'];
+          return n + (s[Math.min(n % 10, 4)] || s[0]);
+        },
+        getPriorReflectorTurns(m) {
+          // Find prior completed reflector_context entries in history
+          // and return them as [{role, turnNumber, content, interleaved_blocks}]
+          const history = Array.isArray(this.history) ? this.history : [];
+          const myIdx = history.indexOf(m);
+          if (myIdx < 0) return [];
+          const turns = [];
+          let turnNum = 0;
+          for (let i = 0; i < myIdx; i++) {
+            const h = history[i];
+            if (h && h.kind === 'reflector_context' && h.status === 'done' && h.response) {
+              turnNum++;
+              turns.push({
+                role: 'user',
+                turnNumber: turnNum,
+                content: '',
+                interleaved_blocks: this.buildReflectorBlocks(h),
+              });
+              turns.push({
+                role: 'assistant',
+                turnNumber: turnNum,
+                content: h.response || '',
+                thinking: h.thinking || '',
+              });
+            }
+          }
+          // Fallback: if nothing found in history, use prior_turns from emit
+          if (!turns.length && m.prior_turns && m.prior_turns.length) {
+            for (let i = 0; i < m.prior_turns.length; i++) {
+              const pt = m.prior_turns[i];
+              turns.push({
+                ...pt,
+                turnNumber: Math.floor(i / 2) + 1,
+              });
+            }
+          }
+          return turns;
+        },
+        ordinal(n) {
+          if (n >= 11 && n <= 13) return n + 'th';
+          const s = ['th','st','nd','rd'];
+          return n + (s[Math.min(n % 10, 4)] || s[0]);
+        },
+        buildReflectorBlocks(m) {
+          if (!m) return [];
+          // If pre-built, use directly
+          if (Array.isArray(m.interleaved_blocks) && m.interleaved_blocks.length) {
+            return m.interleaved_blocks;
+          }
+          // Build dynamically from structured fields (old checkpoint format)
+          const trainInputs = Array.isArray(m.train_inputs) ? m.train_inputs : [];
+          const trainOutputs = Array.isArray(m.train_outputs) ? m.train_outputs : [];
+          const testInputs = Array.isArray(m.test_inputs) ? m.test_inputs : [];
+          const testPredictions = Array.isArray(m.test_predictions) ? m.test_predictions : [];
+          const trainInImgs = Array.isArray(m.train_input_images) ? m.train_input_images : [];
+          const trainOutImgs = Array.isArray(m.train_output_images) ? m.train_output_images : [];
+          const testInImgs = Array.isArray(m.test_input_images) ? m.test_input_images : [];
+          const testPredImgs = Array.isArray(m.test_prediction_images) ? m.test_prediction_images : [];
+          const reviewCandidates = Array.isArray(m.review_candidates) ? m.review_candidates : [];
+          const reviewBranches = Array.isArray(m.review_branches) ? m.review_branches : [];
+          const ambiguityRationale = String(m.ambiguity_rationale || "");
+
+          // Nothing to build from
+          if (!trainInputs.length && !testInputs.length && !reviewCandidates.length && !reviewBranches.length && !(m.hypothesis) && !(m.user_md)) {
+            return m.user_md ? [{ type: 'text', content: m.user_md }] : [];
+          }
+
+          const blocks = [];
+          // 1. Training examples interleaved
+          if (trainInputs.length && trainOutputs.length) {
+            blocks.push({ type: 'text', content: '## Training Input/Output Pairs\n\nStudy these examples first to form your own understanding of the transformation.' });
+            for (let i = 0; i < Math.min(trainInputs.length, trainOutputs.length); i++) {
+              blocks.push({ type: 'text', content: `### Training Example ${i}\n**Input Grid:** ${JSON.stringify(trainInputs[i])}` });
+              if (trainInImgs[i]) blocks.push({ type: 'image', content: `data:image/png;base64,${trainInImgs[i]}` });
+              blocks.push({ type: 'text', content: `**Expected Output Grid:** ${JSON.stringify(trainOutputs[i])}` });
+              if (trainOutImgs[i]) blocks.push({ type: 'image', content: `data:image/png;base64,${trainOutImgs[i]}` });
+            }
+          }
+          // 2. Test inputs interleaved
+          if (testInputs.length) {
+            blocks.push({ type: 'text', content: '## Test Inputs' });
+            for (let i = 0; i < testInputs.length; i++) {
+              blocks.push({ type: 'text', content: `### Test Example ${i}\n**Input Grid:** ${JSON.stringify(testInputs[i])}` });
+              if (testInImgs[i]) blocks.push({ type: 'image', content: `data:image/png;base64,${testInImgs[i]}` });
+            }
+          }
+          if (ambiguityRationale) {
+            blocks.push({ type: 'text', content: `## Ambiguity Rationale\n\n${ambiguityRationale}` });
+          }
+          if (m.hypothesis || m.code) {
+            let solverSubmission = '## Solver Submission';
+            if (m.hypothesis) solverSubmission += `\n\n**Hypothesis:**\n${m.hypothesis}`;
+            if (m.code) solverSubmission += `\n\n**solve() Code:**\n\n\`\`\`python\n${m.code}\n\`\`\``;
+            blocks.push({ type: 'text', content: solverSubmission });
+          }
+          const normalizedCandidates = reviewCandidates.length ? reviewCandidates : testPredictions.map((pred, i) => ({
+            index: i,
+            candidates: pred == null ? [] : [pred],
+            candidate_images: testPredImgs[i] ? [testPredImgs[i]] : [],
+            error: null,
+          }));
+          if (normalizedCandidates.length) {
+            blocks.push({ type: 'text', content: '## Candidate Outputs By Test Example' });
+            for (const row of normalizedCandidates) {
+              const testIndex = row.index ?? "?";
+              blocks.push({ type: 'text', content: `### Test Example ${testIndex}` });
+              if (row.error) {
+                blocks.push({ type: 'text', content: `Error: ${row.error}` });
+                continue;
+              }
+              const candidateImages = Array.isArray(row.candidate_images) ? row.candidate_images : [];
+              const candidates = Array.isArray(row.candidates) ? row.candidates : [];
+              for (let i = 0; i < candidates.length; i++) {
+                const ord = this.ordinal(i + 1);
+                blocks.push({ type: 'text', content: `${ord} candidate: ${JSON.stringify(candidates[i])}` });
+                if (candidateImages[i]) blocks.push({ type: 'image', content: `data:image/png;base64,${candidateImages[i]}` });
+              }
+            }
+          } else {
+            const normalizedBranches = reviewBranches.length ? reviewBranches : [{
+              branch_id: "A",
+              rank: 1,
+              selection_status: "selected",
+              hypothesis: m.hypothesis || '',
+              code: m.code || '',
+              test_predictions: testPredictions,
+              test_prediction_images: testPredImgs,
+            }];
+            if (normalizedBranches.length) {
+              blocks.push({ type: 'text', content: '## Solver Candidate Branches' });
+              for (const branch of normalizedBranches) {
+                const branchId = branch.branch_id ?? "?";
+                const rank = branch.rank ?? "?";
+                const selectionStatus = String(branch.selection_status || "").trim();
+                let header = `### Branch ${branchId} (rank ${rank})`;
+                if (selectionStatus) header += `\n**Status:** ${selectionStatus}`;
+                blocks.push({ type: 'text', content: header });
+                if (branch.hypothesis) {
+                  blocks.push({ type: 'text', content: `**Hypothesis:**\n${branch.hypothesis}` });
+                }
+                if (branch.code) {
+                  blocks.push({ type: 'text', content: `**solve() Code:**\n\n\`\`\`python\n${branch.code}\n\`\`\`` });
+                }
+                const branchPredictions = Array.isArray(branch.test_predictions) ? branch.test_predictions : [];
+                const branchPredImgs = Array.isArray(branch.test_prediction_images) ? branch.test_prediction_images : [];
+                if (branchPredictions.length) {
+                  blocks.push({ type: 'text', content: '**Predicted Test Outputs:**' });
+                  for (let i = 0; i < branchPredictions.length; i++) {
+                    blocks.push({ type: 'text', content: `### Test Example ${i}\n**Predicted Output Grid:** ${JSON.stringify(branchPredictions[i])}` });
+                    if (branchPredImgs[i]) blocks.push({ type: 'image', content: `data:image/png;base64,${branchPredImgs[i]}` });
+                  }
+                }
+              }
+            }
+          }
+          blocks.push({ type: 'text', content: '---\nPlease perform your independent review following the guidelines in your system prompt.' });
+          return blocks;
+        },
+        renderMarkdown(text, defaultCodeLang) {
+          const safeText = String(text || "");
+          try {
+            const defaultLang = String(defaultCodeLang || "").trim().toLowerCase();
+            const withHighlightedFences = defaultLang
+              ? safeText.replace(/```([a-zA-Z0-9_-]*)\s*\n([\s\S]*?)```/g, (_, lang, code) => {
+                  const chosen = String(lang || "").trim().toLowerCase() || defaultLang;
+                  return `\n\n${this.renderHighlightedCode(code, chosen)}\n\n`;
+                })
+              : safeText;
+            if (md && typeof md.parse === "function") {
+              return md.parse(withHighlightedFences);
+            }
+            if (typeof md === "function") {
+              return md(withHighlightedFences);
+            }
+            return withHighlightedFences.replace(/\n/g, "<br>");
+          } catch (_) {
+            return safeText.replace(/\n/g, "<br>");
+          }
+        },
+        escapeHtml(text) {
+          return String(text || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        },
+        stripFenceArtifacts(text) {
+          let cleaned = String(text || "").replace(/\r\n/g, "\n").trim();
+          cleaned = cleaned.replace(/^\s*```[a-zA-Z0-9_-]*\s*\n?/, "");
+          while (/(?:\\n|\n)?\s*```\s*$/.test(cleaned)) {
+            cleaned = cleaned.replace(/(?:\\n|\n)?\s*```\s*$/, "").trimEnd();
+          }
+          while (cleaned.endsWith("\\n```")) {
+            cleaned = cleaned.slice(0, -5).trimEnd();
+          }
+          while (cleaned.endsWith("```")) {
+            cleaned = cleaned.slice(0, -3).trimEnd();
+          }
+          return cleaned;
+        },
+        renderHighlightedCode(code, language) {
+          const cleaned = this.stripFenceArtifacts(code);
+          if (hasPrism && window.Prism.languages && window.Prism.languages[language]) {
+            try {
+              const highlighted = window.Prism.highlight(cleaned, window.Prism.languages[language], language);
+              return `<pre><code class="language-${language}">${highlighted}</code></pre>`;
+            } catch (_) {}
+          }
+          if (hasHljs) {
+            try {
+              const highlighted = window.hljs.highlight(cleaned, {
+                language: language,
+                ignoreIllegals: true,
+              }).value;
+              return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+            } catch (_) {}
+          }
+          const escaped = this.escapeHtml(cleaned);
+          return `<pre><code class="language-${language}">${escaped}</code></pre>`;
+        },
+        renderPythonCode(code) {
+          return this.renderHighlightedCode(code, "python");
+        },
+        renderJsonCode(code) {
+          return this.renderHighlightedCode(code, "json");
+        },
+        renderIterationContext(content) {
+          // Special renderer for iteration_context that applies Python syntax highlighting to code blocks
+          if (!content) return '';
+          
+          // Process markdown with enhanced code block handling for Python
+          let processed = content;
+          
+          // Find Python code blocks and replace with highlighted versions
+          const pythonCodeBlockRegex = /```python\n([\s\S]*?)\n```/g;
+          processed = processed.replace(pythonCodeBlockRegex, (match, code) => {
+            const highlightedCode = this.renderPythonCode(code);
+            return highlightedCode;
+          });
+          
+          // Process other markdown normally (headers, text, etc.)
+          processed = this.renderMarkdown(processed);
+          
+          return processed;
+        },
+        renderTerminalOutput(text) {
+          const cleaned = this.stripFenceArtifacts(text);
+          return this.escapeHtml(cleaned);
+        },
+        applyCodeHighlighting() {
+          if (!window.hljs || typeof window.hljs.highlightElement !== "function") return;
+          nextTick(() => {
+            document.querySelectorAll(".md-content pre code").forEach((el) => {
+              try {
+                window.hljs.highlightElement(el);
+              } catch (_) {}
+            });
+          });
+        },
+        getAgentScroller() {
+          return this.$refs.agentPanel || null;
+        },
+        isNearBottom(el, threshold = 36) {
+          if (!el) return true;
+          return (el.scrollHeight - (el.scrollTop + el.clientHeight)) <= threshold;
+        },
+        isAtTop(threshold = 4) {
+          const el = this.getAgentScroller();
+          if (!el) return true;
+          return el.scrollTop <= threshold;
+        },
+        scrollToBottom() {
+          const el = this.getAgentScroller();
+          if (!el) return;
+          this.programmaticScroll = true;
+          el.scrollTop = el.scrollHeight;
+          this.lastAgentScrollTop = el.scrollTop;
+          requestAnimationFrame(() => { this.programmaticScroll = false; });
+        },
+        scrollToTop() {
+          const el = this.getAgentScroller();
+          if (!el) return;
+          this.followBottom = false;
+          this.programmaticScroll = true;
+          el.scrollTop = 0;
+          this.lastAgentScrollTop = 0;
+          requestAnimationFrame(() => { this.programmaticScroll = false; });
+        },
+        maybeAutoScroll(force) {
+          nextTick(() => {
+            if (this.activePanel !== "agent") return;
+            if (force || this.followBottom) {
+              this.scrollToBottom();
+            }
+          });
+        },
+        enableFollow() {
+          this.followBottom = true;
+          this.maybeAutoScroll(true);
+        },
+        onAgentScroll() {
+          const el = this.getAgentScroller();
+          if (!el) return;
+          const currentTop = el.scrollTop;
+          if (this.programmaticScroll) {
+            this.lastAgentScrollTop = currentTop;
+            return;
+          }
+          if (currentTop + 2 < this.lastAgentScrollTop) {
+            this.followBottom = false;
+          } else if (this.isNearBottom(el, 80)) {
+            this.followBottom = true;
+          }
+          this.lastAgentScrollTop = currentTop;
+        },
+      },
+      watch: {
+        activePanel() {
+          this.maybeAutoScroll(true);
+          this.applyCodeHighlighting();
+        },
+        "config.model": function () {
+          const defaults = this.effortDefaultsForModel(this.config.model);
+          this.config.thinking_effort = defaults.thinking_effort;
+          this.config.reflection_thinking_effort = defaults.reflection_thinking_effort;
+          this.config.compression_thinking_effort = defaults.compression_thinking_effort;
+          this.normalizeThinkingEffortForModel();
+        },
+        "config.puzzle_path": function () {
+          this.activeTaskSuggestionIndex = this.taskIdSuggestions.length ? 0 : -1;
+        },
+        taskIds() {
+          this.activeTaskSuggestionIndex = this.taskIdSuggestions.length ? 0 : -1;
+        },
+        config: {
+          deep: true,
+          handler() {
+            if (this.suspendConfigSync) return;
+            if (this.running) return;
+            if (this.configSyncTimer) {
+              clearTimeout(this.configSyncTimer);
+            }
+            this.configSyncTimer = setTimeout(() => {
+              this.send({ type: "config_update", config: this.config });
+            }, 300);
+          },
+        },
+      },
+      mounted() {
+        this.connect();
+        this.normalizeThinkingEffortForModel();
+        this.followBottom = true;
+        this.applyCodeHighlighting();
+        this.refreshSavedRuns();
+      },
+    }).mount("#app");
+    })();
+  </script>
+</body>
+</html>

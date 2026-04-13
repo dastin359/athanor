@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "athanor"
+version = "0.1.0"
+description = "ARC-AGI-2 solver using iterative scientific discovery with executable experiments"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Dastin Huang" }]
+license = { text = "MIT" }
+dependencies = [
+  "anthropic==0.88.0",
+  "numpy==2.2.6",
+  "python-dotenv==1.1.1",
+  "pillow==11.3.0",
+  "pyyaml==6.0.2",
+  "fastapi==0.118.0",
+  "uvicorn==0.35.0",
+  "google-genai==1.70.0",
+]
+
+[project.optional-dependencies]
+# Phoenix observability (Arize) — enable with `enable_phoenix: true` in runtime config.
+# Install via: pip install "athanor[phoenix]"
+phoenix = [
+  "openinference-instrumentation-anthropic==1.0.0",
+  "openinference-instrumentation-google-genai==0.1.14",
+  "opentelemetry-instrumentation-fastapi==0.55b1",
+]
+
+[project.scripts]
+athanor = "athanor.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"athanor.solver" = ["*.md"]
+"athanor.web_demo" = ["templates/*.html", "saved_runs/.gitkeep"]
