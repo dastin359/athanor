@@ -557,7 +557,12 @@ def reflect_with_claude(
         "messages": messages,
     }
 
-    api_params["thinking"] = {"type": "adaptive"}
+    # Opus 4.7 defaults thinking.display to "omitted"; opt into summarized so the
+    # reflector's reasoning still streams into history + webui on 4.7.
+    _thinking: dict = {"type": "adaptive"}
+    if "opus-4-7" in str(model_name or "").lower():
+        _thinking["display"] = "summarized"
+    api_params["thinking"] = _thinking
     api_params["output_config"] = {"effort": thinking_effort}
 
     api_params = _with_reflector_cache_headers(api_params)

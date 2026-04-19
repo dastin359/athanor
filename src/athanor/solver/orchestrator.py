@@ -95,6 +95,21 @@ def _model_drops_sampling_params(model_name: str) -> bool:
     return "opus-4-7" in str(model_name or "").lower()
 
 
+def _adaptive_thinking_config(model_name: str) -> dict:
+    """Adaptive thinking config with visible summaries on 4.7.
+
+    Opus 4.7 defaults `thinking.display` to "omitted" — blocks still stream
+    but with empty text. Athanor aggregates thinking deltas into the turn
+    history and renders them in the webui, so we opt into "summarized" for
+    4.7. Older models default to visible summaries and don't accept the
+    field, so we only set it when needed.
+    """
+    cfg: dict = {"type": "adaptive"}
+    if "opus-4-7" in str(model_name or "").lower():
+        cfg["display"] = "summarized"
+    return cfg
+
+
 def numpy_to_python(obj):
     """Convert NumPy types to native Python types recursively for JSON serialization."""
     if isinstance(obj, np.integer):
@@ -3621,8 +3636,7 @@ def run_orchestration(
                             else:
                                 normalized_effort = _normalize_effort(
                                     model_name, compression_thinking_effort or "medium", fallback="medium")
-                                compression_params["thinking"] = {
-                                    "type": "adaptive"}
+                                compression_params["thinking"] = _adaptive_thinking_config(model_name)
                                 compression_params["output_config"] = {
                                     "effort": normalized_effort}
 
@@ -3926,7 +3940,7 @@ def run_orchestration(
                     if normalized_effort != _requested:
                         emit(
                             EventType.SYSTEM, f"   ℹ️ Adjusted thinking_effort '{_requested}' → '{normalized_effort}' for model compatibility.")
-                    api_params["thinking"] = {"type": "adaptive"}
+                    api_params["thinking"] = _adaptive_thinking_config(model_name)
                     api_params["output_config"] = {"effort": normalized_effort}
 
             api_params = _apply_anthropic_prompt_caching(
@@ -4595,8 +4609,7 @@ def run_orchestration(
                                             # Opus/Sonnet: adaptive thinking + effort. Opus 4.7 adds "xhigh".
                                             normalized_effort = _normalize_effort(
                                                 model_name, reflection_thinking_effort or "medium", fallback="medium")
-                                            phase2_params["thinking"] = {
-                                                "type": "adaptive"}
+                                            phase2_params["thinking"] = _adaptive_thinking_config(model_name)
                                             phase2_params["output_config"] = {
                                                 "effort": normalized_effort}
                                         if not _model_drops_sampling_params(model_name):
@@ -4928,8 +4941,7 @@ def run_orchestration(
                                         # Opus/Sonnet: adaptive thinking + effort. Opus 4.7 adds "xhigh".
                                         normalized_effort = _normalize_effort(
                                             model_name, reflection_thinking_effort or "medium", fallback="medium")
-                                        phase2_params_train["thinking"] = {
-                                            "type": "adaptive"}
+                                        phase2_params_train["thinking"] = _adaptive_thinking_config(model_name)
                                         phase2_params_train["output_config"] = {
                                             "effort": normalized_effort}
                                     if not _model_drops_sampling_params(model_name):
