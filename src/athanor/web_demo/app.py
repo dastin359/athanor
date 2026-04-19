@@ -1251,7 +1251,7 @@ class SolverAppState:
             self.current_iteration = 0
             self._restore_runtime_state_from_history()
 
-        if history_changed or backfill_changed:
+        if (history_changed or backfill_changed) and target.is_relative_to(self.saved_runs_dir):
             try:
                 doc["state"]["history"] = self.history
                 target.write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
