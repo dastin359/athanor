@@ -1512,6 +1512,7 @@
                   <div class="field">
                     <label>Model</label>
                     <select v-model="config.model">
+                      <option value="claude-opus-4-7">claude-opus-4-7</option>
                       <option value="claude-opus-4-6">claude-opus-4-6</option>
                       <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
                       <option value="claude-haiku-4-5">claude-haiku-4-5</option>
@@ -1600,6 +1601,7 @@
                     <select v-model="config.reflector_model">
                       <option v-if="config.reflector_provider==='gemini'" value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                       <option v-if="config.reflector_provider==='gemini'" value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                      <option v-if="config.reflector_provider==='claude'" value="claude-opus-4-7">claude-opus-4-7</option>
                       <option v-if="config.reflector_provider==='claude'" value="claude-opus-4-6">claude-opus-4-6</option>
                       <option v-if="config.reflector_provider==='claude'" value="claude-sonnet-4-6">claude-sonnet-4-6</option>
                     </select>
@@ -1610,6 +1612,7 @@
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
+                      <option v-if="config.reflector_provider==='claude' && config.reflector_model==='claude-opus-4-7'" value="xhigh">XHigh</option>
                       <option v-if="config.reflector_provider==='claude'" value="max">Max</option>
                     </select>
                   </div>
@@ -1643,6 +1646,7 @@
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
+                      <option v-if="config.model && config.model.includes('opus-4-7')" value="xhigh">XHigh</option>
                       <option value="max">Max</option>
                     </select>
                   </div>
@@ -2199,6 +2203,8 @@
           const model = String((this.config && this.config.model) || "").toLowerCase();
           if (model.includes("haiku-4-5")) return ["low"];
           if (model.includes("kimi")) return ["low", "medium", "high"];
+          // Opus 4.7 adds "xhigh" between "high" and "max".
+          if (model.includes("opus-4-7")) return ["low", "medium", "high", "xhigh", "max"];
           return ["low", "medium", "high", "max"];
         },
         thinkingBudgetMin() {
@@ -2363,7 +2369,9 @@
         },
         updatePhoenixProjectName() {
           const model = this.config.model || "claude-opus-4-6";
-          if (model.includes("opus-4")) {
+          if (model.includes("opus-4-7")) {
+            this.config.phoenix_project = "ARC_Opus_4_7";
+          } else if (model.includes("opus-4")) {
             this.config.phoenix_project = "ARC_Opus_4_6";
           } else if (model.includes("sonnet-4")) {
             this.config.phoenix_project = "ARC_Sonnet_4_6";

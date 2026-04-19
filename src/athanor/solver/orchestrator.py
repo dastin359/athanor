@@ -72,6 +72,29 @@ def _ordinal(n: int) -> str:
     return f"{n}{('th','st','nd','rd')[min(n % 10, 4) if n % 10 < 4 else 0]}"
 
 
+def _allowed_efforts_for_model(model_name: str) -> list[str]:
+    """Return the `output_config.effort` levels the API accepts for a given model."""
+    m = str(model_name or "").lower()
+    # Opus 4.7 adds "xhigh" between "high" and "max"; other 4.x models accept the classic four.
+    if "opus-4-7" in m:
+        return ["low", "medium", "high", "xhigh", "max"]
+    return ["low", "medium", "high", "max"]
+
+
+def _normalize_effort(model_name: str, requested: str, fallback: str = "high") -> str:
+    """Coerce a requested effort to one the model supports. Falls back to `high` if unknown."""
+    allowed = _allowed_efforts_for_model(model_name)
+    requested = str(requested or "").strip().lower()
+    if requested in allowed:
+        return requested
+    return fallback if fallback in allowed else allowed[-1]
+
+
+def _model_drops_sampling_params(model_name: str) -> bool:
+    """Opus 4.7 removed temperature/top_p/top_k — sending them returns 400."""
+    return "opus-4-7" in str(model_name or "").lower()
+
+
 def numpy_to_python(obj):
     """Convert NumPy types to native Python types recursively for JSON serialization."""
     if isinstance(obj, np.integer):
@@ -3596,11 +3619,8 @@ def run_orchestration(
                                 compression_params["thinking"] = {
                                     "type": "enabled", "budget_tokens": budget_tokens}
                             else:
-                                allowed_efforts = ["low", "medium", "high", "max"]
-                                normalized_effort = str(
-                                    compression_thinking_effort or "medium").strip().lower()
-                                if normalized_effort not in allowed_efforts:
-                                    normalized_effort = "medium"
+                                normalized_effort = _normalize_effort(
+                                    model_name, compression_thinking_effort or "medium", fallback="medium")
                                 compression_params["thinking"] = {
                                     "type": "adaptive"}
                                 compression_params["output_config"] = {
@@ -3898,15 +3918,14 @@ def run_orchestration(
                     api_params["thinking"] = {
                         "type": "enabled", "budget_tokens": budget_tokens}
                 else:
-                    # Opus 4.6 and Sonnet 4.6 share adaptive + effort API surface.
-                    allowed_efforts = ["low", "medium", "high", "max"]
+                    # Opus 4.6, Opus 4.7, and Sonnet 4.6 share adaptive + effort API surface.
+                    # Opus 4.7 additionally accepts "xhigh" between "high" and "max".
                     _effective_effort = semi_cot_thinking_effort if _is_first_fresh_turn else thinking_effort
-                    normalized_effort = str(
-                        _effective_effort or "low").strip().lower()
-                    if normalized_effort not in allowed_efforts:
-                        normalized_effort = allowed_efforts[0]
+                    _requested = str(_effective_effort or "low").strip().lower()
+                    normalized_effort = _normalize_effort(model_name, _requested, fallback="high")
+                    if normalized_effort != _requested:
                         emit(
-                            EventType.SYSTEM, f"   ℹ️ Adjusted thinking_effort to '{normalized_effort}' for model compatibility.")
+                            EventType.SYSTEM, f"   ℹ️ Adjusted thinking_effort '{_requested}' → '{normalized_effort}' for model compatibility.")
                     api_params["thinking"] = {"type": "adaptive"}
                     api_params["output_config"] = {"effort": normalized_effort}
 
@@ -4573,18 +4592,16 @@ def run_orchestration(
                                             phase2_params["thinking"] = {
                                                 "type": "enabled", "budget_tokens": budget_tokens}
                                         else:
-                                            # Opus/Sonnet: use categorical approach with reflection effort
-                                            allowed_efforts = [
-                                                "low", "medium", "high", "max"]
-                                            normalized_effort = str(
-                                                reflection_thinking_effort or "medium").strip().lower()
-                                            if normalized_effort not in allowed_efforts:
-                                                normalized_effort = "medium"
+                                            # Opus/Sonnet: adaptive thinking + effort. Opus 4.7 adds "xhigh".
+                                            normalized_effort = _normalize_effort(
+                                                model_name, reflection_thinking_effort or "medium", fallback="medium")
                                             phase2_params["thinking"] = {
                                                 "type": "adaptive"}
                                             phase2_params["output_config"] = {
                                                 "effort": normalized_effort}
-                                        phase2_params["temperature"] = 1
+                                        if not _model_drops_sampling_params(model_name):
+                                            # Opus 4.7 removed temperature/top_p/top_k — omit on those models.
+                                            phase2_params["temperature"] = 1
 
                                     phase2_params = _apply_anthropic_prompt_caching(
                                         phase2_params,
@@ -4908,18 +4925,16 @@ def run_orchestration(
                                         phase2_params_train["thinking"] = {
                                             "type": "enabled", "budget_tokens": budget_tokens}
                                     else:
-                                        # Opus/Sonnet: use categorical approach with reflection effort
-                                        allowed_efforts = [
-                                            "low", "medium", "high", "max"]
-                                        normalized_effort = str(
-                                            reflection_thinking_effort or "medium").strip().lower()
-                                        if normalized_effort not in allowed_efforts:
-                                            normalized_effort = "medium"
+                                        # Opus/Sonnet: adaptive thinking + effort. Opus 4.7 adds "xhigh".
+                                        normalized_effort = _normalize_effort(
+                                            model_name, reflection_thinking_effort or "medium", fallback="medium")
                                         phase2_params_train["thinking"] = {
                                             "type": "adaptive"}
                                         phase2_params_train["output_config"] = {
                                             "effort": normalized_effort}
-                                    phase2_params_train["temperature"] = 1
+                                    if not _model_drops_sampling_params(model_name):
+                                        # Opus 4.7 removed temperature/top_p/top_k — omit on those models.
+                                        phase2_params_train["temperature"] = 1
 
                                 phase2_params_train = _apply_anthropic_prompt_caching(
                                     phase2_params_train,

@@ -664,10 +664,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dashboard-port", type=int, default=7860, help="Dashboard port (default: 7860)")
     parser.add_argument("--auto-start", action="store_true", help="Automatically start solves on launch")
     parser.add_argument("--no-code-first-turn", action="store_true", default=False, help="Disable run_code tools on first turn (semi-CoT mode)")
-    parser.add_argument("--thinking-effort", type=str, default="medium", choices=["low", "medium", "high", "max"], help="Main thinking effort (default: medium)")
-    parser.add_argument("--reflection-thinking-effort", type=str, default="max", choices=["low", "medium", "high", "max"], help="Self-reflection thinking effort (default: max)")
-    parser.add_argument("--compression-thinking-effort", type=str, default="max", choices=["low", "medium", "high", "max"], help="Context compression thinking effort (default: max)")
-    parser.add_argument("--first-turn-thinking-effort", type=str, default="high", choices=["low", "medium", "high", "max"], help="First turn thinking effort when --no-code-first-turn (default: high)")
+    # "xhigh" is Opus 4.7-only (between "high" and "max"); on other models the orchestrator normalizes back to "high".
+    _EFFORT_CHOICES = ["low", "medium", "high", "xhigh", "max"]
+    parser.add_argument("--thinking-effort", type=str, default="medium", choices=_EFFORT_CHOICES, help="Main thinking effort (default: medium)")
+    parser.add_argument("--reflection-thinking-effort", type=str, default="max", choices=_EFFORT_CHOICES, help="Self-reflection thinking effort (default: max)")
+    parser.add_argument("--compression-thinking-effort", type=str, default="max", choices=_EFFORT_CHOICES, help="Context compression thinking effort (default: max)")
+    parser.add_argument("--first-turn-thinking-effort", type=str, default="high", choices=_EFFORT_CHOICES, help="First turn thinking effort when --no-code-first-turn (default: high)")
     parser.add_argument("--reflector-model", type=str, default=None, help="Reflector model (default: server default)")
 
 

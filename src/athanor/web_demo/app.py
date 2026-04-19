@@ -65,6 +65,7 @@ MODEL_PRICING_USD_PER_MTOK = {
     # these with Anthropic's published 5m multipliers:
     #   cache write = 1.25x input
     #   cache read  = 0.10x input
+    "claude-opus-4-7": {"provider": "anthropic", "input": 5.00, "output": 25.00},
     "claude-opus-4-6": {"provider": "anthropic", "input": 5.00, "output": 25.00},
     "claude-sonnet-4-6": {"provider": "anthropic", "input": 3.00, "output": 15.00},
     "claude-haiku-4-5": {"provider": "anthropic", "input": 0.80, "output": 4.00},
@@ -226,6 +227,8 @@ def _estimate_fireworks_request_cost_usd(
 
 def _default_phoenix_project_for_model(model_name: str) -> str:
     normalized = _normalize_model_name(model_name)
+    if "opus-4-7" in normalized:
+        return "ARC_Opus_4_7"
     if "opus-4" in normalized:
         return "ARC_Opus_4_6"
     if "sonnet-4" in normalized:
