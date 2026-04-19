@@ -1,0 +1,466 @@
+[
+  {
+    "test_id": "gemini-3-1-pro-preview",
+    "n_tasks": 109,
+    "task_score_sum": 96.0,
+    "task_accuracy_pct": 88.07,
+    "cost_per_task": 0.9789,
+    "total_cost": 106.7
+  },
+  {
+    "test_id": "claude-opus-4-6-thinking-120K-high",
+    "n_tasks": 120,
+    "task_score_sum": 94.833,
+    "task_accuracy_pct": 79.03,
+    "cost_per_task": 3.8092,
+    "total_cost": 457.1
+  },
+  {
+    "test_id": "claude-opus-4-6-thinking-120K-max",
+    "n_tasks": 117,
+    "task_score_sum": 89.833,
+    "task_accuracy_pct": 76.78,
+    "cost_per_task": 3.7707,
+    "total_cost": 441.18
+  },
+  {
+    "test_id": "claude-opus-4-6-thinking-120K-medium",
+    "n_tasks": 120,
+    "task_score_sum": 88.333,
+    "task_accuracy_pct": 73.61,
+    "cost_per_task": 3.0162,
+    "total_cost": 361.94
+  },
+  {
+    "test_id": "grok-4.20-beta-0309b-reasoning",
+    "n_tasks": 120,
+    "task_score_sum": 76.333,
+    "task_accuracy_pct": 63.61,
+    "cost_per_task": 0.9582,
+    "total_cost": 114.99
+  },
+  {
+    "test_id": "grok-4.20-multi-agent-beta-0309-xhigh",
+    "n_tasks": 120,
+    "task_score_sum": 76.333,
+    "task_accuracy_pct": 63.61,
+    "cost_per_task": 20.7436,
+    "total_cost": 2489.23
+  },
+  {
+    "test_id": "claude-opus-4-6-thinking-120K-low",
+    "n_tasks": 120,
+    "task_score_sum": 71.833,
+    "task_accuracy_pct": 59.86,
+    "cost_per_task": 2.3966,
+    "total_cost": 287.6
+  },
+  {
+    "test_id": "gpt-5-2-2025-12-11-thinking-xhigh",
+    "n_tasks": 107,
+    "task_score_sum": 64.0,
+    "task_accuracy_pct": 59.81,
+    "cost_per_task": 2.0544,
+    "total_cost": 219.82
+  },
+  {
+    "test_id": "gpt-5-2-pro-2025-12-11-high",
+    "n_tasks": 119,
+    "task_score_sum": 62.0,
+    "task_accuracy_pct": 52.1,
+    "cost_per_task": 16.662,
+    "total_cost": 1982.78
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-64k",
+    "n_tasks": 120,
+    "task_score_sum": 48.333,
+    "task_accuracy_pct": 40.28,
+    "cost_per_task": 2.4878,
+    "total_cost": 298.53
+  },
+  {
+    "test_id": "gpt-5-2-2025-12-11-thinking-high",
+    "n_tasks": 119,
+    "task_score_sum": 47.5,
+    "task_accuracy_pct": 39.92,
+    "cost_per_task": 1.4903,
+    "total_cost": 177.35
+  },
+  {
+    "test_id": "gpt-5-2-pro-2025-12-11-medium",
+    "n_tasks": 120,
+    "task_score_sum": 45.5,
+    "task_accuracy_pct": 37.92,
+    "cost_per_task": 9.5162,
+    "total_cost": 1141.94
+  },
+  {
+    "test_id": "gemini-3-flash-preview-thinking-high",
+    "n_tasks": 120,
+    "task_score_sum": 40.833,
+    "task_accuracy_pct": 34.03,
+    "cost_per_task": 0.2399,
+    "total_cost": 28.79
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-32k",
+    "n_tasks": 119,
+    "task_score_sum": 34.0,
+    "task_accuracy_pct": 28.57,
+    "cost_per_task": 1.3673,
+    "total_cost": 162.7
+  },
+  {
+    "test_id": "gemini-3-pro-preview",
+    "n_tasks": 116,
+    "task_score_sum": 32.833,
+    "task_accuracy_pct": 28.3,
+    "cost_per_task": 0.8486,
+    "total_cost": 98.43
+  },
+  {
+    "test_id": "gpt-5-2-2025-12-11-thinking-medium",
+    "n_tasks": 120,
+    "task_score_sum": 33.167,
+    "task_accuracy_pct": 27.64,
+    "cost_per_task": 0.7876,
+    "total_cost": 94.51
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-16k",
+    "n_tasks": 120,
+    "task_score_sum": 29.0,
+    "task_accuracy_pct": 24.17,
+    "cost_per_task": 0.8228,
+    "total_cost": 98.73
+  },
+  {
+    "test_id": "gpt-5-1-2025-11-13-thinking-high",
+    "n_tasks": 120,
+    "task_score_sum": 22.5,
+    "task_accuracy_pct": 18.75,
+    "cost_per_task": 1.2166,
+    "total_cost": 145.99
+  },
+  {
+    "test_id": "gemini-3-flash-preview-thinking-medium",
+    "n_tasks": 120,
+    "task_score_sum": 18.333,
+    "task_accuracy_pct": 15.28,
+    "cost_per_task": 0.0825,
+    "total_cost": 9.9
+  },
+  {
+    "test_id": "kimi-k2.5",
+    "n_tasks": 120,
+    "task_score_sum": 14.5,
+    "task_accuracy_pct": 12.08,
+    "cost_per_task": 0.2958,
+    "total_cost": 35.5
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-8k",
+    "n_tasks": 120,
+    "task_score_sum": 12.5,
+    "task_accuracy_pct": 10.42,
+    "cost_per_task": 0.4894,
+    "total_cost": 58.72
+  },
+  {
+    "test_id": "gpt-5-1-2025-11-13-thinking-medium",
+    "n_tasks": 119,
+    "task_score_sum": 10.0,
+    "task_accuracy_pct": 8.4,
+    "cost_per_task": 0.4599,
+    "total_cost": 54.72
+  },
+  {
+    "test_id": "gpt-5-2-2025-12-11-thinking-low",
+    "n_tasks": 120,
+    "task_score_sum": 10.0,
+    "task_accuracy_pct": 8.33,
+    "cost_per_task": 0.2738,
+    "total_cost": 32.85
+  },
+  {
+    "test_id": "gpt-5-4-mini-high",
+    "n_tasks": 116,
+    "task_score_sum": 8.5,
+    "task_accuracy_pct": 7.33,
+    "cost_per_task": 0.6196,
+    "total_cost": 71.88
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-none",
+    "n_tasks": 120,
+    "task_score_sum": 8.5,
+    "task_accuracy_pct": 7.08,
+    "cost_per_task": 0.2178,
+    "total_cost": 26.14
+  },
+  {
+    "test_id": "gpt-5-4-mini-medium",
+    "n_tasks": 117,
+    "task_score_sum": 6.5,
+    "task_accuracy_pct": 5.56,
+    "cost_per_task": 0.3259,
+    "total_cost": 38.14
+  },
+  {
+    "test_id": "gpt-5-4-nano-high",
+    "n_tasks": 113,
+    "task_score_sum": 6.167,
+    "task_accuracy_pct": 5.46,
+    "cost_per_task": 0.155,
+    "total_cost": 17.51
+  },
+  {
+    "test_id": "glm-5",
+    "n_tasks": 120,
+    "task_score_sum": 6.5,
+    "task_accuracy_pct": 5.42,
+    "cost_per_task": 0.2889,
+    "total_cost": 34.67
+  },
+  {
+    "test_id": "minimax-m2.5",
+    "n_tasks": 120,
+    "task_score_sum": 6.5,
+    "task_accuracy_pct": 5.42,
+    "cost_per_task": 0.1936,
+    "total_cost": 23.23
+  },
+  {
+    "test_id": "claude-opus-4-5-20251101-thinking-1k",
+    "n_tasks": 120,
+    "task_score_sum": 6.0,
+    "task_accuracy_pct": 5.0,
+    "cost_per_task": 0.229,
+    "total_cost": 27.48
+  },
+  {
+    "test_id": "deepseek-v3.2",
+    "n_tasks": 120,
+    "task_score_sum": 4.667,
+    "task_accuracy_pct": 3.89,
+    "cost_per_task": 0.1289,
+    "total_cost": 15.47
+  },
+  {
+    "test_id": "gpt-5-4-nano-medium",
+    "n_tasks": 120,
+    "task_score_sum": 4.167,
+    "task_accuracy_pct": 3.47,
+    "cost_per_task": 0.0637,
+    "total_cost": 7.65
+  },
+  {
+    "test_id": "gpt-5-1-2025-11-13-thinking-low",
+    "n_tasks": 120,
+    "task_score_sum": 2.667,
+    "task_accuracy_pct": 2.22,
+    "cost_per_task": 0.1348,
+    "total_cost": 16.18
+  },
+  {
+    "test_id": "gemini-3-flash-preview-thinking-minimal",
+    "n_tasks": 120,
+    "task_score_sum": 2.5,
+    "task_accuracy_pct": 2.08,
+    "cost_per_task": 0.0208,
+    "total_cost": 2.49
+  },
+  {
+    "test_id": "gemini-3-flash-preview-thinking-low",
+    "n_tasks": 120,
+    "task_score_sum": 1.5,
+    "task_accuracy_pct": 1.25,
+    "cost_per_task": 0.0255,
+    "total_cost": 3.06
+  },
+  {
+    "test_id": "gpt-5-4-mini-low",
+    "n_tasks": 120,
+    "task_score_sum": 1.0,
+    "task_accuracy_pct": 0.83,
+    "cost_per_task": 0.0624,
+    "total_cost": 7.48
+  },
+  {
+    "test_id": "claude-3-haiku",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0103,
+    "total_cost": 1.24
+  },
+  {
+    "test_id": "claude-haiku-4-5-20251001-thinking-16k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.1432,
+    "total_cost": 17.19
+  },
+  {
+    "test_id": "claude-haiku-4-5-20251001-thinking-1k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0478,
+    "total_cost": 5.73
+  },
+  {
+    "test_id": "claude-haiku-4-5-20251001-thinking-32k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.3927,
+    "total_cost": 47.13
+  },
+  {
+    "test_id": "claude-haiku-4-5-20251001-thinking-8k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0952,
+    "total_cost": 11.42
+  },
+  {
+    "test_id": "claude-haiku-4-5-20251001",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0432,
+    "total_cost": 5.18
+  },
+  {
+    "test_id": "claude-sonnet-4-5-20250929-thinking-16k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.3557,
+    "total_cost": 42.69
+  },
+  {
+    "test_id": "claude-sonnet-4-5-20250929-thinking-1k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.1424,
+    "total_cost": 17.08
+  },
+  {
+    "test_id": "claude-sonnet-4-5-20250929-thinking-32k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.8403,
+    "total_cost": 100.83
+  },
+  {
+    "test_id": "claude-sonnet-4-5-20250929-thinking-8k",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.2409,
+    "total_cost": 28.91
+  },
+  {
+    "test_id": "claude-sonnet-4-5-20250929",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.1313,
+    "total_cost": 15.76
+  },
+  {
+    "test_id": "gpt-3-5-turbo",
+    "n_tasks": 109,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0132,
+    "total_cost": 1.44
+  },
+  {
+    "test_id": "gpt-4-1-2025-04-14",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.069,
+    "total_cost": 8.28
+  },
+  {
+    "test_id": "gpt-4-1-mini-2025-04-14",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0136,
+    "total_cost": 1.63
+  },
+  {
+    "test_id": "gpt-4-1-nano-2025-04-14",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0036,
+    "total_cost": 0.43
+  },
+  {
+    "test_id": "gpt-4o",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.092,
+    "total_cost": 11.04
+  },
+  {
+    "test_id": "gpt-5-1-2025-11-13-thinking-none",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0591,
+    "total_cost": 7.09
+  },
+  {
+    "test_id": "gpt-5-2-2025-12-11-thinking-none",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0824,
+    "total_cost": 9.89
+  },
+  {
+    "test_id": "gpt-5-4-nano-low",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0151,
+    "total_cost": 1.82
+  },
+  {
+    "test_id": "gpt-5-pro-2025-10-06",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 8.0107,
+    "total_cost": 961.28
+  },
+  {
+    "test_id": "grok-4-fast-reasoning",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0614,
+    "total_cost": 7.37
+  },
+  {
+    "test_id": "qwen3-235b-a22b-instruct-2507",
+    "n_tasks": 120,
+    "task_score_sum": 0.0,
+    "task_accuracy_pct": 0.0,
+    "cost_per_task": 0.0045,
+    "total_cost": 0.54
+  }
+]

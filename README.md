@@ -4,6 +4,8 @@ A personal research project on stateful multi-agent orchestration for ARC-AGI-2.
 
 **95.7% on ARC-AGI-2 public evaluation at ~$3 per task** — the lowest cost per task among systems scoring above 95%.
 
+![ARC-AGI-2 public eval — cost vs. accuracy](docs/images/cost_vs_accuracy.png)
+
 | System | Score | Cost / Task | Method |
 |---|---:|---:|---|
 | [Confluence](https://github.com/confluence-labs/arc-agi-2) | 97.9% | $11.77 | Program synthesis + vote |
