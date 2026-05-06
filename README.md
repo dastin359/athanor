@@ -23,7 +23,7 @@ Three interlocking mechanisms drive the cost efficiency:
 
 2. **Independent artifact-only reviewer.** A fresh model context reviews the solver's hypothesis text, `solve()` code, candidate test predictions, and training accuracy — never the solver's reasoning chain. It issues APPROVE / REJECT / EXPAND_CANDIDATES. Among top ARC systems, this is the only mechanism that can reject a solution that passes training 100% on generalization grounds.
 
-3. **Inter-Agent Artifact Exchange (IAAE).** Each agent maintains its own context and exchanges only *artifacts* (hypothesis, code, verdict) — never reasoning chains. When context fills or the reflector rejects, the solver distills its research state into a portable checkpoint and resumes from it in a fresh context window. On reflector REJECT, compression and feedback injection happen atomically in one turn.
+3. **Inter-Context Artifact Exchange (ICAE).** Each agent maintains its own context and exchanges only *artifacts* (hypothesis, code, verdict) — never reasoning chains. When context fills or the reflector rejects, the solver distills its research state into a portable checkpoint and resumes from it in a fresh context window. On reflector REJECT, compression and feedback injection happen atomically in one turn.
 
 See [docs/design.md](docs/design.md) for the full design rationale and competitive context.
 

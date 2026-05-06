@@ -43,7 +43,7 @@ This is the only mechanism among top ARC systems that can reject a solution that
 
 The reflector can maintain a multi-turn review conversation (early turns with full puzzle data, later turns with only the changes since last review) to avoid false-confidence anchoring.
 
-### 3. Inter-Agent Artifact Exchange (IAAE)
+### 3. Inter-Context Artifact Exchange (ICAE)
 
 Active, threshold-triggered compression paired with artifact-based cross-referencing between the solver's and reflector's contexts. Three properties matter:
 
@@ -55,7 +55,7 @@ Active, threshold-triggered compression paired with artifact-based cross-referen
 - last submitted solver code
 - failure analysis and reflection
 - concise records of prior rejected attempts
-- reflector critique (when IAAE was triggered by REJECT)
+- reflector critique (when ICAE was triggered by REJECT)
 
 **Artifact-based cross-referencing.** Solver and reflector each maintain their own contexts and exchange only *artifacts* — hypothesis text, `solve()` code, candidate outputs, reflector verdict. Neither agent sees the other's reasoning chain. The reflector's multi-turn context anchors on solver artifacts across rounds; the solver's compression includes the reflector's critique after REJECT.
 
@@ -101,7 +101,7 @@ Iteration state + distilled research state
   |
   +--> Independent Reflector
   |      |- APPROVE -> accept
-  |      |- REJECT -> IAAE + feedback + retry
+  |      |- REJECT -> ICAE + feedback + retry
   |      \- EXPAND_CANDIDATES -> emit second candidate
   |
   v
@@ -115,9 +115,9 @@ Checkpoint (full conversation, config, tool calls, reflector verdicts)
 3. Agent externalizes the current rule via `submit_transform_hypothesis`.
 4. Agent submits final transform candidate via `execute_python_solution`.
 5. System runs the candidate against training pairs.
-6. If training fails: self-reflection prompt + next iteration (IAAE may fire if context is large).
+6. If training fails: self-reflection prompt + next iteration (ICAE may fire if context is large).
 7. If training passes 100%: run test-generalization self-audit, then independent reflector.
-8. On APPROVE: accept. On REJECT: IAAE + feedback, retry. On EXPAND_CANDIDATES: emit second candidate.
+8. On APPROVE: accept. On REJECT: ICAE + feedback, retry. On EXPAND_CANDIDATES: emit second candidate.
 
 ### Auditing Surface
 
@@ -134,7 +134,7 @@ Checkpoint (full conversation, config, tool calls, reflector verdicts)
 | [Confluence](https://github.com/confluence-labs/arc-agi-2) | 97.9% | $11.77 | Program synthesis | Vote aggregation | Agent-local |
 | [Squeeze-Evolve](https://arxiv.org/abs/2604.07725) | 97.5% | $5.93 | None | Confidence routing | Population |
 | [Darwinian Evolver (Imbue, Gemini 3.1 Pro)](https://github.com/imbue-ai/darwinian_evolver) | 95.1% | $8.71 | Program scoring | Fitness + corroboration | Evolutionary |
-| **This work** | **95.7%** | **$3.12** | **Verification tool** | **Independent reflector** | **Inter-Agent Artifact Exchange** |
+| **This work** | **95.7%** | **$3.12** | **Verification tool** | **Independent reflector** | **Inter-Context Artifact Exchange** |
 | [Darwinian Evolver (Imbue, Gemini 3 Flash)](https://github.com/imbue-ai/darwinian_evolver) | 61.4% | $2.42 | Program scoring | Fitness + corroboration | Evolutionary |
 
 Public eval scores are not directly comparable to semi-private or private eval scores. None of the four systems above has a published verified semi-private score. The highest verified semi-private score is Poetiq at 54%.
@@ -171,11 +171,11 @@ That per-check efficiency compounds across iterations into measurably lower tota
 
 **Independent Reflector.** A separate model context that reviews the solver's deliverables with no access to the solver's reasoning chain. Sees the hypothesis text, `solve()` code, candidate test predictions, and training accuracy. Issues APPROVE / REJECT / EXPAND_CANDIDATES.
 
-**Inter-Agent Artifact Exchange (IAAE).** Active, threshold-triggered compression paired with artifact-based cross-referencing between the solver's and reflector's contexts. Three distinguishing properties: active (agent-initiated), artifact-based (no reasoning chain crosses the boundary), and atomic on REJECT (feedback + compression in one turn). Fires on context-size threshold or reflector REJECT.
+**Inter-Context Artifact Exchange (ICAE).** Active, threshold-triggered compression paired with artifact-based cross-referencing between the solver's and reflector's contexts. Three distinguishing properties: active (agent-initiated), artifact-based (no reasoning chain crosses the boundary), and atomic on REJECT (feedback + compression in one turn). Fires on context-size threshold or reflector REJECT.
 
-**Distilled Research State.** The compact state bundle produced by IAAE. Not just a dialogue summary; it is the subset of information needed to continue the search from a fresh context window.
+**Distilled Research State.** The compact state bundle produced by ICAE. Not just a dialogue summary; it is the subset of information needed to continue the search from a fresh context window.
 
-**Bounded-Context Solving.** An orchestration setting in which the solver cannot rely on carrying full raw interaction history forever and therefore needs an explicit continuity mechanism. IAAE is this system's answer.
+**Bounded-Context Solving.** An orchestration setting in which the solver cannot rely on carrying full raw interaction history forever and therefore needs an explicit continuity mechanism. ICAE is this system's answer.
 
 **Quality Gate.** The broader acceptance layer applied after a train-perfect candidate is found, including the test-generalization self-audit and the independent reflector's verdict.
 
