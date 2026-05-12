@@ -382,6 +382,9 @@
       border: 1px solid rgba(130, 224, 186, 0.28);
       background: rgba(0, 18, 15, 0.92);
       overflow-x: auto;
+      white-space: pre !important;
+      tab-size: 4;
+      -moz-tab-size: 4;
     }
     .terminal-output {
       margin: 0.5em 0;
@@ -410,6 +413,13 @@
     }
     .md-content pre code.hljs {
       background: transparent !important;
+    }
+    .md-content pre code {
+      display: block;
+      white-space: pre !important;
+      tab-size: 4;
+      -moz-tab-size: 4;
+      font-variant-ligatures: none;
     }
 
     @keyframes cardBreathing {
@@ -1516,6 +1526,9 @@
                       <option value="claude-opus-4-6">claude-opus-4-6</option>
                       <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
                       <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                      <option value="gpt-5.5">gpt-5.5 (OpenAI)</option>
+                      <option value="gpt-5.4-pro">gpt-5.4-pro (OpenAI)</option>
+                      <option value="gpt-5.5-pro">gpt-5.5-pro (OpenAI)</option>
                       <option value="kimi-k2p5">kimi-k2.5 (Fireworks)</option>
                       <option value="glm-5">glm-5 (Fireworks, text-only)</option>
                     </select>
@@ -1594,6 +1607,7 @@
                     <select v-model="config.reflector_provider">
                       <option value="gemini">Gemini</option>
                       <option value="claude">Claude</option>
+                      <option value="openai">OpenAI</option>
                     </select>
                   </div>
                   <div class="field" v-if="config.enable_independent_reflector">
@@ -1604,14 +1618,20 @@
                       <option v-if="config.reflector_provider==='claude'" value="claude-opus-4-7">claude-opus-4-7</option>
                       <option v-if="config.reflector_provider==='claude'" value="claude-opus-4-6">claude-opus-4-6</option>
                       <option v-if="config.reflector_provider==='claude'" value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+                      <option v-if="config.reflector_provider==='openai'" value="gpt-5.5">gpt-5.5</option>
+                      <option v-if="config.reflector_provider==='openai'" value="gpt-5.4-pro">gpt-5.4-pro</option>
+                      <option v-if="config.reflector_provider==='openai'" value="gpt-5.5-pro">gpt-5.5-pro</option>
                     </select>
                   </div>
                   <div class="field" v-if="config.enable_independent_reflector">
                     <label>Thinking Effort</label>
                     <select v-model="config.reflector_thinking_effort">
+                      <option v-if="config.reflector_provider==='openai'" value="none">None</option>
+                      <option v-if="config.reflector_provider==='openai'" value="minimal">Minimal</option>
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
+                      <option v-if="config.reflector_provider==='openai'" value="xhigh">XHigh</option>
                       <option v-if="config.reflector_provider==='claude' && config.reflector_model==='claude-opus-4-7'" value="xhigh">XHigh</option>
                       <option v-if="config.reflector_provider==='claude'" value="max">Max</option>
                     </select>
@@ -2203,6 +2223,10 @@
           const model = String((this.config && this.config.model) || "").toLowerCase();
           if (model.includes("haiku-4-5")) return ["low"];
           if (model.includes("kimi")) return ["low", "medium", "high"];
+          if (model.startsWith("gpt-") || model.startsWith("openai/gpt-")) {
+            return ["none", "minimal", "low", "medium", "high", "xhigh"];
+          }
+          if (model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return ["low", "medium", "high"];
           // Opus 4.7 adds "xhigh" between "high" and "max".
           if (model.includes("opus-4-7")) return ["low", "medium", "high", "xhigh", "max"];
           return ["low", "medium", "high", "max"];
@@ -2335,6 +2359,13 @@
         },
         effortDefaultsForModel(modelName) {
           const model = String(modelName || "").toLowerCase();
+          if (model.startsWith("gpt-") || model.startsWith("openai/gpt-")) {
+            return {
+              thinking_effort: "medium",
+              reflection_thinking_effort: "xhigh",
+              compression_thinking_effort: "xhigh",
+            };
+          }
           if (model.includes("opus-4") || model.includes("sonnet-4")) {
             return {
               thinking_effort: "medium",
@@ -2381,6 +2412,8 @@
             this.config.phoenix_project = "ARC_Kimi_K2p5";
           } else if (model.includes("glm")) {
             this.config.phoenix_project = "ARC_GLM_5";
+          } else if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) {
+            this.config.phoenix_project = "ARC_OpenAI";
           }
         },
         toggleSolve() {
@@ -2604,7 +2637,9 @@
             this.panels = Object.assign({}, this.panels, st.panels || {});
             this.usage = Object.assign({}, this.usage, st.usage || {});
             this.savedRuns = Array.isArray(st.saved_runs) ? st.saved_runs : [];
-            this.taskIds = Array.isArray(st.task_ids) ? st.task_ids : [];
+            if (Array.isArray(st.task_ids) && st.task_ids.length > 0) {
+              this.taskIds = st.task_ids;
+            }
             this.suspendConfigSync = true;
             this.config = Object.assign({}, this.config, st.config || {});
             this.normalizeThinkingEffortForModel();
@@ -2628,7 +2663,9 @@
           if (msg.type === "config_update") {
             this.suspendConfigSync = true;
             this.config = Object.assign({}, this.config, msg.config || {});
-            this.taskIds = Array.isArray(msg.task_ids) ? msg.task_ids : this.taskIds;
+            if (Array.isArray(msg.task_ids) && msg.task_ids.length > 0) {
+              this.taskIds = msg.task_ids;
+            }
             this.normalizeThinkingEffortForModel();
             this.$nextTick(() => { this.suspendConfigSync = false; });
             return;
@@ -3171,7 +3208,12 @@
           const thinking = Number(m.usage_thinking_tokens || 0);
           const output = Number(m.usage_output_tokens || 0);
           const outputIncludesReasoning = Boolean(m.usage_output_includes_reasoning);
+          const reasoningReported = Boolean(m.usage_reasoning_tokens_reported || thinking > 0);
           if (input <= 0 && thinking <= 0 && output <= 0) return "";
+          if (reasoningReported && thinking > 0) {
+            const visibleOutput = outputIncludesReasoning ? Math.max(0, output - thinking) : output;
+            return `${this.formatTokenCompact(input)}/${this.formatTokenCompact(thinking)}/${this.formatTokenCompact(visibleOutput)}`;
+          }
           if (outputIncludesReasoning && output > 0) {
             return `${this.formatTokenCompact(input)}/${this.formatTokenCompact(output)}`;
           }
@@ -3448,7 +3490,7 @@
           return cleaned;
         },
         renderHighlightedCode(code, language) {
-          const cleaned = this.stripFenceArtifacts(code);
+          const cleaned = this.stripFenceArtifacts(code).replace(/\t/g, "    ");
           if (hasPrism && window.Prism.languages && window.Prism.languages[language]) {
             try {
               const highlighted = window.Prism.highlight(cleaned, window.Prism.languages[language], language);
@@ -3574,6 +3616,18 @@
           this.config.reflection_thinking_effort = defaults.reflection_thinking_effort;
           this.config.compression_thinking_effort = defaults.compression_thinking_effort;
           this.normalizeThinkingEffortForModel();
+        },
+        "config.reflector_provider": function () {
+          if (this.config.reflector_provider === "gemini") {
+            this.config.reflector_model = "gemini-3.1-pro-preview";
+            this.config.reflector_thinking_effort = "high";
+          } else if (this.config.reflector_provider === "claude") {
+            this.config.reflector_model = "claude-opus-4-6";
+            this.config.reflector_thinking_effort = "high";
+          } else if (this.config.reflector_provider === "openai") {
+            this.config.reflector_model = "gpt-5.5";
+            this.config.reflector_thinking_effort = "xhigh";
+          }
         },
         "config.puzzle_path": function () {
           this.activeTaskSuggestionIndex = this.taskIdSuggestions.length ? 0 : -1;

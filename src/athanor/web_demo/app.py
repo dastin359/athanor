@@ -72,6 +72,9 @@ MODEL_PRICING_USD_PER_MTOK = {
     "gemini-3.1-pro-preview": {"provider": "gemini", "input": 2.00, "output": 12.00},
     "gemini-3-pro-preview": {"provider": "gemini", "input": 2.00, "output": 12.00},
     "gemini-2.5-pro-preview-06-05": {"provider": "gemini", "input": 1.25, "output": 10.00},
+    "gpt-5.5": {"provider": "openai", "input": 5.00, "output": 30.00, "cached_input": 0.50},
+    "gpt-5.4-pro": {"provider": "openai", "input": 30.00, "output": 180.00},
+    "gpt-5.5-pro": {"provider": "openai", "input": 30.00, "output": 180.00},
     # Fireworks Kimi pricing from https://fireworks.ai/pricing (checked 2026-03-09).
     "kimi-k2p5": {"provider": "fireworks", "input": 0.60, "output": 3.00, "cached_input": 0.10},
     "kimi-k2.5": {"provider": "fireworks", "input": 0.60, "output": 3.00, "cached_input": 0.10},
@@ -82,6 +85,8 @@ ANTHROPIC_CACHE_READ_MULTIPLIER = 0.10
 GEMINI_31_TIER_BREAKPOINT_TOKENS = 200_000
 GEMINI_31_LOWER_TIER = {"input": 2.00, "output": 12.00, "cached_input": 0.20}
 GEMINI_31_UPPER_TIER = {"input": 4.00, "output": 18.00, "cached_input": 0.40}
+GPT_55_HIGH_CONTEXT_BREAKPOINT_TOKENS = 272_000
+GPT_55_HIGH_CONTEXT_RATES = {"input": 10.00, "output": 45.00, "cached_input": 0.50}
 
 KIMI_RUN_CODE_GUIDANCE_TEXT = (
     "Access train/test grids via `train_samples[idx]['input']`, "
@@ -120,6 +125,8 @@ def _infer_provider(model_name: str, provider: str | None = None) -> str:
         return "anthropic"
     if normalized.startswith("gemini-"):
         return "gemini"
+    if normalized.startswith("gpt-") or normalized.startswith(("o1", "o3", "o4")) or normalized.startswith("openai/"):
+        return "openai"
     if normalized.startswith("kimi") or normalized.startswith("glm"):
         return "fireworks"
     return ""
@@ -156,6 +163,39 @@ def _pricing_profile_for_model(
         if normalized.startswith("gemini-2.5-pro"):
             return {"provider": "gemini", "input": 1.25, "output": 10.00, "pricing_estimate_incomplete": False}
         return {"provider": "gemini", "input": 2.00, "output": 12.00, "pricing_estimate_incomplete": True}
+
+    if inferred_provider == "openai":
+        if normalized.startswith("gpt-5.4-pro"):
+            return {
+                "provider": "openai",
+                "input": 30.00,
+                "output": 180.00,
+                "pricing_estimate_incomplete": False,
+            }
+        if normalized.startswith("gpt-5.5-pro"):
+            return {
+                "provider": "openai",
+                "input": 30.00,
+                "output": 180.00,
+                "pricing_estimate_incomplete": False,
+            }
+        if normalized.startswith("gpt-5.5"):
+            if int(request_input_tokens or 0) > GPT_55_HIGH_CONTEXT_BREAKPOINT_TOKENS:
+                return {
+                    "provider": "openai",
+                    "input": GPT_55_HIGH_CONTEXT_RATES["input"],
+                    "output": GPT_55_HIGH_CONTEXT_RATES["output"],
+                    "cached_input": GPT_55_HIGH_CONTEXT_RATES["cached_input"],
+                    "pricing_estimate_incomplete": False,
+                }
+            return {
+                "provider": "openai",
+                "input": 5.00,
+                "output": 30.00,
+                "cached_input": 0.50,
+                "pricing_estimate_incomplete": False,
+            }
+        return {"provider": "openai", "input": 30.00, "output": 180.00, "pricing_estimate_incomplete": True}
 
     if normalized.startswith("kimi"):
         return {"provider": "fireworks", "input": 0.60, "output": 3.00, "cached_input": 0.10, "pricing_estimate_incomplete": False}
@@ -239,11 +279,19 @@ def _default_phoenix_project_for_model(model_name: str) -> str:
         return "ARC_Kimi_K2p5"
     if normalized.startswith("glm"):
         return "ARC_GLM_5"
+    if normalized.startswith("gpt-") or normalized.startswith(("o1", "o3", "o4")):
+        return "ARC_OpenAI"
     return "ARC_Athanor"
 
 
 def _default_efforts_for_model(model_name: str) -> dict[str, str]:
     normalized = _normalize_model_name(model_name)
+    if normalized.startswith("gpt-") or normalized.startswith("openai/gpt-"):
+        return {
+            "thinking_effort": "xhigh",
+            "reflection_thinking_effort": "xhigh",
+            "compression_thinking_effort": "xhigh",
+        }
     if "opus-4" in normalized or "sonnet-4" in normalized:
         return {
             "thinking_effort": "medium",
@@ -907,6 +955,10 @@ class SolverAppState:
         self.partial_tool_call_indices: dict[str, int] = {}
         self.current_turn = 0
         self.current_iteration = 0
+        self.pending_turn_number: int | None = None
+        self.pending_turn_iteration: int | None = None
+        self.pending_turn_context_label = ""
+        self.pending_turn_canvas_meta: dict[str, Any] | None = None
         self.reflector_context_idx: int | None = None
         self.current_canvas_id: str | None = None
         self.current_canvas_seq = 0
@@ -1043,6 +1095,53 @@ class SolverAppState:
             self.history[target_idx] = msg
 
         self._emit({"type": "history_patch", "index": target_idx, "message": msg})
+
+    def _attach_openai_response_id_to_current_agent_turn(self, response_id: str) -> None:
+        """Persist Responses API state ids on rendered agent blocks for resume."""
+        response_id = str(response_id or "").strip()
+        if not response_id:
+            return
+
+        with self.lock:
+            candidate_indices: list[int] = []
+            for idx in range(len(self.history) - 1, -1, -1):
+                msg = self.history[idx]
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get("kind") == "turn_divider":
+                    break
+                if (
+                    msg.get("role") == "assistant"
+                    and msg.get("source") == "agent"
+                    and msg.get("kind") in {"thinking", "assistant_response", "tool_call"}
+                ):
+                    candidate_indices.append(idx)
+
+            # If stream bookkeeping was finalized before the id arrived, fall
+            # back to the latest agent block in the whole history.
+            if not candidate_indices:
+                for idx in range(len(self.history) - 1, -1, -1):
+                    msg = self.history[idx]
+                    if (
+                        isinstance(msg, dict)
+                        and msg.get("role") == "assistant"
+                        and msg.get("source") == "agent"
+                        and msg.get("kind") in {"thinking", "assistant_response", "tool_call"}
+                    ):
+                        candidate_indices.append(idx)
+                        break
+
+            patched: list[tuple[int, dict[str, Any]]] = []
+            for idx in candidate_indices:
+                msg = dict(self.history[idx])
+                if msg.get("openai_response_id") == response_id:
+                    continue
+                msg["openai_response_id"] = response_id
+                self.history[idx] = msg
+                patched.append((idx, msg))
+
+        for idx, msg in patched:
+            self._emit({"type": "history_patch", "index": idx, "message": msg})
 
     async def add_client(self, ws: WebSocket):
         await ws.accept()
@@ -1202,8 +1301,35 @@ class SolverAppState:
             self.tools_md = _tool_schemas_markdown()
 
             cfg = state.get("config", {}) if isinstance(state.get("config", {}), dict) else {}
-            self.config.update(cfg)
-            self.task_ids = self._list_task_ids_for_config(self.config)
+            current_config = dict(self.config)
+            merged_config = dict(current_config)
+            merged_config.update(cfg)
+
+            fallback_dataset_root = str(current_config.get("dataset_root") or "").strip()
+            if not fallback_dataset_root:
+                try:
+                    fallback_dataset_root = str(resolve_dataset_root(None))
+                except Exception:
+                    fallback_dataset_root = ""
+
+            loaded_dataset_root = str(merged_config.get("dataset_root") or "").strip()
+            if loaded_dataset_root:
+                try:
+                    resolve_dataset_root(loaded_dataset_root)
+                except Exception:
+                    merged_config["dataset_root"] = fallback_dataset_root
+
+            task_ids = self._list_task_ids_for_config(merged_config)
+            if not task_ids and fallback_dataset_root and str(merged_config.get("dataset_root") or "").strip() != fallback_dataset_root:
+                alt_config = dict(merged_config)
+                alt_config["dataset_root"] = fallback_dataset_root
+                alt_task_ids = self._list_task_ids_for_config(alt_config)
+                if alt_task_ids:
+                    merged_config = alt_config
+                    task_ids = alt_task_ids
+
+            self.config.update(merged_config)
+            self.task_ids = list(task_ids)
 
             usage = state.get("usage", {}) if isinstance(state.get("usage", {}), dict) else {}
             request_ledger = usage.get("request_ledger", []) if isinstance(usage.get("request_ledger", []), list) else []
@@ -1252,6 +1378,10 @@ class SolverAppState:
             self.reflector_context_idx = None
             self.current_turn = 0
             self.current_iteration = 0
+            self.pending_turn_number = None
+            self.pending_turn_iteration = None
+            self.pending_turn_context_label = ""
+            self.pending_turn_canvas_meta = None
             self._restore_runtime_state_from_history()
 
         if (history_changed or backfill_changed) and target.is_relative_to(self.saved_runs_dir):
@@ -1430,6 +1560,10 @@ class SolverAppState:
         self.reflector_context_idx = None
         self.current_iteration = 0
         self.current_turn = 0
+        self.pending_turn_number = None
+        self.pending_turn_iteration = None
+        self.pending_turn_context_label = ""
+        self.pending_turn_canvas_meta = None
         for idx, msg in enumerate(self.history):
             if not isinstance(msg, dict):
                 continue
@@ -2589,6 +2723,27 @@ class SolverAppState:
         self.current_thinking_idx = None
         self.current_text_idx = None
 
+    def _ensure_turn_divider(self) -> None:
+        if self.pending_turn_number is None:
+            return
+        divider: dict[str, Any] = {
+            "role": "assistant",
+            "kind": "turn_divider",
+            "turn_number": self.pending_turn_number,
+            "iteration": int(self.pending_turn_iteration or self.current_iteration or 0),
+            "content": "",
+        }
+        if self.pending_turn_context_label:
+            divider["context_label"] = self.pending_turn_context_label
+        if isinstance(self.pending_turn_canvas_meta, dict):
+            divider.update(self.pending_turn_canvas_meta)
+        self._append_history(divider)
+        self.current_turn = int(self.pending_turn_number or self.current_turn or 0)
+        self.pending_turn_number = None
+        self.pending_turn_iteration = None
+        self.pending_turn_context_label = ""
+        self.pending_turn_canvas_meta = None
+
     def _consume_event(self, event: OrchestratorEvent):
         # Suppress verbose SYSTEM blocks in chat.
         if event.type == EventType.SYSTEM:
@@ -2604,12 +2759,16 @@ class SolverAppState:
                     msg = dict(self.history[self.current_thinking_idx])
                 msg["thinking_signature"] = sig
                 self._patch_history(self.current_thinking_idx, msg, emit=False)
+            response_id = metadata.get("_openai_response_id")
+            if response_id:
+                self._attach_openai_response_id_to_current_agent_turn(str(response_id))
             # Remove reflector canvas (turn_divider + reflector_context) when reflector errors out
             if metadata.get("_remove_reflector_canvas"):
                 self._remove_reflector_canvas()
                 return
             # Visible system message — render as orchestrator message in chat
             if metadata.get("_visible_message"):
+                self._ensure_turn_divider()
                 self._append_history({
                     "role": "user",
                     "kind": "assistant_response",
@@ -2635,22 +2794,15 @@ class SolverAppState:
         if event.type == EventType.TURN_START:
             self._finalize_streams()
             self._turn_usage_target_idx = None
-            self.current_turn += 1
             next_iteration = int(event.metadata.get("iteration", 0) if event.metadata else 0)
             ctx_label = (event.metadata or {}).get("context_label")
-            canvas_meta = self._set_current_canvas(iteration=next_iteration, context_label=ctx_label)
             self.current_iteration = next_iteration
-            divider: dict[str, Any] = {
-                "role": "assistant",
-                "kind": "turn_divider",
-                "turn_number": self.current_turn,
-                "iteration": self.current_iteration,
-                "content": "",
-            }
-            if ctx_label:
-                divider["context_label"] = ctx_label
-            divider.update(canvas_meta)
-            self._append_history(divider)
+            self.pending_turn_number = int((event.metadata or {}).get("turn") or (self.current_turn + 1))
+            self.pending_turn_iteration = self.current_iteration
+            self.pending_turn_context_label = str(ctx_label or "")
+            self.pending_turn_canvas_meta = self._set_current_canvas(
+                iteration=next_iteration, context_label=ctx_label
+            )
             return
 
         if event.type == EventType.THINKING:
@@ -2674,6 +2826,7 @@ class SolverAppState:
             else:
                 delta = incoming
                 self.current_thinking += incoming
+            self._ensure_turn_divider()
             self.current_text = ""
             self.current_text_idx = None
             if self.current_thinking_idx is None:
@@ -2715,6 +2868,7 @@ class SolverAppState:
             else:
                 delta = incoming
                 self.current_text += incoming
+            self._ensure_turn_divider()
             self.current_thinking = ""
             self.current_thinking_idx = None
             if self.current_text_idx is None:
@@ -2737,6 +2891,7 @@ class SolverAppState:
         self._finalize_streams()
 
         if event.type == EventType.TOOL_CALL:
+            self._ensure_turn_divider()
             if bool(event.metadata.get("_partial")):
                 tool_id = str(event.metadata.get("id", ""))
                 tool_name = str(event.metadata.get("name", "unknown"))
@@ -2798,6 +2953,7 @@ class SolverAppState:
             return
 
         if event.type == EventType.TOOL_RESULT:
+            self._ensure_turn_divider()
             output = event.metadata.get("output", event.content) or ""
             content_blocks = event.metadata.get("content_blocks")
             block_text, block_images, interleaved_blocks = self._extract_tool_result_content(content_blocks)
@@ -2847,6 +3003,7 @@ class SolverAppState:
             return
 
         if event.type == EventType.REFLECTION:
+            self._ensure_turn_divider()
             # Reflection prompt is a user message from orchestrator (not assistant)
             # Include iteration metadata so frontend knows this belongs to current iteration
             is_consolidated = bool(event.metadata and event.metadata.get("consolidated_prompt"))
@@ -2906,6 +3063,7 @@ class SolverAppState:
             meta = event.metadata or {}
             phase = meta.get("phase", "start")
             if phase == "start":
+                self._ensure_turn_divider()
                 # Build interleaved_blocks matching the canonical Gemini API part order:
                 # train examples (text+img+text+img), test inputs (text+img),
                 # hypothesis, code, predicted outputs (text+img)
@@ -3218,7 +3376,14 @@ class SolverAppState:
             normalized_history = self._normalize_history_list(list(truncated_history))
             migrated_history, _ = self._migrate_history_canvases(normalized_history)
             self.history = migrated_history
+            self._finalize_streams()
+            self._turn_usage_target_idx = None
+            self.partial_tool_call_indices.clear()
             self._restore_runtime_state_from_history()
+        # Rebuild prompt panels and republish task IDs from the current config.
+        # This prevents stale prompt_bundle content from a loaded checkpoint from
+        # surviving a "Clear All" / rollback, and keeps puzzle autocomplete live.
+        self._refresh_prompt_panels_from_config(emit=True)
 
     def update_config(self, config: dict[str, Any]):
         with self.lock:
@@ -3253,15 +3418,23 @@ class SolverAppState:
 
         # Walk through UI history, skipping prompt_bundle and turn_dividers
         pending_assistant_content: list[dict] = []
+        pending_openai_response_id = ""
         pending_tool_results: list[dict] = []
         # Track tool_use IDs that have already been matched to tool_results
         matched_tool_ids: set[str] = set()
 
         def flush_assistant():
-            nonlocal pending_assistant_content
+            nonlocal pending_assistant_content, pending_openai_response_id
             if pending_assistant_content:
-                api_msgs.append({"role": "assistant", "content": list(pending_assistant_content)})
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": list(pending_assistant_content),
+                }
+                if pending_openai_response_id:
+                    assistant_msg["openai_response_id"] = pending_openai_response_id
+                api_msgs.append(assistant_msg)
                 pending_assistant_content = []
+                pending_openai_response_id = ""
 
         def flush_tool_results():
             nonlocal pending_tool_results
@@ -3280,6 +3453,8 @@ class SolverAppState:
             if role == "assistant" and kind == "thinking":
                 # Flush any pending tool results before new assistant content
                 flush_tool_results()
+                if block.get("openai_response_id"):
+                    pending_openai_response_id = str(block.get("openai_response_id") or "")
                 content_text = block.get("content", "")
                 sig = block.get("thinking_signature", "")
                 if content_text and sig:
@@ -3295,6 +3470,8 @@ class SolverAppState:
 
             elif role == "assistant" and kind == "tool_call":
                 flush_tool_results()
+                if block.get("openai_response_id"):
+                    pending_openai_response_id = str(block.get("openai_response_id") or "")
                 tool_id = block.get("tool_id", "")
                 tool_name = block.get("tool_name", "")
                 tool_input = block.get("tool_input")
@@ -3375,6 +3552,8 @@ class SolverAppState:
 
             elif role == "assistant" and kind == "assistant_response":
                 flush_tool_results()
+                if block.get("openai_response_id"):
+                    pending_openai_response_id = str(block.get("openai_response_id") or "")
                 content_text = block.get("content", "")
                 if content_text:
                     pending_assistant_content.append({"type": "text", "text": content_text})
@@ -3390,6 +3569,7 @@ class SolverAppState:
                     if isinstance(resume_messages, list) and resume_messages:
                         api_msgs = cls._clone_jsonable(resume_messages)
                         pending_assistant_content = []
+                        pending_openai_response_id = ""
                         pending_tool_results = []
                         matched_tool_ids = set()
                         continue
@@ -3405,6 +3585,7 @@ class SolverAppState:
                     if isinstance(prompt_blocks, list) and prompt_blocks:
                         api_msgs = [{"role": "user", "content": cls._clone_jsonable(prompt_blocks)}]
                         pending_assistant_content = []
+                        pending_openai_response_id = ""
                         pending_tool_results = []
                         matched_tool_ids = set()
                         continue
@@ -3413,6 +3594,7 @@ class SolverAppState:
                     if legacy_content:
                         api_msgs = [{"role": "user", "content": legacy_content}]
                         pending_assistant_content = []
+                        pending_openai_response_id = ""
                         pending_tool_results = []
                         matched_tool_ids = set()
                         continue
@@ -3420,6 +3602,7 @@ class SolverAppState:
                     if content_text:
                         api_msgs = [{"role": "user", "content": user_prompt_content + [{"type": "text", "text": content_text}]}]
                         pending_assistant_content = []
+                        pending_openai_response_id = ""
                         pending_tool_results = []
                         matched_tool_ids = set()
                         continue
@@ -3430,6 +3613,7 @@ class SolverAppState:
                 elif isinstance(block_iter, (int, float)) and block_iter > 0:
                     api_msgs = [{"role": "user", "content": user_prompt_content + [{"type": "text", "text": content_text}]}]
                     pending_assistant_content = []
+                    pending_openai_response_id = ""
                     pending_tool_results = []
                     matched_tool_ids = set()
                 elif content_text:
@@ -3510,7 +3694,10 @@ class SolverAppState:
             enable_independent_reflector = bool(config.get("enable_independent_reflector", True))
             reflector_provider = str(config.get("reflector_provider") or "gemini")
             reflector_model = str(config.get("reflector_model") or "").strip() or None
-            reflector_thinking_effort = str(config.get("reflector_thinking_effort") or "high")
+            reflector_thinking_effort = str(
+                config.get("reflector_thinking_effort")
+                or ("xhigh" if reflector_provider == "openai" else "high")
+            )
             reflector_code_execution = bool(config.get("reflector_code_execution", False))
             semi_cot_first_turn = bool(config.get("semi_cot_first_turn", False))
             semi_cot_thinking_effort = str(config.get("semi_cot_thinking_effort") or "high")
@@ -3558,12 +3745,13 @@ class SolverAppState:
                 try:
                     os.environ["ENABLE_PHOENIX"] = "true"
                     os.environ["PHOENIX_PROJECT_NAME"] = phoenix_project
-                    # Always instrument the main Anthropic agent.
-                    # Instrument Google GenAI when reflector uses Gemini so
-                    # reflector calls appear as MessageStream in Phoenix.
+                    # Instrument the active model SDKs so provider calls appear in Phoenix.
                     instrument_genai = (enable_independent_reflector and reflector_provider == "gemini")
+                    instrument_openai = _infer_provider(model_name) == "openai" or (
+                        enable_independent_reflector and reflector_provider == "openai"
+                    )
                     phoenix = initialize_phoenix(
-                        instrument_openai=False,
+                        instrument_openai=instrument_openai,
                         instrument_anthropic=True,
                         instrument_google_genai=instrument_genai,
                     )
@@ -3776,47 +3964,59 @@ class SolverAppState:
                     checkpoint_turn = 0
                     checkpoint_in_reflection = False
 
+            orchestration_error: list[str] = []
+
             def _runner():
-                run_orchestration(
-                    puzzle_path=puzzle_path,
-                    model_name=model_name,
-                    use_streaming=True,
-                    use_visual_mode=(not _is_glm_model(model_name)),
-                    use_extended_thinking=True,
-                    thinking_budget=thinking_budget,
-                    thinking_effort=thinking_effort,
-                    reflection_thinking_effort=reflection_thinking_effort,
-                    compression_thinking_effort=compression_thinking_effort,
-                    max_turns=max_turns,
-                    compression_threshold=compression_threshold,
-                    compression_bypass_threshold=compression_bypass_threshold,
-                    max_test_predictions=max_test_predictions,
-                    emit_tool_call_deltas=True,
-                    event_callback=self.handler.callback,
-                    phoenix=phoenix,
-                    should_stop=self.handler.check_stop,
-                    stop_reason=self.handler.stop_reason,
-                    initial_messages=initial_messages,
-                    initial_iteration=checkpoint_iteration,
-                    initial_turn=checkpoint_turn,
-                    initial_in_reflection_mode=checkpoint_in_reflection if checkpoint_history else False,
-                    initial_in_test_generalization_reflection=checkpoint_in_test_gen_reflection if checkpoint_history else False,
-                    initial_in_reflector_reject_compression=checkpoint_in_reflector_reject_compression if checkpoint_history else False,
-                    initial_reflector_message_history=checkpoint_reflector_message_history if checkpoint_history else None,
-                    initial_reflector_response=checkpoint_reflector_response if checkpoint_history else "",
-                    initial_test_candidates=checkpoint_test_candidates if checkpoint_history else None,
-                    enable_independent_reflector=enable_independent_reflector,
-                    reflector_provider=reflector_provider,
-                    reflector_model=reflector_model,
-                    reflector_thinking_effort=reflector_thinking_effort,
-                    reflector_code_execution=reflector_code_execution,
-                    semi_cot_first_turn=semi_cot_first_turn,
-                    semi_cot_thinking_effort=semi_cot_thinking_effort,
-                    enable_phoenix=enable_phoenix,
-                    unsafe_local_exec=unsafe_local_exec,
-                    dataset_root=dataset_root,
-                    dataset_split=split,
-                )
+                try:
+                    run_orchestration(
+                        puzzle_path=puzzle_path,
+                        model_name=model_name,
+                        use_streaming=True,
+                        use_visual_mode=(not _is_glm_model(model_name)),
+                        use_extended_thinking=True,
+                        thinking_budget=thinking_budget,
+                        thinking_effort=thinking_effort,
+                        reflection_thinking_effort=reflection_thinking_effort,
+                        compression_thinking_effort=compression_thinking_effort,
+                        max_turns=max_turns,
+                        compression_threshold=compression_threshold,
+                        compression_bypass_threshold=compression_bypass_threshold,
+                        max_test_predictions=max_test_predictions,
+                        emit_tool_call_deltas=True,
+                        event_callback=self.handler.callback,
+                        phoenix=phoenix,
+                        should_stop=self.handler.check_stop,
+                        stop_reason=self.handler.stop_reason,
+                        initial_messages=initial_messages,
+                        initial_iteration=checkpoint_iteration,
+                        initial_turn=checkpoint_turn,
+                        initial_in_reflection_mode=checkpoint_in_reflection if checkpoint_history else False,
+                        initial_in_test_generalization_reflection=checkpoint_in_test_gen_reflection if checkpoint_history else False,
+                        initial_in_reflector_reject_compression=checkpoint_in_reflector_reject_compression if checkpoint_history else False,
+                        initial_reflector_message_history=checkpoint_reflector_message_history if checkpoint_history else None,
+                        initial_reflector_response=checkpoint_reflector_response if checkpoint_history else "",
+                        initial_test_candidates=checkpoint_test_candidates if checkpoint_history else None,
+                        enable_independent_reflector=enable_independent_reflector,
+                        reflector_provider=reflector_provider,
+                        reflector_model=reflector_model,
+                        reflector_thinking_effort=reflector_thinking_effort,
+                        reflector_code_execution=reflector_code_execution,
+                        semi_cot_first_turn=semi_cot_first_turn,
+                        semi_cot_thinking_effort=semi_cot_thinking_effort,
+                        enable_phoenix=enable_phoenix,
+                        unsafe_local_exec=unsafe_local_exec,
+                        dataset_root=dataset_root,
+                        dataset_split=split,
+                    )
+                except Exception:
+                    orchestration_error.append(traceback.format_exc())
+                    self.handler.callback(
+                        OrchestratorEvent(
+                            EventType.ERROR,
+                            "Solver backend crashed. See details below.\n\n"
+                            f"```text\n{orchestration_error[-1]}\n```",
+                        )
+                    )
 
             orchestration_thread = threading.Thread(target=_runner, daemon=True)
             orchestration_thread.start()
@@ -3827,6 +4027,9 @@ class SolverAppState:
                 except queue.Empty:
                     continue
                 self._consume_event(event)
+
+            if orchestration_error:
+                self._emit({"type": "status", "level": "error", "message": "Solver backend crashed; details were added to the transcript."})
 
             # Final panel refresh at run end.
             self._update_panels(latest_tool=_latest_tool_markdown(self.handler), latest_code=_latest_code_markdown(self.handler))

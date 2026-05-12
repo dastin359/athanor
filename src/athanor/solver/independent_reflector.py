@@ -12,6 +12,7 @@ Supports two backends:
 
 import base64
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional, Callable
@@ -66,6 +67,16 @@ def _get_gemini_client():
         project=project_id,
         location=location,
     )
+
+
+def _get_openai_client():
+    """Create an OpenAI client."""
+    from openai import OpenAI
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is required for OpenAI reflector")
+    return OpenAI(api_key=api_key)
 
 
 def _anthropic_cache_control(ttl: str) -> dict[str, str]:
@@ -142,6 +153,273 @@ def _extract_claude_usage(raw_response) -> dict[str, int | bool]:
     meta.setdefault("usage_thinking_tokens", 0)
     meta["usage_total_tokens"] = int(meta["usage_input_tokens"]) + int(meta["usage_output_tokens"])
     return meta
+
+
+def _openai_reasoning_effort(effort: str | None) -> str:
+    requested = str(effort or "high").strip().lower()
+    if requested in {"none", "minimal", "low", "medium", "high", "xhigh"}:
+        return requested
+    if requested == "max":
+        return "xhigh"
+    return "high"
+
+
+def _openai_supports_streaming(model_name: str) -> bool:
+    normalized = str(model_name or "").removeprefix("openai/").strip().lower()
+    return normalized != "gpt-5.5-pro"
+
+
+def _is_transient_openai_error(err: Exception) -> bool:
+    payload = " ".join(
+        str(part)
+        for part in [
+            getattr(err, "message", None),
+            getattr(err, "body", None),
+            getattr(err, "response", None),
+            getattr(err, "args", None),
+            err,
+        ]
+        if part
+    ).lower()
+    status_candidates = [
+        getattr(err, "status_code", None),
+        getattr(getattr(err, "response", None), "status_code", None),
+    ]
+    for candidate in status_candidates:
+        try:
+            status = int(candidate)
+        except Exception:
+            continue
+        if status in {408, 409, 425, 429} or status >= 500:
+            return True
+    return any(
+        marker in payload
+        for marker in (
+            "rate limit reached",
+            "rate limit",
+            "too many requests",
+            "retry after",
+            "please try again in",
+            "temporarily unavailable",
+            "service unavailable",
+            "server overloaded",
+            "overloaded",
+        )
+    )
+
+
+def _openai_retry_delay_seconds(err: Exception, attempt: int) -> float:
+    headers = getattr(getattr(err, "response", None), "headers", None)
+    if headers:
+        for key in ("retry-after-ms", "x-ratelimit-reset-tokens-ms"):
+            try:
+                value = headers.get(key)
+            except Exception:
+                value = None
+            if value:
+                try:
+                    return min(30.0, max(0.5, float(value) / 1000.0))
+                except Exception:
+                    pass
+        for key in ("retry-after", "x-ratelimit-reset-tokens"):
+            try:
+                value = headers.get(key)
+            except Exception:
+                value = None
+            if value:
+                try:
+                    return min(30.0, max(0.5, float(value)))
+                except Exception:
+                    pass
+    match = re.search(r"try again in\s+([0-9]+(?:\.[0-9]+)?)s", str(err), re.IGNORECASE)
+    if match:
+        try:
+            return min(30.0, max(0.5, float(match.group(1)) + 0.25))
+        except Exception:
+            pass
+    return min(12.0, max(0.5, 2 ** attempt))
+
+
+def _extract_openai_reasoning_summary(raw_response) -> str:
+    chunks: list[str] = []
+    for item in getattr(raw_response, "output", []) or []:
+        if getattr(item, "type", None) != "reasoning":
+            continue
+        for part in getattr(item, "summary", []) or []:
+            text = getattr(part, "text", None)
+            if text:
+                chunks.append(str(text))
+    return "\n".join(chunks)
+
+
+def _extract_openai_usage(raw_response) -> dict[str, int | bool]:
+    usage = getattr(raw_response, "usage", None)
+    if usage is None:
+        return {}
+
+    def _read_int(paths: list[str]) -> int:
+        for path in paths:
+            try:
+                cursor = usage
+                for part in path.split("."):
+                    cursor = getattr(cursor, part, None)
+                value = int(cursor or 0)
+                if value > 0:
+                    return value
+            except Exception:
+                continue
+        return 0
+
+    input_tokens = _read_int(["input_tokens", "prompt_tokens"])
+    output_tokens = _read_int(["output_tokens", "completion_tokens"])
+    reasoning_tokens = _read_int(["output_tokens_details.reasoning_tokens", "reasoning_tokens"])
+    total_tokens = _read_int(["total_tokens"])
+    return {
+        "usage_input_tokens": input_tokens,
+        "usage_uncached_input_tokens": input_tokens,
+        "usage_cache_write_tokens": 0,
+        "usage_cache_read_tokens": 0,
+        "usage_output_tokens": output_tokens,
+        "usage_thinking_tokens": reasoning_tokens,
+        "usage_output_includes_reasoning": True,
+        "usage_reasoning_tokens_reported": reasoning_tokens > 0,
+        "usage_total_tokens": total_tokens or input_tokens + output_tokens,
+    }
+
+
+def _extract_openai_response_id(raw_response) -> str:
+    if raw_response is None:
+        return ""
+    if isinstance(raw_response, dict):
+        return str(raw_response.get("id") or "")
+    return str(getattr(raw_response, "id", "") or "")
+
+
+def _openai_reflector_stateful_window(
+    message_history: list[dict] | None,
+    current_user_content: str | list[dict[str, object]],
+) -> tuple[str, list[dict[str, object]]]:
+    previous_response_id = ""
+    previous_response_idx = -1
+    history = list(message_history or [])
+    for idx, turn in enumerate(history):
+        if str(turn.get("role") or "") != "assistant":
+            continue
+        response_id = str(turn.get("openai_response_id") or "").strip()
+        if response_id:
+            previous_response_id = response_id
+            previous_response_idx = idx
+
+    tail_history = history[previous_response_idx + 1 :] if previous_response_id else history
+    input_items: list[dict[str, object]] = []
+    for turn in tail_history:
+        role = "assistant" if turn.get("role") == "assistant" else "user"
+        input_items.append({"role": role, "content": str(turn.get("content") or "")})
+    input_items.append({"role": "user", "content": current_user_content})
+    return previous_response_id, input_items
+
+
+def _openai_reflector_content_blocks(
+    *,
+    is_followup: bool,
+    transform_hypothesis: str,
+    code: str,
+    test_inputs: list,
+    test_predictions: list,
+    training_accuracy: str = "",
+    ambiguity_rationale: str = "",
+    candidate_predictions: list[dict] | None = None,
+    train_inputs: list | None = None,
+    train_outputs: list | None = None,
+    train_input_images: list[str] | None = None,
+    train_output_images: list[str] | None = None,
+    test_input_images: list[str] | None = None,
+    reviewer_response: str = "",
+) -> list[dict[str, object]]:
+    blocks: list[dict[str, object]] = []
+    normalized_candidates = list(candidate_predictions or [])
+    if not normalized_candidates:
+        normalized_candidates = [
+            {
+                "index": i,
+                "candidates": [pred] if pred is not None else [],
+                "candidate_images": [],
+            }
+            for i, pred in enumerate(test_predictions or [])
+        ]
+
+    if not is_followup:
+        train_input_images = train_input_images or []
+        train_output_images = train_output_images or []
+        if train_inputs and train_outputs:
+            blocks.append({"type": "input_text", "text": "## Training Input/Output Pairs\n"})
+            for i, (inp, out) in enumerate(zip(train_inputs, train_outputs)):
+                blocks.append({"type": "input_text", "text": f"### Training Example {i}\n**Input Grid:** {inp}"})
+                if i < len(train_input_images) and train_input_images[i]:
+                    blocks.append({
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{train_input_images[i]}",
+                        "detail": "high",
+                    })
+                blocks.append({"type": "input_text", "text": f"**Expected Output Grid:** {out}"})
+                if i < len(train_output_images) and train_output_images[i]:
+                    blocks.append({
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{train_output_images[i]}",
+                        "detail": "high",
+                    })
+
+        blocks.append({"type": "input_text", "text": "## Test Inputs\n"})
+        test_input_images = test_input_images or []
+        for i, inp in enumerate(test_inputs):
+            blocks.append({"type": "input_text", "text": f"### Test Example {i}\n**Input Grid:** {inp}"})
+            if i < len(test_input_images) and test_input_images[i]:
+                blocks.append({
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{test_input_images[i]}",
+                    "detail": "high",
+                })
+
+        submission_parts = ["## Solver Submission\n"]
+    else:
+        blocks.append({"type": "input_text", "text": _FOLLOWUP_PREAMBLE})
+        submission_parts = ["## Solver Submission\n"]
+
+    if training_accuracy:
+        submission_parts.append(f"**Training Accuracy:** {training_accuracy}\n")
+    submission_parts.append(
+        f"**Hypothesis:** {transform_hypothesis or '(No hypothesis provided)'}\n\n"
+        f"**solve() Code:**\n```python\n{code or '(No code provided)'}\n```"
+    )
+    if ambiguity_rationale:
+        submission_parts.append(f"\n\n**Ambiguity Description:** {ambiguity_rationale}")
+    if reviewer_response:
+        submission_parts.append(f"\n\n**Response to Reviewer:** {reviewer_response}")
+    blocks.append({"type": "input_text", "text": "".join(submission_parts)})
+
+    blocks.append({"type": "input_text", "text": "## Candidate Outputs By Test Example\n"})
+    for row in normalized_candidates:
+        test_index = row.get("index", "?")
+        blocks.append({"type": "input_text", "text": f"### Test Example {test_index}"})
+        if row.get("error"):
+            blocks.append({"type": "input_text", "text": f"Error: {row.get('error')}"})
+            continue
+        candidate_images = row.get("candidate_images", []) or []
+        for candidate_idx, pred in enumerate(row.get("candidates", []) or [], start=1):
+            blocks.append({"type": "input_text", "text": f"{_ordinal(candidate_idx)} candidate: {pred}"})
+            image_offset = candidate_idx - 1
+            if image_offset < len(candidate_images) and candidate_images[image_offset]:
+                blocks.append({
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{candidate_images[image_offset]}",
+                    "detail": "high",
+                })
+
+    blocks.append({
+        "type": "input_text",
+        "text": "---\nPlease perform your independent review following the guidelines in your system prompt.",
+    })
+    return blocks
 
 
 _REFLECTOR_CODE_EXECUTION_SECTION = """
@@ -718,6 +996,222 @@ def reflect_with_claude(
 
 
 # ---------------------------------------------------------------------------
+# OpenAI reflector
+# ---------------------------------------------------------------------------
+
+def reflect_with_openai(
+    transform_hypothesis: str,
+    code: str,
+    test_inputs: list,
+    test_predictions: list,
+    training_accuracy: str = "100% on training set",
+    ambiguity_rationale: str = "",
+    candidate_predictions: list[dict] | None = None,
+    train_inputs: list | None = None,
+    train_outputs: list | None = None,
+    train_input_images: list[str] | None = None,
+    train_output_images: list[str] | None = None,
+    test_input_images: list[str] | None = None,
+    test_prediction_images: list[str] | None = None,
+    model_name: str = "gpt-5.5",
+    thinking_effort: str = "xhigh",
+    emit: Optional[Callable] = None,
+    stream_emit: Optional[Callable] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
+    message_history: list[dict] | None = None,
+    reviewer_response: str = "",
+) -> dict:
+    """Run independent reflection using OpenAI Responses."""
+    if emit is None:
+        def emit(msg): pass
+    if should_stop is None:
+        def should_stop() -> bool:
+            return False
+
+    client = _get_openai_client()
+    system_prompt = _load_reflector_prompt()
+    is_followup = bool(message_history)
+
+    if is_followup:
+        user_text_for_history = _build_reflector_followup_message(
+            transform_hypothesis=transform_hypothesis,
+            code=code,
+            test_predictions=test_predictions,
+            training_accuracy=training_accuracy,
+            ambiguity_rationale=ambiguity_rationale,
+            candidate_predictions=candidate_predictions,
+            reviewer_response=reviewer_response,
+        )
+    else:
+        user_text_for_history = _build_reflector_user_message(
+            transform_hypothesis=transform_hypothesis,
+            code=code,
+            train_inputs=train_inputs,
+            train_outputs=train_outputs,
+            test_inputs=test_inputs,
+            test_predictions=test_predictions,
+            training_accuracy=training_accuracy,
+            ambiguity_rationale=ambiguity_rationale,
+            candidate_predictions=candidate_predictions,
+            reviewer_response=reviewer_response,
+        )
+
+    current_user_content = _openai_reflector_content_blocks(
+        is_followup=is_followup,
+        transform_hypothesis=transform_hypothesis,
+        code=code,
+        test_inputs=test_inputs,
+        test_predictions=test_predictions,
+        training_accuracy=training_accuracy,
+        ambiguity_rationale=ambiguity_rationale,
+        candidate_predictions=candidate_predictions,
+        train_inputs=train_inputs,
+        train_outputs=train_outputs,
+        train_input_images=train_input_images,
+        train_output_images=train_output_images,
+        test_input_images=test_input_images,
+        reviewer_response=reviewer_response,
+    )
+
+    previous_response_id, input_items = _openai_reflector_stateful_window(
+        message_history,
+        current_user_content,
+    )
+
+    try:
+        from .events import EventType
+    except ImportError:
+        from events import EventType
+
+    use_streaming = _openai_supports_streaming(model_name)
+    emit(
+        "   🤖 Calling OpenAI reflector"
+        + (" (streaming)..." if use_streaming else " (non-streaming; model does not support streaming)...")
+    )
+    response_text = ""
+    thinking_text = ""
+    final_response = None
+    stopped_mid_stream = False
+    reasoning_effort = _openai_reasoning_effort(thinking_effort)
+    reasoning: dict[str, str] = {"effort": reasoning_effort}
+    if reasoning_effort != "none":
+        reasoning["summary"] = "detailed"
+
+    try:
+        request_kwargs = {
+            "model": str(model_name or "gpt-5.5").removeprefix("openai/"),
+            "instructions": system_prompt,
+            "input": input_items,
+            "reasoning": reasoning,
+            "max_output_tokens": 128000,
+            "store": True,
+        }
+        if previous_response_id:
+            request_kwargs["previous_response_id"] = previous_response_id
+        for attempt in range(1, 4):
+            try:
+                if not use_streaming:
+                    final_response = client.responses.create(**request_kwargs)
+                    thinking_text = _extract_openai_reasoning_summary(final_response)
+                    response_text = str(getattr(final_response, "output_text", "") or "")
+                    if stream_emit and thinking_text:
+                        try:
+                            stream_emit(EventType.THINKING, thinking_text, {"reflector": True})
+                        except Exception:
+                            pass
+                    if stream_emit and response_text:
+                        try:
+                            stream_emit(EventType.TEXT, response_text, {"reflector": True})
+                        except Exception:
+                            pass
+                else:
+                    stream = client.responses.create(**request_kwargs, stream=True)
+                    for event in stream:
+                        if should_stop():
+                            stopped_mid_stream = True
+                            break
+                        etype = str(getattr(event, "type", "") or "")
+                        if etype == "response.output_text.delta":
+                            delta = str(getattr(event, "delta", "") or "")
+                            response_text += delta
+                            if stream_emit and delta:
+                                try:
+                                    stream_emit(EventType.TEXT, delta, {"reflector": True})
+                                except Exception:
+                                    pass
+                        elif etype == "response.reasoning_summary_text.delta":
+                            delta = str(getattr(event, "delta", "") or "")
+                            thinking_text += delta
+                            if stream_emit and delta:
+                                try:
+                                    stream_emit(EventType.THINKING, delta, {"reflector": True})
+                                except Exception:
+                                    pass
+                        elif etype == "response.completed":
+                            final_response = getattr(event, "response", None)
+                        elif etype == "error":
+                            raise RuntimeError(str(getattr(event, "message", "") or event))
+                break
+            except Exception as e:
+                if should_stop():
+                    raise
+                if _is_transient_openai_error(e) and attempt < 3:
+                    delay = _openai_retry_delay_seconds(e, attempt)
+                    emit(f"   ⚠️ OpenAI reflector retry {attempt}/2 in {delay:.1f}s: {e}")
+                    time.sleep(delay)
+                    response_text = ""
+                    thinking_text = ""
+                    final_response = None
+                    continue
+                raise
+    except Exception as e:
+        return {
+            "verdict": "ERROR",
+            "confidence": 0,
+            "findings": [],
+            "concerns": [f"API error: {e}"],
+            "thinking": "",
+            "response": f"Error calling OpenAI: {e}",
+            "raw": None,
+        }
+
+    if stopped_mid_stream:
+        return {
+            "verdict": "ERROR",
+            "confidence": 0,
+            "findings": [],
+            "concerns": ["Reflection interrupted by stop request"],
+            "thinking": "",
+            "response": response_text,
+            "raw": final_response,
+        }
+
+    if final_response is not None and not response_text:
+        response_text = str(getattr(final_response, "output_text", "") or "")
+    if final_response is not None and not thinking_text:
+        thinking_text = _extract_openai_reasoning_summary(final_response)
+        if stream_emit and thinking_text:
+            try:
+                stream_emit(EventType.THINKING, thinking_text, {"reflector": True})
+            except Exception:
+                pass
+
+    result = _parse_reflector_response(response_text, thinking_text, final_response)
+    if final_response is not None:
+        result.update(_extract_openai_usage(final_response))
+
+    openai_response_id = _extract_openai_response_id(final_response)
+    updated_history = list(message_history or [])
+    updated_history.append({"role": "user", "content": user_text_for_history})
+    assistant_entry = {"role": "assistant", "content": response_text, "provider": "openai"}
+    if openai_response_id:
+        assistant_entry["openai_response_id"] = openai_response_id
+    updated_history.append(assistant_entry)
+    result["message_history"] = updated_history
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Gemini reflector
 # ---------------------------------------------------------------------------
 
@@ -1117,7 +1611,7 @@ def run_independent_reflection(
     """Run independent reflection using the configured provider.
 
     Args:
-        reflector_provider: "claude" or "gemini"
+        reflector_provider: "claude", "gemini", or "openai"
         reflector_model: Model name override. Defaults per provider.
         reflector_thinking_effort: Thinking effort level ("low", "medium", "high", "max").
         Other args: passed through to backend-specific function.
@@ -1125,6 +1619,30 @@ def run_independent_reflection(
     Returns:
         dict with verdict, confidence, findings, concerns, thinking, response, raw
     """
+    if reflector_provider == "openai":
+        model = reflector_model or "gpt-5.5"
+        return reflect_with_openai(
+            transform_hypothesis=transform_hypothesis,
+            code=code,
+            test_inputs=test_inputs,
+            test_predictions=test_predictions,
+            training_accuracy=training_accuracy,
+            ambiguity_rationale=ambiguity_rationale,
+            candidate_predictions=candidate_predictions,
+            train_inputs=train_inputs,
+            train_outputs=train_outputs,
+            train_input_images=train_input_images,
+            train_output_images=train_output_images,
+            test_input_images=test_input_images,
+            test_prediction_images=test_prediction_images,
+            model_name=model,
+            thinking_effort=reflector_thinking_effort or "xhigh",
+            emit=emit,
+            stream_emit=stream_emit,
+            should_stop=should_stop,
+            message_history=message_history,
+            reviewer_response=reviewer_response,
+        )
     if reflector_provider == "gemini":
         model = reflector_model or "gemini-3.1-pro-preview"
         return reflect_with_gemini(

@@ -17,6 +17,7 @@ import time
 import copy
 import threading
 import ctypes
+import re
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -450,6 +451,7 @@ PHOENIX_PROJECT = "ARC_Athanor"
 
 # Get API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
 
 # Fireworks Anthropic-compatible endpoint base URL
@@ -659,6 +661,24 @@ def _is_fireworks_model(model_name: str) -> bool:
     )
 
 
+def _is_openai_model(model_name: str) -> bool:
+    """Check if the model should be routed through OpenAI Responses."""
+    lowered = str(model_name or "").strip().lower()
+    return (
+        lowered.startswith("gpt-")
+        or lowered.startswith("o1")
+        or lowered.startswith("o3")
+        or lowered.startswith("o4")
+        or lowered.startswith("openai/")
+    )
+
+
+def _openai_supports_streaming(model_name: str) -> bool:
+    """Return whether this OpenAI model supports streamed Responses output."""
+    lowered = str(model_name or "").removeprefix("openai/").strip().lower()
+    return lowered != "gpt-5.5-pro"
+
+
 def _is_glm_model(model_name: str) -> bool:
     """Check if model is GLM family (currently treated as text-only)."""
     lowered = str(model_name or "").lower()
@@ -696,6 +716,67 @@ def _error_payload_text(value) -> str:
         return json.dumps(value, default=str)
     except Exception:
         return str(value)
+
+
+def _error_status_code(err: Exception) -> int | None:
+    """Best-effort extraction of HTTP status code from SDK/provider errors."""
+    for candidate in (
+        getattr(err, "status_code", None),
+        getattr(getattr(err, "response", None), "status_code", None),
+    ):
+        try:
+            status = int(candidate)
+        except Exception:
+            continue
+        if status > 0:
+            return status
+    return None
+
+
+def _transient_retry_delay_seconds(err: Exception, attempt: int) -> float:
+    """Honor provider retry hints when available, otherwise use exponential backoff."""
+    headers = getattr(getattr(err, "response", None), "headers", None)
+    if headers:
+        for key in ("retry-after-ms", "x-ratelimit-reset-tokens-ms"):
+            try:
+                value = headers.get(key)
+            except Exception:
+                value = None
+            if value:
+                try:
+                    return min(30.0, max(0.5, float(value) / 1000.0))
+                except Exception:
+                    pass
+        for key in ("retry-after", "x-ratelimit-reset-tokens"):
+            try:
+                value = headers.get(key)
+            except Exception:
+                value = None
+            if value:
+                try:
+                    return min(30.0, max(0.5, float(value)))
+                except Exception:
+                    pass
+
+    payload_text = " ".join(
+        part
+        for part in [
+            _error_payload_text(getattr(err, "body", None)),
+            _error_payload_text(getattr(err, "response", None)),
+            _error_payload_text(getattr(err, "message", None)),
+            _error_payload_text(getattr(err, "args", None)),
+            str(err),
+        ]
+        if part
+    )
+    retry_match = re.search(r"try again in\s+([0-9]+(?:\.[0-9]+)?)s", payload_text, re.IGNORECASE)
+    if retry_match:
+        try:
+            return min(30.0, max(0.5, float(retry_match.group(1)) + 0.25))
+        except Exception:
+            pass
+
+    return min(12.0, max(0.5, 2 ** attempt))
 
 
 def _is_transient_api_error(err: Exception) -> bool:
@@ -755,6 +836,36 @@ def _is_transient_api_error(err: Exception) -> bool:
         )
         if any(marker in payload_text for marker in transient_markers):
             return True
+
+    status = _error_status_code(err)
+    if status in {408, 409, 425, 429} or (status is not None and status >= 500):
+        return True
+
+    payload_text = " ".join(
+        part
+        for part in [
+            _error_payload_text(getattr(err, "body", None)),
+            _error_payload_text(getattr(err, "response", None)),
+            _error_payload_text(getattr(err, "message", None)),
+            _error_payload_text(getattr(err, "args", None)),
+            str(err),
+        ]
+        if part
+    ).lower()
+    transient_markers = (
+        "rate limit reached",
+        "rate_limit",
+        "rate limit",
+        "too many requests",
+        "retry after",
+        "please try again in",
+        "temporarily unavailable",
+        "service unavailable",
+        "server overloaded",
+        "overloaded",
+    )
+    if any(marker in payload_text for marker in transient_markers):
+        return True
 
     return False
 
@@ -1248,6 +1359,405 @@ def _extract_usage_meta(usage) -> dict:
     meta.setdefault("reasoning_tokens_reported", False)
 
     return meta
+
+
+def _openai_reasoning_effort(effort: str | None) -> str:
+    """Map Athanor effort labels onto OpenAI Responses reasoning efforts."""
+    requested = str(effort or "medium").strip().lower()
+    if requested in {"none", "minimal", "low", "medium", "high", "xhigh"}:
+        return requested
+    if requested == "max":
+        return "xhigh"
+    return "medium"
+
+
+def _openai_tool_schemas(tools: list | None) -> list[dict[str, Any]]:
+    """Convert Anthropic-style tool schemas to OpenAI Responses function tools."""
+    converted: list[dict[str, Any]] = []
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        converted.append(
+            {
+                "type": "function",
+                "name": str(tool.get("name") or ""),
+                "description": str(tool.get("description") or ""),
+                "parameters": copy.deepcopy(tool.get("input_schema") or {"type": "object"}),
+                "strict": False,
+            }
+        )
+    return converted
+
+
+def _openai_content_parts(content: Any, *, role: str) -> str | list[dict[str, Any]]:
+    """Convert Anthropic-style message content into Responses message content."""
+    if isinstance(content, str):
+        return content
+
+    parts: list[dict[str, Any]] = []
+    if not isinstance(content, list):
+        return str(content or "")
+
+    text_type = "output_text" if role == "assistant" else "input_text"
+    for block in content:
+        if not isinstance(block, dict):
+            text = str(block or "")
+            if text.strip():
+                parts.append({"type": text_type, "text": text})
+            continue
+
+        btype = block.get("type")
+        if btype == "text":
+            text = str(block.get("text") or "")
+            if text.strip():
+                parts.append({"type": text_type, "text": text})
+        elif btype == "image" and role == "user":
+            source = block.get("source") if isinstance(block.get("source"), dict) else {}
+            data = str(source.get("data") or "")
+            media_type = str(source.get("media_type") or "image/png")
+            if data:
+                parts.append(
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{media_type};base64,{data}",
+                        "detail": "high",
+                    }
+                )
+
+    return parts or ""
+
+
+def _openai_input_from_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Athanor's internal Anthropic-style transcript to Responses input items."""
+    items: list[dict[str, Any]] = []
+
+    for msg in messages or []:
+        role = str(msg.get("role") or "user")
+        content = msg.get("content", "")
+
+        if isinstance(content, list):
+            tool_results = [
+                b for b in content
+                if isinstance(b, dict) and b.get("type") == "tool_result"
+            ]
+            non_tool_blocks = [
+                b for b in content
+                if not (isinstance(b, dict) and b.get("type") == "tool_result")
+            ]
+
+            if tool_results:
+                for result in tool_results:
+                    result_content = result.get("content", "")
+                    if isinstance(result_content, list):
+                        output = "\n".join(
+                            str(part.get("text") or part.get("content") or "")
+                            if isinstance(part, dict) else str(part)
+                            for part in result_content
+                        )
+                    else:
+                        output = str(result_content or "")
+                items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": str(result.get("tool_use_id") or ""),
+                        "output": output,
+                        "status": "completed",
+                    }
+                )
+                content = non_tool_blocks
+
+        if role == "assistant" and isinstance(content, list):
+            text_blocks = [
+                b for b in content
+                if isinstance(b, dict) and b.get("type") == "text" and str(b.get("text") or "").strip()
+            ]
+            if text_blocks:
+                items.append(
+                    {
+                        "role": "assistant",
+                        "content": "".join(str(b.get("text") or "") for b in text_blocks),
+                    }
+                )
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                call_input = block.get("input")
+                try:
+                    arguments = json.dumps(call_input or {})
+                except Exception:
+                    arguments = "{}"
+                call_id = str(block.get("id") or "")
+                function_item = {
+                    "type": "function_call",
+                    "call_id": call_id,
+                    "name": str(block.get("name") or ""),
+                    "arguments": arguments,
+                    "status": "completed",
+                }
+                item_id = str(block.get("openai_item_id") or "")
+                if item_id.startswith("fc"):
+                    function_item["id"] = item_id
+                items.append(function_item)
+            continue
+
+        if content:
+            converted = _openai_content_parts(content, role=role)
+            if converted:
+                items.append({"role": role, "content": converted})
+
+    return items
+
+
+def _extract_openai_response_text(response: Any) -> str:
+    text = str(getattr(response, "output_text", "") or "")
+    if text:
+        return text
+
+    chunks: list[str] = []
+    for item in getattr(response, "output", []) or []:
+        if getattr(item, "type", None) != "message":
+            continue
+        for part in getattr(item, "content", []) or []:
+            part_text = getattr(part, "text", None)
+            if part_text:
+                chunks.append(str(part_text))
+    return "".join(chunks)
+
+
+def _extract_openai_reasoning_summary(response: Any) -> str:
+    chunks: list[str] = []
+    for item in getattr(response, "output", []) or []:
+        if getattr(item, "type", None) != "reasoning":
+            continue
+        for part in getattr(item, "summary", []) or []:
+            text = getattr(part, "text", None)
+            if text:
+                chunks.append(str(text))
+    return "\n".join(chunks)
+
+
+def _extract_openai_tool_uses(response: Any) -> list[dict[str, Any]]:
+    tool_uses: list[dict[str, Any]] = []
+    for item in getattr(response, "output", []) or []:
+        if getattr(item, "type", None) != "function_call":
+            continue
+        arguments_raw = str(getattr(item, "arguments", "") or "{}")
+        try:
+            parsed_input = json.loads(arguments_raw) if arguments_raw else {}
+        except Exception:
+            parsed_input = {"raw": arguments_raw}
+        call_id = str(getattr(item, "call_id", None) or getattr(item, "id", "") or "")
+        item_id = str(getattr(item, "id", "") or "")
+        tool_uses.append(
+            {
+                "id": call_id,
+                "openai_item_id": item_id,
+                "name": str(getattr(item, "name", "") or ""),
+                "input": parsed_input,
+            }
+        )
+    return tool_uses
+
+
+def _extract_openai_usage_meta(response: Any) -> dict[str, Any]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    meta = _extract_usage_meta(usage)
+    total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+    if total_tokens > 0:
+        meta["total_tokens"] = total_tokens
+    return meta
+
+
+def _extract_openai_response_id(response: Any) -> str:
+    """Return a Responses API response id suitable for previous_response_id."""
+    if response is None:
+        return ""
+    if isinstance(response, dict):
+        return str(response.get("id") or "")
+    return str(getattr(response, "id", "") or "")
+
+
+def _openai_stateful_request_window(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    """Find the latest stored OpenAI response and return only the unseen local delta.
+
+    OpenAI Responses keeps server-side state behind previous_response_id. Once
+    we have a response id, the next request should send only the new local items
+    after that response: usually function_call_output blocks or an orchestrator
+    follow-up user message. Fresh context resets naturally because those message
+    lists do not contain an openai_response_id.
+    """
+    previous_response_id = ""
+    previous_response_idx = -1
+    for idx, msg in enumerate(messages or []):
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        response_id = str(msg.get("openai_response_id") or "").strip()
+        if response_id:
+            previous_response_id = response_id
+            previous_response_idx = idx
+
+    if previous_response_id:
+        return previous_response_id, list((messages or [])[previous_response_idx + 1 :])
+    return "", list(messages or [])
+
+
+def _openai_responses_params(
+    *,
+    model_name: str,
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int,
+    tools: list | None = None,
+    thinking_effort: str | None = None,
+) -> dict[str, Any]:
+    previous_response_id, input_messages = _openai_stateful_request_window(messages)
+    params: dict[str, Any] = {
+        "model": model_name.removeprefix("openai/"),
+        "instructions": system_prompt,
+        "input": _openai_input_from_messages(input_messages),
+        "max_output_tokens": max_tokens,
+        "store": True,
+    }
+    if previous_response_id:
+        params["previous_response_id"] = previous_response_id
+    if tools:
+        params["tools"] = _openai_tool_schemas(tools)
+        params["parallel_tool_calls"] = True
+    if thinking_effort:
+        reasoning_effort = _openai_reasoning_effort(thinking_effort)
+        reasoning: dict[str, str] = {"effort": reasoning_effort}
+        if reasoning_effort != "none":
+            reasoning["summary"] = "detailed"
+        params["reasoning"] = reasoning
+    return params
+
+
+def _run_openai_responses_request(
+    *,
+    client: Any,
+    params: dict[str, Any],
+    use_streaming: bool,
+    emit: Callable,
+    should_stop: Callable[[], bool],
+    in_reflection_mode: bool,
+    emit_tool_call_deltas: bool,
+) -> tuple[str, str, list[dict[str, Any]], Any, dict[str, Any], bool]:
+    """Run one OpenAI Responses request and normalize it to Athanor turn data."""
+    if not use_streaming:
+        response = client.responses.create(**params)
+        thinking = _extract_openai_reasoning_summary(response)
+        if thinking:
+            emit(EventType.THINKING, thinking)
+        text = _extract_openai_response_text(response)
+        if text:
+            emit(EventType.TEXT, text)
+        tool_uses = [] if in_reflection_mode else _extract_openai_tool_uses(response)
+        for tu in tool_uses:
+            emit(EventType.TOOL_CALL, "", {"name": tu["name"], "id": tu["id"], "input": tu["input"]})
+        return text, thinking, tool_uses, response, _extract_openai_usage_meta(response), False
+
+    response_obj = None
+    aggregated_text = ""
+    aggregated_thinking = ""
+    args_by_item: dict[str, str] = {}
+    tool_meta_by_item: dict[str, dict[str, str]] = {}
+    tool_uses_by_id: dict[str, dict[str, Any]] = {}
+    stopped_mid_stream = False
+
+    stream = client.responses.create(**params, stream=True)
+    for event in stream:
+        if should_stop():
+            stopped_mid_stream = True
+            break
+        etype = str(getattr(event, "type", "") or "")
+        if etype == "response.output_text.delta":
+            delta = str(getattr(event, "delta", "") or "")
+            if delta:
+                aggregated_text += delta
+                emit(EventType.TEXT, delta)
+        elif etype == "response.reasoning_summary_text.delta":
+            delta = str(getattr(event, "delta", "") or "")
+            if delta:
+                aggregated_thinking += delta
+                emit(EventType.THINKING, delta)
+        elif etype == "response.output_item.added":
+            item = getattr(event, "item", None)
+            if getattr(item, "type", None) == "function_call":
+                item_id = str(getattr(item, "id", "") or "")
+                if item_id:
+                    tool_meta_by_item[item_id] = {
+                        "id": str(getattr(item, "call_id", "") or item_id),
+                        "openai_item_id": item_id,
+                        "name": str(getattr(item, "name", "") or ""),
+                    }
+        elif etype == "response.function_call_arguments.delta":
+            item_id = str(getattr(event, "item_id", "") or "")
+            args_by_item[item_id] = args_by_item.get(item_id, "") + str(getattr(event, "delta", "") or "")
+            meta = tool_meta_by_item.get(item_id, {})
+            if emit_tool_call_deltas and meta.get("id") and meta.get("name"):
+                emit(
+                    EventType.TOOL_CALL,
+                    "",
+                    {
+                        "name": meta["name"],
+                        "id": meta["id"],
+                        "_partial": True,
+                        "input_raw": args_by_item[item_id],
+                    },
+                )
+        elif etype == "response.function_call_arguments.done":
+            item_id = str(getattr(event, "item_id", "") or "")
+            args_by_item[item_id] = str(getattr(event, "arguments", "") or args_by_item.get(item_id, ""))
+            name = str(getattr(event, "name", "") or "")
+            if item_id and name:
+                tool_meta_by_item.setdefault(item_id, {})["name"] = name
+        elif etype == "response.output_item.done":
+            item = getattr(event, "item", None)
+            if getattr(item, "type", None) == "function_call":
+                item_id = str(getattr(item, "id", "") or "")
+                call_id = str(getattr(item, "call_id", "") or item_id)
+                arguments_raw = str(getattr(item, "arguments", "") or args_by_item.get(item_id, "{}") or "{}")
+                try:
+                    parsed_input = json.loads(arguments_raw) if arguments_raw else {}
+                except Exception:
+                    parsed_input = {"raw": arguments_raw}
+                if not in_reflection_mode:
+                    tool_uses_by_id[item_id or call_id] = {
+                        "id": call_id,
+                        "openai_item_id": item_id,
+                        "name": str(getattr(item, "name", "") or tool_uses_by_id.get(item_id, {}).get("name", "")),
+                        "input": parsed_input,
+                    }
+        elif etype == "response.completed":
+            response_obj = getattr(event, "response", None)
+        elif etype == "error":
+            raise RuntimeError(str(getattr(event, "message", "") or event))
+
+    if stopped_mid_stream:
+        return aggregated_text, aggregated_thinking, [], response_obj, {}, True
+
+    if response_obj is not None:
+        final_thinking = _extract_openai_reasoning_summary(response_obj)
+        if final_thinking and not aggregated_thinking:
+            aggregated_thinking = final_thinking
+            emit(EventType.THINKING, final_thinking)
+        final_text = _extract_openai_response_text(response_obj)
+        if final_text and not aggregated_text:
+            aggregated_text = final_text
+            emit(EventType.TEXT, final_text)
+        if not tool_uses_by_id:
+            for tu in _extract_openai_tool_uses(response_obj):
+                tool_uses_by_id[tu["id"]] = tu
+        usage_meta = _extract_openai_usage_meta(response_obj)
+    else:
+        usage_meta = {}
+
+    tool_uses = list(tool_uses_by_id.values()) if not in_reflection_mode else []
+    for tu in tool_uses:
+        emit(EventType.TOOL_CALL, "", {"name": tu["name"], "id": tu["id"], "input": tu["input"]})
+    return aggregated_text, aggregated_thinking, tool_uses, response_obj, usage_meta, False
 
 
 
@@ -1863,10 +2373,22 @@ def run_orchestration(
         phoenix.set_attribute("content_length", len(system_prompt))
         phoenix.set_attribute("role", "system")
 
-    # Initialize API client (Anthropic or Fireworks Anthropic-compatible)
+    # Initialize API client (Anthropic, Fireworks Anthropic-compatible, or OpenAI Responses)
     _use_fireworks = _is_fireworks_model(model_name)
+    _use_openai = _is_openai_model(model_name)
     image_source_mode = "base64"
-    if _use_fireworks:
+    if _use_openai:
+        emit(EventType.SYSTEM, "\n🔐 Initializing OpenAI client (Responses API)...")
+        if not OPENAI_API_KEY:
+            emit(EventType.ERROR, "OPENAI_API_KEY environment variable is required for OpenAI models")
+            if root_span_ctx:
+                root_span_ctx.__exit__(None, None, None)
+            return {'solved': False, 'error': 'No OpenAI API key', 'iterations': 0}
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        if str(model_name).lower().startswith("openai/"):
+            model_name = str(model_name).split("/", 1)[1]
+    elif _use_fireworks:
         emit(EventType.SYSTEM, "\n🔐 Initializing Fireworks client (Anthropic-compatible)...")
         if not FIREWORKS_API_KEY:
             emit(EventType.ERROR, "FIREWORKS_API_KEY environment variable is required for Kimi models")
@@ -3076,7 +3598,12 @@ def run_orchestration(
                                 img_out = render_grid_to_base64(ex["output"])
                                 _reflector_train_output_images.append(img_out or "")
 
-                        _refl_model_label = reflector_model or ("claude-opus-4-6" if reflector_provider == "claude" else "gemini-3.1-pro-preview")
+                        _default_refl_models = {
+                            "claude": "claude-opus-4-6",
+                            "gemini": "gemini-3.1-pro-preview",
+                            "openai": "gpt-5.5",
+                        }
+                        _refl_model_label = reflector_model or _default_refl_models.get(reflector_provider, "claude-opus-4-6")
 
                         # Build per-candidate training accuracy breakdown
                         _ckpt_solution_result = selected_solution_branch.get("result", {}) if isinstance(selected_solution_branch.get("result"), dict) else {}
@@ -3249,7 +3776,8 @@ def run_orchestration(
 
                             current_context_tokens = last_actual_input_tokens + last_actual_output_tokens
                             _bypass_compression = (
-                                current_context_tokens == 0
+                                _use_openai
+                                or current_context_tokens == 0
                                 or current_context_tokens < compression_bypass_threshold
                             )
 
@@ -3315,7 +3843,8 @@ def run_orchestration(
 
                             current_context_tokens = last_actual_input_tokens + last_actual_output_tokens
                             _bypass_compression = (
-                                current_context_tokens == 0
+                                _use_openai
+                                or current_context_tokens == 0
                                 or current_context_tokens < compression_bypass_threshold
                             )
 
@@ -3556,6 +4085,7 @@ def run_orchestration(
             estimated_tokens >= compression_threshold
             and compression_count < 3
             and not in_reflection_mode
+            and not _use_openai
             and not _skip_first_turn_compression_for_kimi
             and not _skip_auto_compression_after_hypothesis
             and not _skip_auto_compression_after_guidance
@@ -3943,11 +4473,28 @@ def run_orchestration(
                     api_params["thinking"] = _adaptive_thinking_config(model_name)
                     api_params["output_config"] = {"effort": normalized_effort}
 
-            api_params = _apply_anthropic_prompt_caching(
-                api_params,
-                use_fireworks=_use_fireworks,
-                include_tools=not in_reflection_mode,
-            )
+            if _use_openai:
+                _effective_effort = semi_cot_thinking_effort if _is_first_fresh_turn else thinking_effort
+                _openai_streaming = bool(use_streaming and _openai_supports_streaming(model_name))
+                if use_streaming and not _openai_streaming:
+                    emit(
+                        EventType.SYSTEM,
+                        f"   ℹ️ {model_name} does not support streaming responses; using non-streaming Responses API.",
+                    )
+                api_params = _openai_responses_params(
+                    model_name=model_name,
+                    system_prompt=system_prompt,
+                    messages=api_params["messages"],
+                    max_tokens=model_max_tokens,
+                    tools=api_params.get("tools"),
+                    thinking_effort=_effective_effort if use_extended_thinking else None,
+                )
+            else:
+                api_params = _apply_anthropic_prompt_caching(
+                    api_params,
+                    use_fireworks=_use_fireworks,
+                    include_tools=not in_reflection_mode,
+                )
 
             # Log raw request to Phoenix
             try:
@@ -3955,7 +4502,7 @@ def run_orchestration(
             except Exception:
                 raw_request = str(api_params)
 
-            with phoenix.span("📤 Raw Anthropic Request", {"turn": turn, "iteration": iteration}, force_flush=True):
+            with phoenix.span("📤 Raw Model Request", {"turn": turn, "iteration": iteration}, force_flush=True):
                 phoenix.set_attribute("raw_request_head", raw_request[:50000])
                 phoenix.set_attribute(
                     "raw_request_tail", raw_request[-50000:] if len(raw_request) > 50000 else raw_request)
@@ -3964,7 +4511,155 @@ def run_orchestration(
 
             # Make API call
             _stopped_mid_stream = False
-            if use_streaming:
+            if _use_openai:
+                _openai_transient_exhausted = False
+                with phoenix.span(f"turn_{turn}", {"turn": turn, "iteration": iteration}, force_flush=True):
+                    invocation_params = {
+                        k: v for k, v in api_params.items() if k not in ("input", "instructions")}
+                    try:
+                        inv_str = json.dumps(invocation_params, default=str)
+                    except Exception:
+                        inv_str = str(invocation_params)
+                    if len(inv_str) > 200000:
+                        inv_str = inv_str[:200000]
+
+                    with phoenix.span(
+                        "Responses",
+                        {
+                            "openinference.span.kind": "LLM",
+                            "llm.system": "openai",
+                            "llm.model_name": model_name,
+                            "turn": turn,
+                        },
+                        force_flush=True,
+                    ):
+                        phoenix.set_attribute("llm.invocation_parameters", inv_str)
+                        phoenix.set_attribute("input.mime_type", "application/json")
+                        phoenix.set_attribute("input.value", raw_request)
+                        _oi_set_input_messages(phoenix, system_prompt, messages_to_use)
+
+                        _openai_attempt = 0
+                        _openai_max_retries = _max_retries_for_model(False)
+                        aggregated_text = ""
+                        aggregated_thinking = ""
+                        tool_uses = []
+                        final_message_obj = None
+                        usage_meta = {}
+                        openai_response_id = ""
+                        while True:
+                            _openai_attempt += 1
+                            try:
+                                aggregated_text, aggregated_thinking, tool_uses, final_message_obj, usage_meta, _stopped_mid_stream = _run_openai_responses_request(
+                                    client=client,
+                                    params=api_params,
+                                    use_streaming=_openai_streaming,
+                                    emit=emit,
+                                    should_stop=should_stop,
+                                    in_reflection_mode=in_reflection_mode,
+                                    emit_tool_call_deltas=emit_tool_call_deltas,
+                                )
+                                openai_response_id = _extract_openai_response_id(final_message_obj)
+                                break
+                            except Exception as _openai_err:
+                                _is_transient = _is_transient_api_error(_openai_err)
+                                if should_stop():
+                                    emit(EventType.SYSTEM, "\n⏹️ Stop requested — aborting request.")
+                                    _stopped_mid_stream = True
+                                    break
+                                if _is_transient and _openai_attempt <= _openai_max_retries:
+                                    _backoff = _transient_retry_delay_seconds(_openai_err, _openai_attempt)
+                                    emit(
+                                        EventType.SYSTEM,
+                                        f"   ⚠️ OpenAI request retry {_openai_attempt}/{_openai_max_retries}: {_openai_err}. Waiting {_backoff:.1f}s...",
+                                    )
+                                    for _ in range(max(1, int(_backoff * 10))):
+                                        if should_stop():
+                                            _stopped_mid_stream = True
+                                            break
+                                        time.sleep(0.1)
+                                    if _stopped_mid_stream:
+                                        break
+                                    continue
+                                if _is_transient:
+                                    emit(
+                                        EventType.SYSTEM,
+                                        f"   ❌ OpenAI request failed after {_openai_max_retries} retries: {_openai_err}",
+                                    )
+                                    _openai_transient_exhausted = True
+                                    break
+                                raise
+
+                        if usage_meta:
+                            last_actual_input_tokens = int(usage_meta.get("billed_input_tokens", usage_meta.get("input_tokens", 0)) or 0)
+                            last_actual_output_tokens = int(usage_meta.get("output_tokens", 0) or 0)
+                            emit(EventType.SYSTEM, "", {"_token_usage": usage_meta})
+
+                        if not _openai_transient_exhausted and not _stopped_mid_stream:
+                            _oi_set_output_messages(phoenix, aggregated_text, tool_uses)
+                            phoenix.set_attribute("output.mime_type", "application/json")
+                        if final_message_obj is not None and not _openai_transient_exhausted:
+                            try:
+                                raw_final = final_message_obj.model_dump()
+                            except Exception:
+                                raw_final = {"type": str(type(final_message_obj)), "repr": repr(final_message_obj)}
+                            phoenix.set_large_attribute("raw_final_message", raw_final)
+                            try:
+                                out_str = json.dumps(raw_final, default=str)
+                            except Exception:
+                                out_str = str(raw_final)
+                            if len(out_str) > 200000:
+                                out_str = out_str[:200000]
+                            phoenix.set_attribute("output.value", out_str)
+
+                if openai_response_id and not _openai_transient_exhausted and not _stopped_mid_stream:
+                    emit(EventType.SYSTEM, "", {"_openai_response_id": openai_response_id})
+
+                if _openai_transient_exhausted:
+                    consecutive_transient_turn_failures += 1
+                    emit(
+                        EventType.SYSTEM,
+                        (
+                            "   ⚠️ OpenAI request hit a transient provider limit/error. "
+                            f"Consecutive transient turn failures: {consecutive_transient_turn_failures}/"
+                            f"{MAX_CONSECUTIVE_TRANSIENT_TURN_FAILURES}. Retrying on next turn."
+                        ),
+                    )
+                    if consecutive_transient_turn_failures >= MAX_CONSECUTIVE_TRANSIENT_TURN_FAILURES:
+                        emit(
+                            EventType.ERROR,
+                            (
+                                "Stopping run after repeated transient OpenAI request failures "
+                                f"({consecutive_transient_turn_failures} consecutive turns)."
+                            ),
+                        )
+                        break
+                    time.sleep(min(8, 2 ** min(consecutive_transient_turn_failures, 3)))
+                    turn -= 1
+                    continue
+                else:
+                    consecutive_transient_turn_failures = 0
+
+                if _stopped_mid_stream:
+                    emit(EventType.SYSTEM, "\n⏹️ Stopped mid-stream — skipping incomplete turn.")
+                    continue
+
+                thinking_signature = ""
+                assistant_content = []
+                if aggregated_text:
+                    assistant_content.append({"type": "text", "text": aggregated_text})
+                for tu in tool_uses:
+                    assistant_content.append({
+                        "type": "tool_use",
+                        "id": tu["id"],
+                        "name": tu["name"],
+                        "input": tu["input"],
+                        **({"openai_item_id": tu["openai_item_id"]} if tu.get("openai_item_id") else {}),
+                    })
+                function_calls = [
+                    {"id": tu["id"], "name": tu["name"], "input": tu["input"]} for tu in tool_uses
+                ]
+
+            elif use_streaming:
                 aggregated_text = ""
                 aggregated_thinking = ""
                 thinking_signature = ""
@@ -4130,6 +4825,7 @@ def run_orchestration(
                                 )
                                 break
                             time.sleep(min(8, 2 ** min(consecutive_transient_turn_failures, 3)))
+                            turn -= 1
                             continue
                         else:
                             consecutive_transient_turn_failures = 0
@@ -4371,8 +5067,10 @@ def run_orchestration(
 
             # Append assistant message to history
             if assistant_content:
-                messages.append(
-                    {"role": "assistant", "content": assistant_content})
+                assistant_message = {"role": "assistant", "content": assistant_content}
+                if _use_openai and openai_response_id:
+                    assistant_message["openai_response_id"] = openai_response_id
+                messages.append(assistant_message)
 
             # Handle no tool calls
             if not function_calls:
@@ -4515,7 +5213,8 @@ def run_orchestration(
 
                             current_context_tokens = last_actual_input_tokens + last_actual_output_tokens
                             _bypass_compression = (
-                                current_context_tokens == 0
+                                _use_openai
+                                or current_context_tokens == 0
                                 or current_context_tokens < compression_bypass_threshold
                             )
 
@@ -4848,7 +5547,8 @@ def run_orchestration(
 
                         current_context_tokens = last_actual_input_tokens + last_actual_output_tokens
                         _bypass_compression = (
-                            current_context_tokens == 0
+                            _use_openai
+                            or current_context_tokens == 0
                             or current_context_tokens < compression_bypass_threshold
                         )
 
@@ -5763,7 +6463,12 @@ def run_orchestration(
                     # ── Create new canvas for independent reflector ────────
                     # The reflector has a completely fresh context (different system prompt,
                     # no solver chat history). Emit a canvas boundary to visually separate it.
-                    _refl_model_label = reflector_model or ("claude-opus-4-6" if reflector_provider == "claude" else "gemini-3.1-pro-preview")
+                    _default_refl_models = {
+                        "claude": "claude-opus-4-6",
+                        "gemini": "gemini-3.1-pro-preview",
+                        "openai": "gpt-5.5",
+                    }
+                    _refl_model_label = reflector_model or _default_refl_models.get(reflector_provider, "claude-opus-4-6")
                     
                     # Load reflector system prompt and build user message
                     try:
@@ -5919,7 +6624,8 @@ def run_orchestration(
 
                         current_context_tokens = last_actual_input_tokens + last_actual_output_tokens
                         _bypass_compression = (
-                            current_context_tokens == 0
+                            _use_openai
+                            or current_context_tokens == 0
                             or current_context_tokens < compression_bypass_threshold
                         )
                         emit(EventType.SYSTEM,
@@ -6118,6 +6824,7 @@ def run_orchestration(
                          f"Stopping run after {consecutive_transient_turn_failures} consecutive transient failures.")
                     break
                 time.sleep(min(8, 2 ** min(consecutive_transient_turn_failures, 3)))
+                turn -= 1
                 continue
             emit(EventType.ERROR,
                  f"Error in orchestration loop: {e}\n{traceback.format_exc()}")

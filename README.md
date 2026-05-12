@@ -48,6 +48,7 @@ export ARC_DATA_ROOT=/path/to/ARC-AGI-2
 3. Set model credentials.
 ```bash
 export ANTHROPIC_API_KEY=...
+export OPENAI_API_KEY=...       # for OpenAI Responses API models
 export GOOGLE_API_KEY=...       # for the Gemini independent reflector
 ```
 
