@@ -36,6 +36,7 @@ __all__ = [
     "test_samples",
     "verify",
     "check",
+    "load_solution",
     "show",
     "diff",
     "shape",
@@ -354,6 +355,38 @@ def check(solve_fn: Callable[[Grid], Any], *, verbose: bool = True) -> dict[str,
             else:
                 print("== write solution/hypothesis.md, then `python gate.py submit`")
     return summary
+
+
+def load_solution(path: str | os.PathLike[str] | None = None) -> Callable[[Grid], Any]:
+    """Return the ``solve`` function from ``solution/solve.py``.
+
+    The doctrine asks you to run your verified invariants against your own test
+    predictions before accepting — which means loading the solution you just
+    wrote into an exploration script. Do it with this, from anywhere::
+
+        from arc import load_solution, test_samples
+        solve = load_solution()
+        prediction = solve(test_samples[0]['input'])
+
+    Resolves relative to the workspace, so the calling script works from any
+    directory.
+    """
+    import importlib.util
+
+    target = Path(path) if path else (WORKSPACE / "solution" / "solve.py")
+    if not target.is_absolute():
+        target = WORKSPACE / target
+    if not target.is_file():
+        raise FileNotFoundError(f"No solution at {target}")
+
+    spec = importlib.util.spec_from_file_location("athanor_candidate_solution", target)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    solve = getattr(module, "solve", None)
+    if not callable(solve):
+        raise AttributeError(f"{target} does not define a callable solve(grid)")
+    return solve
 
 
 def _looks_like_candidate_list(value: Any) -> bool:

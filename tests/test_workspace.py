@@ -323,6 +323,57 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "0/3 training examples reproduced" in result.stdout
 
+    def test_load_solution_returns_the_shipped_solve(self, workspace):
+        """The doctrine's prediction-sanity step needs the real solution.
+
+        Before this existed the only route was `sys.path.insert(0, 'solution')`
+        — a relative path that broke arc.py's "import it the same way from
+        anywhere" contract, in the one place the doctrine sends you.
+        """
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import load_solution, test_samples\n"
+            "solve = load_solution()\n"
+            "print(solve(test_samples[0]['input']))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "[[3, 0, 6], [0, 4, 0]]"
+
+    def test_load_solution_works_from_another_directory(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        script = workspace.root / "explore" / "fromelsewhere.py"
+        script.write_text(
+            "from arc import load_solution\nprint(callable(load_solution()))\n", encoding="utf-8"
+        )
+        result = subprocess.run(
+            [_sys.executable, str(script)],
+            cwd=str(workspace.root.parent),  # deliberately not the workspace
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "True"
+
+    def test_load_solution_reports_a_missing_file_clearly(self, workspace):
+        result = self._run(workspace, "from arc import load_solution\nload_solution()\n")
+        assert result.returncode != 0
+        assert "FileNotFoundError" in result.stderr
+
+    def test_load_solution_reports_a_missing_solve_clearly(self, workspace):
+        (workspace.root / "solution" / "solve.py").write_text("x = 1\n", encoding="utf-8")
+        result = self._run(workspace, "from arc import load_solution\nload_solution()\n")
+        assert result.returncode != 0
+        assert "does not define a callable solve" in result.stderr
+
     def test_toolkit_exposes_no_transformation_primitives(self, workspace):
         """Handing over rotate/flood-fill/objects would change what is measured."""
         import importlib.util

@@ -45,7 +45,7 @@ They are separate on purpose.
 2. **Sub-rule testing.** Most ARC rules are compositional. Test the pieces separately: "is the output always the input's bounding box?", "is the recolouring a fixed permutation?", "does every object move by the same offset?"
 3. **Invariant capture.** When a check passes across *all* training pairs, record it with `arc.verify("...", condition)`. Verified invariants are the load-bearing structure of your search — they constrain what any correct rule can do, they survive context compaction, and `python gate.py status` replays them.
 4. **Implementation debugging.** `python dryrun.py` scores `solution/solve.py` against every training pair for free (`arc.check(fn)` does the same for a function you already have in hand). Iterate there until it passes, then submit.
-5. **Prediction sanity.** Before accepting, run your verified invariants against your own *test* predictions. A prediction that violates an invariant every training output satisfies is a bug you can catch without ever seeing the answer.
+5. **Prediction sanity.** Before accepting, run your verified invariants against your own *test* predictions. A prediction that violates an invariant every training output satisfies is a bug you can catch without ever seeing the answer. Load the shipped solution — not a copy of it — with `arc.load_solution()`, which returns the `solve` function from `solution/solve.py`.
 
 ### Hypothesis discipline
 

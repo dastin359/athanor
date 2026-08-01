@@ -92,9 +92,25 @@ semantics worth knowing:
 ## Working habits
 
 - One question per exploration script, named for the question it answers.
-- If you import one `explore/` script from another, guard its report behind
+- Shared helpers go in `explore/lib.py`; another script imports them with
+  `from lib import ...` (scripts under `explore/` can import each other by bare
+  module name). Guard any report in an imported script behind
   `if __name__ == "__main__":` — otherwise its output re-prints into every
   downstream run and pollutes your context.
+- **`solution/solve.py` must stand alone**, so helpers you developed in
+  `explore/lib.py` have to be inlined into it. That duplication can drift: an
+  experiment can pass against `lib.py` while the code that actually ships says
+  something subtly different. After inlining, re-check the shipped version —
+  `__PYTHON__ dryrun.py` runs `solution/solve.py` itself, and
+  `arc.load_solution()` hands you that same function for use in an experiment.
+- To audit your own predictions, load the real solution rather than a copy:
+
+  ```python
+  from arc import load_solution, test_samples, verify
+  solve = load_solution()
+  prediction = solve(test_samples[0]["input"])
+  ```
+
 - Print summaries, not grids you have already seen. A boolean, a count, or a
   set of shapes usually carries the finding.
 
