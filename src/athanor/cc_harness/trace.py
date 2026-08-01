@@ -4,11 +4,28 @@ This is the instrument for the improvement loop. A score tells you whether a run
 worked; a trace tells you *why*, and specifically whether the doctrine was
 followed or merely satisfied.
 
-The metric that matters here is **verification density** — exploration scripts
-and recorded invariants per formal iteration. The whole thesis of this harness is
-that a claim established by execution beats a claim asserted in prose. An agent
-that submits repeatedly having verified nothing is not doing code-as-verification
-no matter what its hypothesis says, and that shows up here as a number.
+The headline number is **verification density** — exploration scripts and
+recorded invariants per formal iteration. An agent that submits repeatedly
+having verified nothing is not doing code-as-verification no matter what its
+hypothesis says, and that shows up here as a number.
+
+Be clear about what that number is and is not. Measured across every run in the
+experiment, density **does not predict correctness**:
+
+    group           n   invariants   before 1st submission   scripts
+    fully solved   21         14.9                    11.8      12.0
+    not fully       4         13.5                    11.0      13.5
+
+The failures verify as much as the successes. The best attempt on the one pair
+this variant never solved recorded 18 invariants, 14 of them before its first
+submission — above the average for a success — and still missed.
+
+So density measures **compliance with the doctrine, not quality of reasoning**.
+It is the right instrument for its actual job: catching a run that guessed first
+and verified afterwards. It is the wrong thing to optimise, and a high number is
+not evidence a run went well. One caveat in the other direction: every run here
+complies, so the experiment contains no low-density runs and cannot say whether
+density *below* this range would hurt.
 
 Everything is read from the workspace, so a trace can be taken from a finished
 run, an abandoned one, or one still in progress.

@@ -1103,3 +1103,54 @@ many runs per arm, not one. The value here is that it is the first evidence
 pointing at *which component* does the work — and it points away from the system
 prompt and toward the toolkit, which is the opposite of what the doctrine's
 prominence in this repo would suggest.
+
+---
+
+## A negative result: verification density does not predict correctness
+
+`cc trace`'s headline metric is verification density — invariants and
+exploration scripts per formal iteration — and the module's own docstring called
+it "the metric that matters". Measured across every run in the experiment, it
+does not discriminate at all.
+
+| group | n | invariants | before 1st submission | scripts | iterations |
+|---|---:|---:|---:|---:|---:|
+| fully solved | 21 | 14.9 | 11.8 | 12.0 | 1.2 |
+| not fully solved | 4 | 13.5 | 11.0 | 13.5 | 1.2 |
+
+The failures verify as much as the successes, and by some measures more. The
+individual misses:
+
+| task | score | invariants | before 1st | scripts |
+|---|---|---:|---:|---:|
+| `88e364bc` | 1/2 | 13 | 11 | 14 |
+| `9bbf930d` | 0/1 | 18 | 14 | 13 |
+| `9bbf930d` | 0/1 | 7 | 7 | 11 |
+| `faa9f03d` | 0/1 | 16 | 12 | 16 |
+
+`9bbf930d`'s better attempt established 18 invariants, 14 of them before its
+first submission — *above* the average for a solved task — and missed anyway.
+
+**What this means.** Density measures compliance with the doctrine, not quality
+of reasoning. It is the right instrument for the job it can actually do:
+catching a run that guessed first and verified afterwards, which is the failure
+mode the doctrine targets and which has never occurred here. It is the wrong
+thing to optimise, and a high number is not evidence a run went well.
+
+The docstring has been corrected, because a metric that describes itself as "the
+metric that matters" invites exactly the mistake of reading it as a quality
+signal.
+
+**Caveat in the other direction.** Every run in this experiment complies with the
+doctrine — even the ablated ones, which verified heavily without being asked to.
+So there are no low-density runs to compare against, and this says nothing about
+whether density *below* the 11–14 range would hurt. The finding is that within
+the range these agents actually produce, more verification does not mean more
+correct.
+
+That is consistent with the sharper thing the failures have in common, which is
+not a shortage of executed checks but a *missing question*: on `88e364bc` the
+ablated agent measured that markers-blocking made no difference and never asked
+the corner-cutting question; on `9bbf930d` both attempts verified their rule
+thoroughly and hedged on the wrong axis. Executed verification compresses the
+cost of answering a question. It does not tell you which question to ask.
