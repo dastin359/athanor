@@ -393,6 +393,66 @@ def run_task(
     return record
 
 
+def resume_task(
+    run_dir: Path | str,
+    *,
+    config: CCRunConfig | None = None,
+    dataset_root: str | None = None,
+    dataset_split: str = "public_eval",
+    event_callback: EventCallback | None = None,
+) -> dict[str, Any]:
+    """Relaunch a solver into an existing workspace that was never accepted.
+
+    Crash recovery works for the same reason compaction recovery does: the
+    workspace is the state. The new agent inherits the iteration ledger, the
+    verified invariants and NOTES.md, and spends only the budget that is left.
+    """
+    from . import prompt as prompt_mod
+    from .workspace import load_workspace
+
+    run_dir = Path(run_dir).resolve()
+    workspace = load_workspace(run_dir / "workspace")
+    state = workspace.read_state()
+
+    if state.get("accepted"):
+        return {**rescore_run(run_dir, dataset_root=dataset_root, dataset_split=dataset_split),
+                "resumed": False, "resume_skipped": "already accepted"}
+
+    used = len(state.get("iterations") or [])
+    if used >= int(state.get("max_iterations") or 0):
+        return {**rescore_run(run_dir, dataset_root=dataset_root, dataset_split=dataset_split),
+                "resumed": False, "resume_skipped": "budget exhausted"}
+
+    if config is not None:
+        workspace.config = config
+    workspace.initial_prompt = prompt_mod.build_resume_prompt(
+        task_id=workspace.task_id,
+        state=state,
+        interpreter=state.get("interpreter"),
+    )
+
+    system_prompt_file = run_dir / "system_prompt.md"
+    if not system_prompt_file.is_file():
+        system_prompt_file.write_text(workspace.system_prompt, encoding="utf-8")
+
+    attempt = len(list(run_dir.glob("stream*.jsonl")))
+    outcome = _launch(
+        workspace,
+        stream_path=run_dir / f"stream.resume{attempt}.jsonl",
+        log_path=run_dir / f"run.resume{attempt}.log",
+        system_prompt_file=system_prompt_file,
+        event_callback=event_callback,
+    )
+    record = rescore_run(run_dir, dataset_root=dataset_root, dataset_split=dataset_split)
+    record["resumed"] = True
+    record["resume_run"] = outcome
+    result_message = outcome.get("result_message") or {}
+    if result_message.get("total_cost_usd") is not None:
+        record["cost_usd"] = float(record.get("cost_usd") or 0.0) + float(result_message["total_cost_usd"])
+    (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return record
+
+
 def collect_outcome(workspace: Workspace, puzzle_data: dict[str, Any]) -> dict[str, Any]:
     """Read the gate's ledger out of a workspace and score it."""
     state = workspace.read_state()

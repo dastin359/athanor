@@ -214,6 +214,86 @@ class TestRescoringFromAWorkspace:
         assert runner.discover_runs(tmp_path / "nope") == []
 
 
+class TestResume:
+    """Crash recovery works because the workspace is the state."""
+
+    def test_resume_prompt_carries_the_surviving_state(self, workspace):
+        from athanor.cc_harness import prompt as prompt_mod
+
+        write_solution(workspace, code="def solve(grid):\n    return grid\n")
+        gate.cmd_submit(workspace.root)
+
+        text = prompt_mod.build_resume_prompt(
+            task_id="mirror01",
+            state=workspace.read_state(),
+            interpreter={"command": "python"},
+        )
+        assert "gate.py status" in text
+        assert "1 of 4 submissions" in text
+        assert "3 left" in text
+        assert "scored 0/3 on training" in text
+        assert ".athanor/iterations/1/report.txt" in text
+        # It must be explicit about what did not survive, or the new agent will
+        # assume the previous one's unrecorded conclusions still hold.
+        assert "did NOT survive" in text
+        assert "re-derived" in text
+
+    def test_resume_is_skipped_for_an_accepted_run(self, workspace, task_json, monkeypatch):
+        from athanor.cc_harness import runner as runner_mod
+
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+
+        monkeypatch.setattr(
+            runner_mod, "_launch", lambda *a, **k: pytest.fail("must not relaunch an accepted run")
+        )
+        record = runner.resume_task(workspace.root.parent, dataset_root=task_json.parent)
+        assert record["resumed"] is False
+        assert record["resume_skipped"] == "already accepted"
+        assert record["score"]["solved"] is True
+
+    def test_resume_is_skipped_when_the_budget_is_gone(self, workspace, task_json, monkeypatch):
+        from athanor.cc_harness import runner as runner_mod
+
+        for n in range(4):  # fixture budget is 4
+            write_solution(
+                workspace,
+                hypothesis=LONG_HYPOTHESIS + f"\nAttempt {n}.\n",
+                code=f"def solve(grid):\n    return grid  # {n}\n",
+            )
+            gate.cmd_submit(workspace.root)
+
+        monkeypatch.setattr(
+            runner_mod, "_launch", lambda *a, **k: pytest.fail("must not relaunch with no budget")
+        )
+        record = runner.resume_task(workspace.root.parent, dataset_root=task_json.parent)
+        assert record["resumed"] is False
+        assert record["resume_skipped"] == "budget exhausted"
+
+    def test_resume_relaunches_and_rescores(self, workspace, task_json, monkeypatch):
+        from athanor.cc_harness import runner as runner_mod
+
+        write_solution(workspace, code="def solve(grid):\n    return grid\n")
+        gate.cmd_submit(workspace.root)
+
+        def fake_launch(ws, **kwargs):
+            # Stand in for the agent finishing the job.
+            write_solution(ws, hypothesis=LONG_HYPOTHESIS + "\nCorrected.\n")
+            gate.cmd_submit(ws.root)
+            (ws.root / "solution" / "audit.md").write_text(AUDIT, encoding="utf-8")
+            gate.cmd_accept(ws.root)
+            return {"result_message": {"total_cost_usd": 0.5}, "returncode": 0}
+
+        monkeypatch.setattr(runner_mod, "_launch", fake_launch)
+        record = runner.resume_task(workspace.root.parent, dataset_root=task_json.parent)
+        assert record["resumed"] is True
+        assert record["accepted"] is True
+        assert record["iterations_used"] == 2
+        assert record["score"]["solved"] is True
+
+
 class TestOutcomeCollection:
     def test_accepted_run_is_collected_and_scored(self, workspace):
         write_solution(workspace)

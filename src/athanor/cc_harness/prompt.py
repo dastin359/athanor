@@ -210,6 +210,62 @@ def describe_environment(interpreter: dict[str, Any] | None) -> str:
     return "\n".join(lines)
 
 
+def build_resume_prompt(
+    *,
+    task_id: str,
+    state: dict[str, Any],
+    interpreter: dict[str, Any] | None = None,
+) -> str:
+    """Opening message for a solver picking up an interrupted run.
+
+    This is the crash-recovery case, and it works for the same reason context
+    compaction does: the workspace *is* the state. A fresh agent inherits the
+    iteration ledger, the verified invariants, and NOTES.md — everything the
+    previous one established — and only the untracked exploratory interpreter
+    state is gone.
+    """
+    python = (interpreter or {}).get("command") or "python"
+    iterations = state.get("iterations") or []
+    used = len(iterations)
+    budget = int(state.get("max_iterations") or 0)
+    last = iterations[-1] if iterations else None
+
+    parts = [
+        f"You are resuming an interrupted run on ARC-AGI-2 task `{task_id}`.",
+        "",
+        f"A previous solver worked on this and stopped without accepting. It used "
+        f"{used} of {budget} submissions, so you have {budget - used} left.",
+        "",
+        f"Start by running `{python} gate.py status`. That prints everything that "
+        "survived: the submission history, every invariant established with "
+        "arc.verify(), the last hypothesis, and the tail of NOTES.md. Read "
+        "./CLAUDE.md and ./NOTES.md next.",
+        "",
+        "What did NOT survive: the previous agent's reasoning, its transcript, and any "
+        "live Python state. Anything you need that is not in the ledger or NOTES.md has "
+        "to be re-derived by running a script under explore/. Do not assume an "
+        "unrecorded claim is true because it looks like something you would have checked.",
+    ]
+    if last:
+        outcome = (
+            "passed training"
+            if last.get("all_train_correct")
+            else f"scored {last.get('train_correct')}/{last.get('train_total')} on training"
+        )
+        parts += [
+            "",
+            f"The last submission (#{last.get('iteration')}) {outcome}. Its report is at "
+            f".athanor/iterations/{last.get('iteration')}/report.txt, with the exact "
+            "hypothesis and code alongside it.",
+        ]
+    parts += [
+        "",
+        "Then continue the loop as CLAUDE.md describes, and finish with "
+        f"`{python} gate.py accept`.",
+    ]
+    return "\n".join(parts)
+
+
 def build_workspace_claude_md(
     *,
     task_id: str,

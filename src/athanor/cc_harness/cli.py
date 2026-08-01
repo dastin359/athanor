@@ -9,7 +9,14 @@ from pathlib import Path
 from athanor.data import list_tasks
 
 from .config import CCRunConfig
-from .runner import default_event_printer, discover_runs, rescore_run, run_batch, run_task
+from .runner import (
+    default_event_printer,
+    discover_runs,
+    rescore_run,
+    resume_task,
+    run_batch,
+    run_task,
+)
 from .scoring import aggregate, format_aggregate
 from .trace import collect_trace, format_trace
 
@@ -191,6 +198,22 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resume(args: argparse.Namespace) -> int:
+    failures = 0
+    for run_dir in args.run_dirs:
+        record = resume_task(
+            run_dir,
+            dataset_root=args.dataset_root,
+            dataset_split=args.split,
+            event_callback=None if args.quiet else default_event_printer,
+        )
+        if record.get("resume_skipped"):
+            print(f"  {record.get('task_id')}: skipped ({record['resume_skipped']})")
+        _print_task_result(record)
+        failures += 0 if record.get("accepted") else 1
+    return 0 if failures == 0 else 1
+
+
 def cmd_trace(args: argparse.Namespace) -> int:
     targets = [Path(p) for p in args.paths]
     if not targets:
@@ -233,6 +256,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     batch.add_argument("--limit", type=int, default=None, help="Cap the number of tasks.")
     _add_common_arguments(batch)
     batch.set_defaults(func=cmd_batch)
+
+    resume = sub.add_parser(
+        "resume",
+        help="Relaunch a solver into an existing workspace that was never accepted.",
+    )
+    resume.add_argument("run_dirs", nargs="+", help="Run directories to resume.")
+    resume.add_argument("--dataset-root", default=None)
+    resume.add_argument("--split", default="public_eval")
+    resume.add_argument("--quiet", action="store_true")
+    resume.set_defaults(func=cmd_resume)
 
     trace = sub.add_parser(
         "trace",
