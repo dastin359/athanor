@@ -12,10 +12,14 @@ from athanor.cc_harness.trace import collect_trace, format_trace
 AUDIT = "CONFIDENCE: 4\nDECISION: ACCEPT\nREASONS:\nReflection about the vertical axis.\n"
 
 
-def _verify(workspace, claim: str, holds: bool, at: str, source: str = "explore/probe.py") -> None:
+def _verify(workspace, claim: str, holds: bool, at: str, source: str = "explore/probe.py",
+            mode: str | None = None) -> None:
     ledger = workspace.root / ".athanor" / "invariants.jsonl"
+    entry = {"at": at, "claim": claim, "holds": holds, "source": source}
+    if mode:
+        entry["mode"] = mode
     with ledger.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"at": at, "claim": claim, "holds": holds, "source": source}) + "\n")
+        handle.write(json.dumps(entry) + "\n")
 
 
 class TestCollect:
@@ -67,6 +71,21 @@ class TestVerificationDensity:
         trace = collect_trace(workspace.root)
         assert trace["invariants_held"] == 1
         assert trace["invariants_refuted"] == 1
+
+    def test_a_ruled_out_hypothesis_is_not_counted_as_an_established_fact(self, workspace):
+        """The metric this experiment records every round conflated the two.
+
+        A refute() entry that holds is a dead end, not a verified fact — but it
+        counted under invariants_held, so a run with five dead ends and nothing
+        established scored the same as one with five established facts.
+        """
+        _verify(workspace, "outputs keep the shape", True, "2026-01-01T00:00:00+00:00")
+        _verify(workspace, "8-connectivity explains it", True, "2026-01-01T00:00:01+00:00",
+                mode="ruled_out")
+        trace = collect_trace(workspace.root)
+        assert trace["invariants_held"] == 1
+        assert trace["invariants_ruled_out"] == 1
+        assert trace["invariants_refuted"] == 0
 
     def test_counts_facts_established_before_the_first_submission(self, workspace):
         _verify(workspace, "verified early", True, "2020-01-01T00:00:00+00:00")

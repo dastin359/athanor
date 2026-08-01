@@ -93,6 +93,22 @@ gate replays it. Four things worth knowing:
   no source to read, so the entry carries the claim and nothing about what ran,
   and the constant-condition check cannot fire at all. Such entries are marked
   `NO EVIDENCE`.
+- **Sweeping many readings at once? Record it as one entry with `arc.sweep()`.**
+  When you score a dozen candidate rules against training in a single pass, that
+  is one finding, not a dozen — and it is usually the highest-yield thing in the
+  run.
+
+  ```python
+  survivors = arc.sweep("what sets the hub centre colour?", {
+      "largest blob":      fits(largest_blob),
+      "longest branch":    fits(longest_branch),
+      "most branch cells": fits(most_branch_cells),
+  })
+  ```
+
+  If more than one reading survives, that is a **hedging obligation** you have
+  found before spending any budget: run the survivors through `arc.rival()` and
+  see which diverge on the test input.
 - **Retraction.** If a check was wrong — a tautology, say — withdraw it with
   `arc.verify("the claim", retract=True)`, or `arc.refute("the claim",
   retract=True)` for a dead end. It then disappears from `gate.py status`. Do this rather than leaving it: the ledger is only worth reading
@@ -113,8 +129,11 @@ rival("diagonals may not brush a wall corner", strict)
 `rival()` scores it against every training pair, and if `solution/solve.py`
 already exists it compares predictions and tells you immediately whether the
 rival diverges — that is, whether spending the second slot on it would change
-anything. Register rivals **before** your first dry run, so the answer arrives
-while acting on it is still free.
+anything. Register rivals **once `solve.py` exists but before you submit**:
+that comparison is the useful half of the output, and without a solution to
+compare against all `rival()` can say is that there is nothing to compare yet.
+Everything before submission is free, so there is no cost to waiting until you
+have something to hold the rival up against.
 
 This exists because of a measured loss. A solver ruled out exactly such a rival
 by taking a regularity that held across the training *outputs* and applying it
@@ -132,8 +151,14 @@ a proof; killing it with an out-of-sample extrapolation is not.
   which. (A refusal here does not cost an iteration.)
 - `solve(grid)` receives **only** its argument. It cannot reach the puzzle data,
   and embedding a training output as a literal will be reported.
-- `solve(grid)` returns one grid for training inputs; up to __MAX_CANDIDATES__
-  candidate grids are allowed for test inputs, and only for a real ambiguity.
+- `solve(grid)` should return one grid for training inputs; up to
+  __MAX_CANDIDATES__ candidate grids are allowed for test inputs, and only for a
+  real ambiguity. Returning extras on a training input is **not refused** —
+  training validation simply scores the first and discards the rest — but an
+  ambiguity on an example whose correct output you can *see* means the rule is
+  unfinished. Resolve it rather than hedging. You do not need to restructure
+  `solve()` to guarantee a single training candidate; you need the first one to
+  be right.
 - Budget: **__MAX_ITERATIONS__ submissions.** Over the last __BEST_EFFORT__ of
   them the train-100% requirement is lifted so you can commit to your best
   reading of the puzzle.

@@ -36,6 +36,7 @@ __all__ = [
     "test_samples",
     "verify",
     "refute",
+    "sweep",
     "check",
     "load_solution",
     "solution_module",
@@ -184,6 +185,96 @@ def _condition_evidence() -> tuple[str, bool, bool, bool]:
         except Exception:  # noqa: BLE001 - unparse is a convenience, not a contract
             return "", literal, opaque, False
     return "", False, False, False
+
+
+def sweep(
+    question: str,
+    outcomes: dict[str, bool | Callable[[], Any]],
+    note: str | None = None,
+    *,
+    key: str | None = None,
+) -> list[str]:
+    """Record a whole tie-break sweep as one ledger entry.
+
+    ``outcomes`` maps each candidate reading's name to whether it **survives**
+    the evidence — a bool, or a callable returning one::
+
+        survivors = sweep("what sets the hub centre colour?", {
+            "largest blob":        fits(largest_blob),
+            "longest branch":      fits(longest_branch),
+            "most branch cells":   fits(most_branch_cells),
+        })
+
+    Returns the survivors, and prints the count. The point is what happens when
+    there is more than one: a sweep that leaves several readings alive *is* the
+    hedging obligation, discovered before any budget is spent, and it names the
+    exact readings to register with :func:`rival`.
+
+    This exists because the ledger was losing the highest-yield work in the run.
+    Three solvers independently ran sweeps — 8, 14 and 18 candidate rules scored
+    against training in one pass — and each reported the same thing: recording
+    them through :func:`refute` one at a time would be a dozen near-identical
+    ledger lines, so they recorded two or three and left the rest in prose.
+    One put it plainly: "the ledger under-represents what was actually ruled
+    out." A sweep is a single finding and belongs in a single entry.
+    """
+    resolved: dict[str, bool] = {}
+    for name, outcome in outcomes.items():
+        if callable(outcome):
+            try:
+                resolved[str(name)] = bool(outcome())
+            except Exception:  # noqa: BLE001 - a candidate that blows up did not survive
+                resolved[str(name)] = False
+        else:
+            resolved[str(name)] = bool(outcome)
+
+    survivors = [name for name, alive in resolved.items() if alive]
+    killed = [name for name, alive in resolved.items() if not alive]
+
+    entry = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "claim": str(question),
+        # A sweep "holds" when it is decisive: exactly one reading left standing.
+        "holds": len(survivors) == 1,
+        "mode": "sweep",
+        "survivors": survivors,
+        "killed": killed,
+        "source": _caller_source(),
+        "key": str(key) if key else str(question),
+    }
+    if note:
+        entry["note"] = str(note)
+
+    ledger = WORKSPACE / ".athanor" / "invariants.jsonl"
+    try:
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+    print(f"[SWEEP   ] {question}  — {len(resolved)} readings tested, {len(survivors)} survive")
+    for name in survivors:
+        print(f"           alive: {name}")
+    if killed:
+        shown = killed[:6]
+        for name in shown:
+            print(f"           dead : {name}")
+        if len(killed) > len(shown):
+            print(f"           dead : ... and {len(killed) - len(shown)} more")
+    if len(survivors) > 1:
+        print(
+            f"           ^ {len(survivors)} readings survive the evidence you have. That is a\n"
+            "             hedging obligation, not a tie to break by preference: run each\n"
+            "             through arc.rival(name, fn) and see which of them diverge on the\n"
+            "             test input. Only a training pair one of them fails is a proof."
+        )
+    elif not survivors:
+        print(
+            "           ^ nothing survived. Either the question is wrong or the candidate\n"
+            "             set is missing the right reading — do not pick the least-bad one."
+        )
+    return survivors
 
 
 def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | None = None,

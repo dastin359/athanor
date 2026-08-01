@@ -447,12 +447,26 @@ def format_status(
             # after a compaction, is the only way this gets read. Reported live
             # by a solver whose ledger said "[OK  ] contact by 4-adjacency only
             # also explains the training data" about a reading it had killed.
-            if entry.get("mode") == "ruled_out":
+            if entry.get("mode") == "sweep":
+                mark = "SWEP"
+            elif entry.get("mode") == "ruled_out":
                 mark = "DEAD" if entry.get("holds") else "OPEN"
             else:
                 mark = "OK  " if entry.get("holds") else "FAIL"
             source = entry.get("source") or "?"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({source})")
+            if entry.get("mode") == "sweep":
+                survivors = entry.get("survivors") or []
+                killed = entry.get("killed") or []
+                lines.append(
+                    f"         {len(survivors) + len(killed)} readings tested, "
+                    f"{len(survivors)} survive: {', '.join(survivors) or 'none'}"
+                )
+                if len(survivors) > 1:
+                    lines.append(
+                        "         ^ more than one reading survives — this is a hedging "
+                        "obligation, not a preference"
+                    )
             # The expression is the evidence. A claim without one was recorded
             # from a context the parser could not read; a literal one measured
             # nothing at all.

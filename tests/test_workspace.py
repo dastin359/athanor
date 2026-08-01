@@ -381,6 +381,70 @@ class TestArcToolkit:
         assert "CHANGED VERDICT" not in result.stdout
         assert "supersedes" not in result.stdout
 
+    def test_sweep_records_a_whole_tie_break_as_one_entry(self, workspace):
+        """Three solvers ran 8-, 14- and 18-way sweeps and recorded 2-3 lines.
+
+        One reported it directly: "the ledger under-represents what was
+        actually ruled out." A sweep is a single finding.
+        """
+        result = self._run(
+            workspace,
+            "from arc import sweep, invariants\n"
+            "n = 3\n"
+            "alive = sweep('what sets the centre colour?', {\n"
+            "    'largest blob': n == 4,\n"
+            "    'longest branch': n == 5,\n"
+            "    'most branch cells': n == 3,\n"
+            "})\n"
+            "print('ALIVE', alive)\n"
+            "print('ENTRIES', len(invariants()))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "3 readings tested, 1 survive" in result.stdout
+        assert "alive: most branch cells" in result.stdout
+        assert "dead : largest blob" in result.stdout
+        assert "ALIVE ['most branch cells']" in result.stdout
+        assert "ENTRIES 1" in result.stdout
+
+    def test_sweep_calls_multiple_survivors_a_hedging_obligation(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import sweep\n"
+            "n = 3\n"
+            "sweep('what sets the centre colour?', {\n"
+            "    'blob majority': n == 3,\n"
+            "    'branch count': n == 3,\n"
+            "    'longest branch': n == 9,\n"
+            "})\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "2 survive" in result.stdout
+        assert "hedging obligation" in result.stdout
+        assert "arc.rival(name, fn)" in result.stdout
+
+    def test_sweep_with_no_survivors_says_not_to_pick_the_least_bad(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import sweep\n"
+            "n = 3\n"
+            "sweep('what sets the centre colour?', {'a': n == 1, 'b': n == 2})\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "nothing survived" in result.stdout
+        assert "least-bad" in result.stdout
+
+    def test_sweep_treats_a_raising_candidate_as_dead(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import sweep\n"
+            "def boom():\n"
+            "    raise ValueError('nope')\n"
+            "sweep('which reading holds?', {'explodes': boom, 'fine': lambda: True})\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "1 survive" in result.stdout
+        assert "dead : explodes" in result.stdout
+
     def test_durability_note_fires_without_show(self, workspace):
         """Hung off show() alone it reached almost nobody.
 

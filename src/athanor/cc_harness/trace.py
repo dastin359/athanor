@@ -118,11 +118,29 @@ def collect_trace(workspace_root: Path | str) -> dict[str, Any]:
         "accepted": state.get("accepted"),
         "final": final,
         "invariants": invariants,
-        "invariants_held": sum(1 for entry in invariants if entry.get("holds")),
-        "invariants_refuted": sum(1 for entry in invariants if not entry.get("holds")),
+        # A refute() entry that holds is a *ruled-out hypothesis*, not an
+        # established fact. Counting it under invariants_held conflated the two
+        # in the one metric this experiment records every round — a solver with
+        # five dead ends and no verified facts scored the same as one with five
+        # facts. Ruled-out entries now count separately, in both directions.
+        "invariants_held": sum(
+            1 for entry in invariants
+            if entry.get("holds") and entry.get("mode") != "ruled_out"
+        ),
+        "invariants_refuted": sum(
+            1 for entry in invariants
+            if not entry.get("holds") and entry.get("mode") != "ruled_out"
+        ),
+        "invariants_ruled_out": sum(
+            1 for entry in invariants
+            if entry.get("holds") and entry.get("mode") == "ruled_out"
+        ),
         # Recorded from a constant condition: an assertion that measured nothing.
         # A non-zero count means the ledger is partly self-poisoned.
         "invariants_unmeasured": sum(1 for entry in invariants if entry.get("literal")),
+        # Recorded where the call site could not be read (a -c one-liner or a
+        # heredoc), so the entry carries no evidence of what was executed.
+        "invariants_unsourced": sum(1 for entry in invariants if entry.get("unsourced")),
         "explore_scripts": scripts,
         "events": events,
         "refusals": refusals,
@@ -186,13 +204,21 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
     lines.append("VERIFICATION DENSITY")
     lines.append(f"  exploration scripts     : {len(trace['explore_scripts'])}"
                  f"  ({density['scripts_per_iteration']} per iteration)")
+    breakdown = f"{trace['invariants_held']} held, {trace['invariants_refuted']} refuted"
+    if trace.get("invariants_ruled_out"):
+        breakdown += f", {trace['invariants_ruled_out']} ruled out"
     lines.append(f"  recorded invariants     : {len(trace['invariants'])}"
                  f"  ({density['invariants_per_iteration']} per iteration)"
-                 f"  [{trace['invariants_held']} held, {trace['invariants_refuted']} refuted]")
+                 f"  [{breakdown}]")
     if trace.get("invariants_unmeasured"):
         lines.append(
             f"  UNMEASURED invariants   : {trace['invariants_unmeasured']}"
             "  <- constant conditions; assertions, not verifications"
+        )
+    if trace.get("invariants_unsourced"):
+        lines.append(
+            f"  UNSOURCED invariants    : {trace['invariants_unsourced']}"
+            "  <- call site unreadable; no record of what ran"
         )
     lines.append(f"  verified before 1st sub.: {density['verified_before_first_submission']}")
     lines.append(f"  NOTES.md                : {trace['notes_chars']} chars")
@@ -239,12 +265,37 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
         lines.append("")
         lines.append("INVARIANTS")
         for entry in trace["invariants"]:
-            mark = "OK  " if entry.get("holds") else "FAIL"
+            if entry.get("mode") == "sweep":
+                mark = "SWEP"
+            elif entry.get("mode") == "ruled_out":
+                mark = "DEAD" if entry.get("holds") else "OPEN"
+            else:
+                mark = "OK  " if entry.get("holds") else "FAIL"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({entry.get('source')})")
+            if entry.get("mode") == "sweep":
+                survivors = entry.get("survivors") or []
+                killed = entry.get("killed") or []
+                lines.append(
+                    f"         {len(survivors) + len(killed)} tested, {len(survivors)} survive: "
+                    f"{', '.join(survivors) or 'none'}"
+                )
             if entry.get("expression"):
                 lines.append(f"         {entry['expression']}")
             if entry.get("literal"):
                 lines.append("         ^ NOT MEASURED — constant condition")
+            if entry.get("unsourced"):
+                lines.append("         ^ NO EVIDENCE — call site could not be read")
+            superseded = entry.get("supersedes")
+            if isinstance(superseded, dict) and superseded.get("claim"):
+                if superseded["claim"] != entry.get("claim"):
+                    lines.append(
+                        f"         replaced [{superseded.get('verdict', '?')}]: "
+                        f"{superseded['claim']}"
+                    )
+                else:
+                    lines.append(
+                        f"         ^ verdict changed from [{superseded.get('verdict', '?')}]"
+                    )
 
     if verbose and trace.get("hypothesis_history"):
         lines.append("")
