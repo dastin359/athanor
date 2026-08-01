@@ -448,11 +448,11 @@ def format_status(
             # by a solver whose ledger said "[OK  ] contact by 4-adjacency only
             # also explains the training data" about a reading it had killed.
             if entry.get("mode") == "sweep":
-                mark = "SWEP"
+                mark = "SWEEP "
             elif entry.get("mode") == "ruled_out":
-                mark = "DEAD" if entry.get("holds") else "OPEN"
+                mark = "KILLED" if entry.get("holds") else "OPEN  "
             else:
-                mark = "OK  " if entry.get("holds") else "FAIL"
+                mark = "OK    " if entry.get("holds") else "FAILED"
             source = entry.get("source") or "?"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({source})")
             if entry.get("mode") == "sweep":

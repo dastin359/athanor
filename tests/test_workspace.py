@@ -433,6 +433,138 @@ class TestArcToolkit:
         assert "nothing survived" in result.stdout
         assert "least-bad" in result.stdout
 
+    def test_hedging_advice_names_an_undecided_sweep(self, workspace):
+        """A multi-survivor sweep is the strongest hedging signal in the workspace.
+
+        The solver has already established by execution that training cannot
+        separate the survivors — asking it to go find rivals ignores work it has
+        already done.
+        """
+        result = self._run(
+            workspace,
+            "from arc import sweep, check\n"
+            "n = 3\n"
+            "sweep('what sets the centre colour?', {\n"
+            "    'blob majority': n == 3,\n"
+            "    'branch count': n == 3,\n"
+            "    'longest branch': n == 9,\n"
+            "})\n"
+            "check(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "left 2 readings alive" in result.stdout
+        assert "blob majority, branch count" in result.stdout
+        assert "you already did the hard part" in result.stdout
+        assert "registered no rival readings" not in result.stdout
+
+    def test_hedging_advice_ignores_a_decided_sweep(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import sweep, check\n"
+            "n = 3\n"
+            "sweep('what sets the centre colour?', {'a': n == 3, 'b': n == 9})\n"
+            "check(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "readings alive" not in result.stdout
+        assert "registered no rival readings" in result.stdout
+
+    def test_situation_types_prompt_reaches_the_free_path(self, workspace):
+        """A solver called this "the single highest-value string the harness printed".
+
+        It produced the script that found the one unwitnessed case on its test
+        input and changed what it shipped — and it had only ever appeared after
+        an iteration was spent. Third time a convenience has been found on the
+        budgeted path alone.
+        """
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "enumerate the situation types your rule has to handle" in result.stdout
+        assert "witnessed in a training pair" in result.stdout
+
+    def test_situation_types_prompt_matches_the_gate_wording(self):
+        """arc.py is standalone in the workspace, so the text is duplicated.
+
+        Duplicated guidance drifts silently; this is what keeps it honest.
+        """
+        from pathlib import Path
+
+        from athanor.cc_harness import reporting
+        from athanor.cc_harness.workspace import ASSETS
+
+        toolkit = (Path(ASSETS) / "arc_toolkit.py").read_text(encoding="utf-8")
+        for phrase in (
+            "enumerate the situation types your rule has to handle",
+            "witnessed in a training pair",
+        ):
+            assert phrase in reporting._unspent_candidate_prompt([0], ["a dead end"]), phrase
+            assert phrase in toolkit, phrase
+
+    def test_rival_announces_that_it_replaced_an_earlier_registration(self, workspace):
+        """Reported live: re-registering a name silently changed what it meant.
+
+        A solver fixed a buggy rival implementation by re-registering the same
+        name. verify() announces supersession; rival() said nothing, so the
+        earlier entry — which had claimed divergence on both tests — vanished
+        without trace.
+        """
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "rival('the diagonal reading', lambda g: [r[::-1] for r in g])\n"
+            "def fixed(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('the diagonal reading', fixed)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[REPLACED]" in result.stdout
+        assert "give them two names" in result.stdout
+
+    def test_rival_is_quiet_when_a_re_registration_changes_nothing(self, workspace):
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "rival('the same reading', lambda g: [r[::-1] for r in g])\n"
+            "rival('the same reading', lambda g: [r[::-1] for r in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[REPLACED]" not in result.stdout
+
+    def test_opaque_name_warning_is_suppressed_when_a_note_carries_the_values(self, workspace):
+        """A solver passed both a variable and a full per-candidate note.
+
+        It was still told to "pass note= with the measured value". It had.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "ok = len(train_samples) == 3\n"
+            "verify('there are three training pairs', ok, note='measured 3 pairs')\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "recorded evidence is just the name" not in result.stdout
+
+    def test_opaque_name_warning_still_fires_without_a_note(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "ok = len(train_samples) == 3\n"
+            "verify('there are three training pairs', ok)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "recorded evidence is just the name" in result.stdout
+
     def test_sweep_treats_a_raising_candidate_as_dead(self, workspace):
         result = self._run(
             workspace,

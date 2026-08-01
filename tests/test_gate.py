@@ -476,7 +476,7 @@ class TestUnspentCandidatePrompt:
     def test_status_marks_a_dead_end_dead_not_ok(self, workspace):
         """Reported live: the status replay inverted every refute() entry.
 
-        `[OK  ] contact by 4-adjacency only also explains the training data`
+        `[OK] contact by 4-adjacency only also explains the training data`
         reads, on a skim after compaction, as the finding rather than its
         negation — and a skim after compaction is the only way this gets read.
         """
@@ -496,8 +496,8 @@ class TestUnspentCandidatePrompt:
             cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
         )
         assert result.returncode == 0, result.stderr
-        assert "[DEAD] 4-adjacency explains the data" in result.stdout
-        assert "[OK  ] outputs are square" in result.stdout
+        assert "[KILLED] 4-adjacency explains the data" in result.stdout
+        assert "[OK    ] outputs are square" in result.stdout
         assert "1 verified, 1 ruled out" in result.stdout
 
     def test_silent_when_nothing_was_ruled_out(self, workspace):

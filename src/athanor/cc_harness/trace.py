@@ -266,11 +266,11 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
         lines.append("INVARIANTS")
         for entry in trace["invariants"]:
             if entry.get("mode") == "sweep":
-                mark = "SWEP"
+                mark = "SWEEP "
             elif entry.get("mode") == "ruled_out":
-                mark = "DEAD" if entry.get("holds") else "OPEN"
+                mark = "KILLED" if entry.get("holds") else "OPEN  "
             else:
-                mark = "OK  " if entry.get("holds") else "FAIL"
+                mark = "OK    " if entry.get("holds") else "FAILED"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({entry.get('source')})")
             if entry.get("mode") == "sweep":
                 survivors = entry.get("survivors") or []

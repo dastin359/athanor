@@ -471,7 +471,11 @@ def verify(
                 f"{superseded['at']}. Anything you built on the old verdict is now "
                 "suspect — re-check the code that assumed it."
             )
-    if opaque and not literal:
+    # A note carrying the measured values *is* the evidence the warning asks
+    # for, so firing it anyway tells a solver to do what it already did. One
+    # passed both a variable and a full per-candidate note and was told to
+    # "pass note= with the measured value".
+    if opaque and not literal and not note:
         print(
             f"           ^ the recorded evidence is just the name `{expression}`. After a "
             "compaction that says nothing about what ran — inline the check, or pass "
@@ -666,9 +670,28 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
         if relevant:
             live_rivals.append({**entry, "relevant": relevant})
     dead_ends = [e for e in invariants() if e.get("mode") == "ruled_out" and e.get("holds")]
+    # A sweep that left several readings standing is the strongest hedging
+    # signal the workspace holds: the solver has already established, by
+    # execution, that training cannot separate them. Naming them here costs
+    # nothing and beats asking for rivals the solver has in fact already found.
+    open_sweeps = [
+        entry for entry in invariants()
+        if entry.get("mode") == "sweep" and len(entry.get("survivors") or []) > 1
+    ]
 
     where = ", ".join(f"test {index}" for index in unspent)
     print(f"\n== {where} carries one candidate, and ARC-AGI-2 scores two.")
+
+    if open_sweeps and not live_rivals:
+        for entry in open_sweeps[:2]:
+            survivors = entry.get("survivors") or []
+            print(f"   your sweep '{entry.get('claim')}' left {len(survivors)} readings alive:")
+            print(f"     {', '.join(survivors)}")
+        print("   You established by execution that training cannot separate these. Put them")
+        print("   through arc.rival(name, fn) and ship whichever diverges on the test input —")
+        print("   that is what the second slot is for, and you already did the hard part.")
+        _print_situation_types_prompt()
+        return
 
     if not live_rivals and not dead_ends:
         # An empty rival ledger used to mean silence — which skipped the prompt
@@ -680,6 +703,7 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
         print("   none. Name the interpretation you rejected on the way here and run it through")
         print("   arc.rival(name, fn): if it reproduces every training pair and predicts")
         print("   something different, it is the best possible use of the second slot.")
+        _print_situation_types_prompt()
         return
 
     if live_rivals:
@@ -692,6 +716,38 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
         print(f"   You ruled out {len(dead_ends)} rival reading(s). Check how each died:")
         print("   a training pair it fails is a proof; extending a training-output regularity")
         print("   to the test input is not. Hedge here — after submitting it costs an iteration.")
+
+    _print_situation_types_prompt()
+
+
+#: Mirrored deliberately. The gate prints this after a submission; the text
+#: lives there too (reporting.GENERALIZATION_AUDIT_DIRECTIVE) and a test keeps
+#: the two in step. ``arc.py`` is copied standalone into each workspace and
+#: cannot import from the harness package, so the duplication is structural.
+_SITUATION_TYPES_PROMPT = (
+    "   Do not assume the answer is among the readings you named. Those are the rivals you\n"
+    "   thought to write down, and they may all be proofs. The leap is usually somewhere you\n"
+    "   never framed as a rival at all: enumerate the situation types your rule has to handle\n"
+    "   on the test input, and check that each one is actually witnessed in a training pair.\n"
+    "   A case the test needs and training never shows is an unhedged assumption, however\n"
+    "   confident the rule feels."
+)
+
+
+def _print_situation_types_prompt() -> None:
+    """Ask the out-of-sample question here, not only after an iteration is spent.
+
+    This paragraph lived only on the gate's post-submission path. A solver
+    called it "the single highest-value string the harness printed" — it
+    produced the script that found the one unwitnessed case on its test input,
+    which changed what it shipped — and then noted it had only arrived *after*
+    the iteration was spent.
+
+    That is the third time a convenience has been found on the budgeted path
+    only. The rule this harness keeps relearning: anything that changes what a
+    solver ships must be reachable for free.
+    """
+    print(_SITUATION_TYPES_PROMPT)
 
 
 def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
@@ -731,6 +787,27 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
         "predictions": predictions,
         "source": _caller_source(),
     }
+    # Re-registering a name silently replaces what that name means. verify()
+    # goes to considerable trouble to announce supersession; rival() said
+    # nothing, so a solver that fixed a buggy rival implementation left a ledger
+    # in which the earlier entry — which had claimed divergence on both tests —
+    # had vanished without trace.
+    prior = None
+    for existing in rivals():
+        if str(existing.get("name")) == entry["name"]:
+            prior = existing
+            break
+    if prior is not None:
+        changed_fit = bool(prior.get("fits_training")) != entry["fits_training"]
+        changed_predictions = (prior.get("predictions") or []) != predictions
+        if changed_fit or changed_predictions:
+            entry["supersedes"] = {
+                "fits_training": bool(prior.get("fits_training")),
+                "train_correct": prior.get("train_correct"),
+                "train_total": prior.get("train_total"),
+                "at": prior.get("at", ""),
+            }
+
     ledger = WORKSPACE / ".athanor" / "rivals.jsonl"
     try:
         ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -738,6 +815,19 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
             handle.write(json.dumps(entry) + "\n")
     except OSError:
         pass
+
+    superseded = entry.get("supersedes")
+    if superseded:
+        was = (
+            f"{superseded['train_correct']}/{superseded['train_total']}"
+            if superseded.get("train_total") is not None else "?"
+        )
+        print(
+            f"[REPLACED] a rival named '{name}' was already registered ({was} on training, "
+            f"recorded {superseded['at']}). This implementation predicts differently, so the\n"
+            "           earlier reading is gone from the ledger. If the first one was buggy "
+            "that is what you want; if they are two different readings, give them two names."
+        )
 
     if entry["fits_training"]:
         print(
