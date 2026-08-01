@@ -1299,3 +1299,38 @@ unprompted and used it to add two hedges it had not originally framed. Nobody
 told it to.
 
 The score difference is not established. The behaviour transfer is.
+
+---
+
+## The cache fix at real-batch scale: invisible, as predicted
+
+The `--exclude-dynamic-system-prompt-sections` fix was measured with a
+microbenchmark (two trivial prompts in two working directories) and estimated at
+about $0.05 a task. A real batch now runs with it, so here is the same
+measurement at workload scale:
+
+| batch | task | turns | cache write | cache read | read/write |
+|---|---|---:|---:|---:|---:|
+| post-fix | `35ab12c3` | 44 | 278,731 | 2,993,663 | 10.7 |
+| post-fix | `58490d8a` | 38 | 79,145 | 1,073,954 | 13.6 |
+| pre-fix | `e8686506` | — | 129,702 | 1,725,300 | 13.3 |
+| pre-fix | `78332cb0` | — | 160,570 | 1,895,479 | 11.8 |
+
+**The fix is invisible here, and that is the correct outcome.** The cross-task
+prefix it recovers is a few thousand tokens; within-task cache traffic is
+80k–280k. A real improvement of that size cannot show up against that
+denominator, and the ratios pre- and post-fix are indistinguishable. This is the
+$0.05/task estimate confirmed at scale rather than contradicted.
+
+**A correction, because the surface reading is wrong.** The batch's first two
+tasks cost $3.04 and $1.18, and it is tempting to call that drop the cache
+warming up. It is not. Task 1 ran 44 turns and wrote 278k cache tokens; task 2
+ran 38 turns and wrote 79k. The difference is how much work each task took, not
+where it sat in the batch. Cost per task in this harness is dominated by run
+length, and any batch-position effect is far below that noise.
+
+The general lesson, which cost a wrong sentence to learn: **a fix whose
+mechanism you have verified in isolation will still not be visible in aggregate
+metrics if the thing it improves is a small term.** Verifying the mechanism and
+verifying the magnitude are separate jobs, and a plausible-looking number
+adjacent to a real fix will happily be misread as evidence for it.
