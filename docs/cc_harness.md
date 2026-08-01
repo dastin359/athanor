@@ -230,7 +230,20 @@ athanor cc score cc_runs
 
 # prepare a workspace without launching anything
 athanor cc workspace 28a6681f --out-dir cc_runs
+
+# reconstruct what an agent actually did
+athanor cc trace cc_runs/28a6681f
+
+# pick up a run that died before accepting
+athanor cc resume cc_runs/28a6681f
 ```
+
+`resume` exists because over a large batch individual runs die — a timeout, a
+rate limit, a killed process — and the workspace already holds everything needed
+to continue. The resumed agent inherits the iteration ledger, the verified
+invariants and `NOTES.md`, spends only the budget that is left, and is told
+explicitly what did *not* survive so it does not assume an unrecorded conclusion
+still holds.
 
 `athanor cc run` launches `claude -p` with `--output-format stream-json` inside
 the workspace, restricted to `Bash,Read,Write,Edit,Glob,Grep,TodoWrite`.
