@@ -42,7 +42,44 @@ def main() -> int:
 
     summary = check(solve)
     _durability_nudge()
+    _notes_nudge()
     return 0 if summary["all_train_correct"] else 1
+
+
+#: Markers from the seeded NOTES.md. If they are all still present, nothing has
+#: been written into it.
+_TEMPLATE_MARKERS = ("_(none yet)_", "_(what was ruled out, and by which experiment)_")
+
+
+def _notes_nudge() -> None:
+    """Warn when facts have accumulated but no direction has been written down.
+
+    The invariant ledger survives a compaction and carries *what is true*.
+    NOTES.md is the only thing that carries *what you were doing about it* — the
+    current reading, the dead ends and why, the experiment you meant to run next.
+    Observed on a live run: seven exploration scripts and six recorded invariants
+    with NOTES.md still pristine, so a compaction there would have restored facts
+    and no plan.
+    """
+    from arc import WORKSPACE, invariants
+
+    notes = WORKSPACE / "NOTES.md"
+    if not notes.is_file():
+        return
+    try:
+        text = notes.read_text(encoding="utf-8")
+        established = len(invariants())
+    except Exception:  # noqa: BLE001 - a nudge must never break the dry run
+        return
+
+    if established < 3 or not all(marker in text for marker in _TEMPLATE_MARKERS):
+        return
+    print(
+        f"\n== {established} invariants recorded, but NOTES.md is still the template.\n"
+        "   The ledger carries what is true; NOTES.md is the only thing carrying what you\n"
+        "   are doing about it — current reading, dead ends and why, next experiment. A\n"
+        "   compaction right now would restore the facts and none of the direction."
+    )
 
 
 def _durability_nudge() -> None:

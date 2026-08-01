@@ -158,6 +158,97 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "3/3 training examples reproduced" in result.stdout
 
+    def test_verify_flags_a_bare_name_as_opaque_evidence(self, workspace):
+        """Observed live: a ledger entry whose recorded evidence was `allok`.
+
+        The ledger's whole value is that it says what ran; a variable name says
+        nothing to the context that reads it after a compaction.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "allok = all(len(s['input']) == len(s['output']) for s in train_samples)\n"
+            "verify('shapes are preserved', allok)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "just the name `allok`" in result.stdout
+
+        entry = json.loads(
+            (workspace.root / ".athanor" / "invariants.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert entry["opaque"] is True
+
+    def test_an_inline_expression_is_not_opaque(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('three pairs', len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "just the name" not in result.stdout
+
+    def test_notes_nudge_fires_when_facts_outpace_direction(self, workspace):
+        """Observed live: seven scripts and six invariants, NOTES.md pristine."""
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        ledger = workspace.root / ".athanor" / "invariants.jsonl"
+        ledger.write_text(
+            "\n".join(
+                json.dumps({"claim": f"fact {n}", "holds": True, "key": f"k{n}"}) for n in range(3)
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"], cwd=str(workspace.root),
+            capture_output=True, text=True, timeout=60,
+        )
+        assert "NOTES.md is still the template" in result.stdout
+
+    def test_notes_nudge_is_quiet_once_notes_are_written(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            "\n".join(
+                json.dumps({"claim": f"fact {n}", "holds": True, "key": f"k{n}"}) for n in range(3)
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (workspace.root / "NOTES.md").write_text(
+            "# NOTES\n\n## Current hypothesis\n\nRows are reversed.\n", encoding="utf-8"
+        )
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"], cwd=str(workspace.root),
+            capture_output=True, text=True, timeout=60,
+        )
+        assert "still the template" not in result.stdout
+
+    def test_notes_nudge_is_quiet_early(self, workspace):
+        """One fact in is not the moment to lecture about durability."""
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "one fact", "holds": True}) + "\n", encoding="utf-8"
+        )
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"], cwd=str(workspace.root),
+            capture_output=True, text=True, timeout=60,
+        )
+        assert "still the template" not in result.stdout
+
     def test_hedging_advice_arrives_where_acting_on_it_is_free(self, workspace):
         """A candidate comes out of solve(), so acting on the gate's version of
         this costs a whole iteration to resubmit. One solver on a 3-iteration

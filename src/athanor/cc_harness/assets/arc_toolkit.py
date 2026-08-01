@@ -119,25 +119,25 @@ def _parse_caller(filename: str) -> Any:
     return _AST_CACHE[key]
 
 
-def _condition_evidence() -> tuple[str, bool]:
+def _condition_evidence() -> tuple[str, bool, bool]:
     """Recover the *expression* the caller passed as ``condition``.
 
-    Returns ``(source_text, is_literal)``. The ledger records what was actually
+    Returns ``(source_text, is_literal, is_opaque)``. The ledger records what was actually
     executed, not just what was claimed — and a condition that is a compile-time
     constant is an assertion wearing a verification's clothes, which is exactly
     what the whole discipline exists to prevent.
 
-    Best-effort: returns ``("", False)`` when the call site cannot be recovered
-    (a ``-c`` one-liner, a REPL, a multi-line call the parser cannot match).
+    Best-effort: returns ``("", False, False)`` when the call site cannot be
+    recovered (a ``-c`` one-liner, a REPL, a call the parser cannot match).
     """
     import ast
 
     frame = _caller_frame()
     if frame is None:
-        return "", False
+        return "", False, False
     tree = _parse_caller(frame.filename)
     if tree is None:
-        return "", False
+        return "", False, False
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -156,15 +156,19 @@ def _condition_evidence() -> tuple[str, bool]:
                     condition = keyword.value
                     break
         if condition is None:
-            return "", False
+            return "", False, False
 
         body = condition.body if isinstance(condition, ast.Lambda) else condition
         literal = isinstance(body, ast.Constant)
+        # A bare name records "allok" as the evidence, which tells a future
+        # context nothing about what was executed — the ledger's whole value is
+        # that it says what ran.
+        opaque = isinstance(body, ast.Name)
         try:
-            return ast.unparse(condition), literal
+            return ast.unparse(condition), literal, opaque
         except Exception:  # noqa: BLE001 - unparse is a convenience, not a contract
-            return "", literal
-    return "", False
+            return "", literal, opaque
+    return "", False, False
 
 
 def refute(claim: str, condition: bool | Callable[[], Any], note: str | None = None,
@@ -241,7 +245,7 @@ def verify(
     else:
         holds = bool(condition)
 
-    expression, literal = ("", False) if retract else _condition_evidence()
+    expression, literal, opaque = ("", False, False) if retract else _condition_evidence()
 
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -256,6 +260,8 @@ def verify(
         entry["expression"] = expression
     if literal:
         entry["literal"] = True
+    if opaque:
+        entry["opaque"] = True
     if retract:
         entry["retracted"] = True
     if note:
@@ -281,6 +287,12 @@ def verify(
     if error:
         suffix += f"  [{error}]"
     print(f"[{label}] {claim}{suffix}")
+    if opaque and not literal:
+        print(
+            f"           ^ the recorded evidence is just the name `{expression}`. After a "
+            "compaction that says nothing about what ran — inline the check, or pass "
+            "note= with the measured value."
+        )
     if literal:
         print(
             "           ^ WARNING: that condition is a compile-time constant "
