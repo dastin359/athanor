@@ -145,6 +145,9 @@ a proof; killing it with an out-of-sample extrapolation is not.
   prediction = solve(test_samples[0]["input"])
   ```
 
+  `arc.solution_module()` returns the whole module when you need its helpers —
+  building a rival that reuses the shipped parse rather than re-deriving it.
+
 - Print summaries, not grids you have already seen. A boolean, a count, or a
   set of shapes usually carries the finding.
 - `arc.png()` writes relative to the current directory, so `cd` into the

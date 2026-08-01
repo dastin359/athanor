@@ -38,6 +38,7 @@ __all__ = [
     "refute",
     "check",
     "load_solution",
+    "solution_module",
     "show",
     "diff",
     "shape",
@@ -164,6 +165,13 @@ def _condition_evidence() -> tuple[str, bool, bool]:
         # context nothing about what was executed — the ledger's whole value is
         # that it says what ran.
         opaque = isinstance(body, ast.Name)
+        # `True is (...)` and `... == False` slip past the constant check while
+        # being the same anti-pattern: a boolean literal standing in for a
+        # measurement. A solver shipped exactly that and caught it unaided.
+        if isinstance(body, ast.Compare):
+            operands = [body.left, *body.comparators]
+            if any(isinstance(o, ast.Constant) and isinstance(o.value, bool) for o in operands):
+                literal = True
         try:
             return ast.unparse(condition), literal, opaque
         except Exception:  # noqa: BLE001 - unparse is a convenience, not a contract
@@ -589,6 +597,38 @@ def rivals() -> list[dict[str, Any]]:
     return list(latest.values())
 
 
+def solution_module(path: str | os.PathLike[str] | None = None) -> Any:
+    """Import ``solution/solve.py`` and return the whole module.
+
+    ``load_solution()`` hands back only ``solve``, which is not enough when you
+    want to build a rival that shares the shipped parse — a solver needing the
+    module's helpers had to hand-roll ``importlib`` to get them, which is the
+    boilerplate this toolkit promises you never need::
+
+        from arc import solution_module, rival
+        shipped = solution_module()
+        def alt(grid):
+            parsed = shipped._parse(grid)     # reuse, do not re-derive
+            ...
+        rival("unmatched dots survive unchanged", alt)
+
+    Reusing the shipped helpers is the point: a rival that re-implements the
+    parse is testing two changes at once.
+    """
+    import importlib.util
+
+    target = Path(path) if path else (WORKSPACE / "solution" / "solve.py")
+    if not target.is_absolute():
+        target = WORKSPACE / target
+    if not target.is_file():
+        raise FileNotFoundError(f"No solution at {target}")
+
+    spec = importlib.util.spec_from_file_location("athanor_candidate_solution", target)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_solution(path: str | os.PathLike[str] | None = None) -> Callable[[Grid], Any]:
     """Return the ``solve`` function from ``solution/solve.py``.
 
@@ -603,21 +643,10 @@ def load_solution(path: str | os.PathLike[str] | None = None) -> Callable[[Grid]
     Resolves relative to the workspace, so the calling script works from any
     directory.
     """
-    import importlib.util
-
-    target = Path(path) if path else (WORKSPACE / "solution" / "solve.py")
-    if not target.is_absolute():
-        target = WORKSPACE / target
-    if not target.is_file():
-        raise FileNotFoundError(f"No solution at {target}")
-
-    spec = importlib.util.spec_from_file_location("athanor_candidate_solution", target)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
+    module = solution_module(path)
     solve = getattr(module, "solve", None)
     if not callable(solve):
-        raise AttributeError(f"{target} does not define a callable solve(grid)")
+        raise AttributeError("solution/solve.py does not define a callable solve(grid)")
     return solve
 
 

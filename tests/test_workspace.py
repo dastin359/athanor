@@ -685,6 +685,46 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "True"
 
+    def test_solution_module_exposes_the_shipped_helpers(self, workspace):
+        """A rival that shares the shipped parse needs more than `solve`.
+
+        A solver building exactly that had to hand-roll importlib to reach the
+        module's helpers — the boilerplate this toolkit promises you never need.
+        """
+        (workspace.root / "solution" / "solve.py").write_text(
+            "def _parse(grid):\n    return len(grid)\n"
+            "def solve(grid):\n    return [row[::-1] for row in grid]\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import solution_module\n"
+            "m = solution_module()\n"
+            "print(m._parse([[1], [2]]), callable(m.solve))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "2 True"
+
+    def test_verify_flags_a_boolean_literal_comparison(self, workspace):
+        """`True is (...)` slips past the constant check while being the same
+        anti-pattern. A solver shipped one and caught it unaided."""
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('a dressed-up assertion', True is (len(train_samples) > 0))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "compile-time constant" in result.stdout
+
+    def test_verify_does_not_flag_an_ordinary_comparison(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('three pairs', len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "compile-time constant" not in result.stdout
+
     def test_load_solution_reports_a_missing_file_clearly(self, workspace):
         result = self._run(workspace, "from arc import load_solution\nload_solution()\n")
         assert result.returncode != 0
