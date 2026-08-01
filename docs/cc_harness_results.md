@@ -971,3 +971,98 @@ this one carries no reviewer, no second model, and no inter-agent artifact
 exchange. What it has is the gate, the toolkit, and the doctrine.
 
 Which of those three is doing the work is exactly what the next experiment asks.
+
+---
+
+## Round 7 — one gained, one that stayed lost
+
+| task | result | iterations | candidates | note |
+|---|---|---|---|---|
+| `dbff022c` | **1/1** | 1 | 2 | last untouched puzzle in the flagship's unsolved set |
+| `9bbf930d` | **0/1** | 1 | 2 | second attempt; the flagship solves it |
+
+`9bbf930d` is the honest half. It is the one frontier pair the flagship takes
+and this variant does not, and a retry carrying `sweep()`, the situation-types
+prompt on the free path, and the rival-standing fixes **still missed it** — this
+time with two candidates and a well-argued hedge rather than an unhedged guess.
+Two attempts, two misses. The frontier standing is unchanged at 7 of 9.
+
+Worth saying plainly: several rounds of harness improvements did not convert
+this pair. The improvements are real and measurable elsewhere; they are not a
+general solvent.
+
+That run did, though, give the sharpest confirmation of the free-path fix
+shipped one round earlier:
+
+> "It fired at exactly the right moment and it changed what I shipped. It
+> appeared on my very first `dryrun.py`, before any budget was spent… Without it
+> I would have submitted the over-inclusive launch rule as candidate 1. This is
+> the single highest-value string the harness printed."
+
+One round before, the same paragraph existed only behind a spent iteration.
+
+---
+
+## The ablation: is the doctrine load-bearing?
+
+Every solver so far was told to follow a code-as-verification doctrine and then
+asked whether it helped. All said yes. That is a leading question, and it does
+not separate "the harness works" from "Opus 5 is good at ARC".
+
+So: `88e364bc` again — the puzzle where the doctrine arm went 1/2 → 2/2 — with
+the doctrine **stripped** from `CLAUDE.md` and the system prompt withheld
+entirely. No mention of verification-by-execution, rivals, hedging, or the
+second candidate. The toolkit was left untouched and importable. Both arms were
+told the benchmark allows two candidates, since otherwise the experiment would
+test knowledge of the rules rather than the discipline.
+
+### Result
+
+| arm | candidates shipped | score |
+|---|---|---|
+| doctrine | test 0 → 2, test 1 → 2 | **2/2** |
+| ablated | test 0 → 2, test 1 → **1** | **1/2** |
+
+1/2 is exactly what the flagship scores on this puzzle, and exactly what this
+variant scored on it before the rival mechanism existed.
+
+### What the ablated agent actually did
+
+Not what "no doctrine" might suggest. It read `arc.py` and used **the entire
+toolkit unprompted** — `verify`, `sweep`, `rival`, `solution_module`,
+`load_solution`, `png`, `diff` — and registered **eight** rival implementations.
+It ran a sweep on a genuine ambiguity and got two survivors. It hedged correctly
+on test 0. Its own account: "Whenever I was unsure I built the alternative and
+executed it rather than reasoning about it."
+
+So the practice transferred without the doctrine. What did not transfer was the
+*specific* out-of-sample question. The two arms framed different residual
+ambiguities: the ablated agent asked whether markers block each other mid-slide
+and measured no divergence; the doctrine agent asked whether a diagonal ray may
+pass a cell with an *occupied shoulder* and found that test 1 turns on it. The
+ablated agent concluded "on test 1 nothing that fits training diverges" — and
+shipped one candidate there.
+
+### What this does and does not establish
+
+It does not establish that the doctrine is worth 1 pair in 2. **n=1 per arm**,
+on a puzzle whose three recorded attempts have gone 1/2, 1/2, 2/2 — two of three
+landing at 1/2. A difference of one test example between two single runs is
+inside the noise of that history, and saying otherwise would be reading a
+coin-flip as a trend.
+
+What it does show is narrower and more interesting: the toolkit alone is enough
+to induce the *practice* — an agent told nothing about verification wrote eight
+rivals and swept a tie — but on this puzzle the practice was not enough to find
+the question that mattered. Both agents were rigorous. They differed in which
+ambiguity they thought to frame, and only one of those framings reached the
+second pair.
+
+Two honest limits on top of that. This ablates the **doctrine, not the
+toolkit**: `arc.py`'s own docstrings argue for verification-by-execution, and
+the ablated agent plainly absorbed them, so the comparison is "tools plus
+doctrine" against "tools alone", not against nothing. And a real answer needs
+many runs per arm, not one. The value here is that it is the first evidence
+pointing at *which component* does the work — and it points away from the system
+prompt and toward the toolkit, which is the opposite of what the doctrine's
+prominence in this repo would suggest.
