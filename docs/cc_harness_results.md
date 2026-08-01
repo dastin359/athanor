@@ -938,3 +938,36 @@ short of what the doctrine asks for.
    for another. The nudge said "you registered no rivals" — true, and pointing
    the wrong way. As the solver put it, the harness "did not distinguish 'you
    chose not to hedge' from 'your hedge silently failed'."
+
+---
+
+## The flagship's own misses, counted
+
+`RESULTS.md` names the 6 pairs — 5 puzzles — that the flagship does not solve
+among the 22 that defeat every CoT-only Opus 4.6 configuration. All five puzzles
+have now been attempted.
+
+| pair | this variant | flagship |
+|---|---|---|
+| `2b83f449 / 0` | solved | missed |
+| `88e364bc / 0` | solved | missed |
+| `d35bdbdc / 0` | solved | missed |
+| `d35bdbdc / 1` | solved | missed |
+| `dbff022c / 0` | solved | missed |
+| `faa9f03d / 0` | **missed** | missed |
+
+**5 of 6.** The one miss is `faa9f03d`, which no logged submission in the frozen
+public corpus has ever solved and which resisted a 120-turn flagship attempt.
+
+Set against the frontier table earlier — where this variant takes 7 of 9 and the
+flagship 8 of 9 — the two results say something more specific than either alone.
+The systems fail on different puzzles. The flagship takes `9bbf930d`, which this
+variant missed; this variant takes five pairs the flagship does not. Neither
+dominates, and `faa9f03d` defeats both.
+
+That is worth more than a headline number, because it is evidence the two
+architectures are not just differently tuned but differently *capable* — and
+this one carries no reviewer, no second model, and no inter-agent artifact
+exchange. What it has is the gate, the toolkit, and the doctrine.
+
+Which of those three is doing the work is exactly what the next experiment asks.
