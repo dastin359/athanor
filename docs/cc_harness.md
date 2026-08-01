@@ -180,6 +180,44 @@ informative signal available in a configuration with no reviewer.
 
 **`status`** — the distilled research state. The ICAE resume artifact.
 
+## Where the harness actually speaks
+
+A finding from running this, not from designing it.
+
+The flagship's reflection prompt fires on a failed `execute_python_solution`,
+and it fires often, because in that harness the tool call **is** the only way to
+score a candidate against training. Reflection-on-failure is therefore the main
+channel through which the orchestrator shapes the search.
+
+This variant added `dryrun.py` so the doctrine's "never use the gate as a
+debugger" had a cheap alternative. That turned out to relocate the harness's
+leverage entirely. `dryrun.py` loads `solution/solve.py` in a fresh module and
+the gate runs it in a fresh interpreter, so the two agree on everything —
+including the one case worth worrying about, where the code depends on a name
+that only existed in an exploration session. Both report the same
+`NameError`.
+
+The consequence: **a solver that follows the contract essentially never submits
+a failing solution.** Across four rounds and thirteen test examples, every
+accepted run passed training on iteration 1 or 2, no submission has ever failed,
+and no gate refusal has ever fired. The elaborate failure report — diff
+listings, bounding boxes, expected-vs-predicted grids, the reflection directive
+— is well-formed and almost entirely unreached.
+
+That is the doctrine working, not a defect. But it means the design instinct
+carried over from the flagship was wrong about *where* the words matter. Every
+measured effect in this variant has come from the **acceptance** path:
+
+- the generalization audit is what prompted the ablation batteries and
+  equivariance tests that agents repeatedly credited with changing their answer;
+- the candidate-budget paragraph changed a solver's behaviour on the very next
+  run, by its own account;
+- the rival check and the mechanical signals both live there.
+
+So the harness's real surface is not "what to say when the solver is wrong" but
+"what to say when the solver believes it is right". Effort spent on the failure
+path is effort spent on a branch the doctrine is designed to avoid.
+
 ## The toolkit
 
 `arc.py` deliberately contains **no transformation primitives** — no rotate, no
