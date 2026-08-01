@@ -187,6 +187,16 @@ def _condition_evidence() -> tuple[str, bool, bool, bool]:
     return "", False, False, False
 
 
+def _render_evidence(value: Any, limit: int = 400) -> str:
+    """Compact repr of what a check measured, for the ledger."""
+    try:
+        text = value if isinstance(value, str) else repr(value)
+    except Exception:  # noqa: BLE001 - a bad __repr__ must not break a run
+        return "<unrepresentable>"
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 def sweep(
     question: str,
     outcomes: dict[str, bool | Callable[[], Any]],
@@ -278,7 +288,7 @@ def sweep(
 
 
 def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | None = None,
-           *, key: str | None = None, retract: bool = False) -> bool:
+           *, evidence: Any = None, key: str | None = None, retract: bool = False) -> bool:
     """Record a hypothesis as *ruled out* by an executed check.
 
     ``verify()`` has one channel for two different findings, and a false one
@@ -294,7 +304,8 @@ def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | 
 
     Withdraw a mistaken dead end with ``refute(claim, retract=True)``.
     """
-    return verify(claim, condition, note, key=key, retract=retract, _mode="ruled_out")
+    return verify(claim, condition, note, evidence=evidence, key=key, retract=retract,
+                  _mode="ruled_out")
 
 
 def _previous_entry(entry_key: str) -> dict[str, Any] | None:
@@ -333,6 +344,7 @@ def verify(
     condition: bool | Callable[[], Any] = False,
     note: str | None = None,
     *,
+    evidence: Any = None,
     retract: bool = False,
     key: str | None = None,
     _mode: str = "invariant",
@@ -352,6 +364,20 @@ def verify(
 
     Prints ``[VERIFIED]`` or ``[REFUTED]``, records the result, and returns the
     boolean so you can branch on it.
+
+    When the check is a multi-line function rather than an expression, the AST
+    capture has nothing useful to read — the honest options were a bare name
+    (which the ledger flags as opaque) or a single unreadable comprehension.
+    Pass ``evidence=`` with what you actually measured::
+
+        depths = {name: depth(name) for name in rings}
+        verify("every surviving ring sits at even depth",
+               all(d % 2 == 0 for d in survivors_depths),
+               evidence=depths)
+
+    That is recorded as the entry's measurement and answers the opaque-name and
+    unreadable-call-site warnings, because it supplies exactly what they ask
+    for. ``note=`` is prose about the finding; ``evidence=`` is the value.
 
     The ledger is append-only and **the most recent entry for a claim wins**, so
     re-verifying a claim supersedes the earlier record. If a check was wrong —
@@ -425,6 +451,8 @@ def verify(
         entry["opaque"] = True
     if unsourced:
         entry["unsourced"] = True
+    if evidence is not None:
+        entry["measured"] = _render_evidence(evidence)
     if retract:
         entry["retracted"] = True
     if note:
@@ -475,7 +503,7 @@ def verify(
     # for, so firing it anyway tells a solver to do what it already did. One
     # passed both a variable and a full per-candidate note and was told to
     # "pass note= with the measured value".
-    if opaque and not literal and not note:
+    if opaque and not literal and not note and evidence is None:
         print(
             f"           ^ the recorded evidence is just the name `{expression}`. After a "
             "compaction that says nothing about what ran — inline the check, or pass "
@@ -487,7 +515,7 @@ def verify(
             f"({expression or 'literal'}). Nothing was measured, so this records an "
             "assertion, not a verification. Re-run it with a real check, or retract it."
         )
-    if unsourced:
+    if unsourced and evidence is None:
         print(
             "           ^ NO EVIDENCE CAPTURED: this ran from a -c one-liner, a heredoc "
             "or a REPL, so the condition's source could not be read. The ledger entry "

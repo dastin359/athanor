@@ -90,6 +90,19 @@ gate replays it. What is worth knowing about it:
   entry that "holds" means the hypothesis is dead, so the claim beside
   `[KILLED]` is something you ruled *out*. Read the marker, not just the
   sentence.
+- **A multi-line check? Pass `evidence=`.** The expression capture reads one
+  expression at the call site, so a check that is really a function leaves you
+  choosing between a bare name and an unreadable comprehension. Neither records
+  anything useful. Instead:
+
+  ```python
+  depths = {name: depth(name) for name in rings}
+  arc.verify("every surviving ring sits at even depth",
+             all(d % 2 == 0 for d in survivor_depths),
+             evidence=depths)
+  ```
+
+  `note=` is prose about the finding; `evidence=` is the value you measured.
 - **Record from a script, not from `python -c`.** `verify()` recovers evidence
   by reading your script's source; from a `-c` one-liner or a heredoc there is
   no source to read, so the entry carries the claim and nothing about what ran,

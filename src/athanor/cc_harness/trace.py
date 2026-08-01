@@ -281,6 +281,8 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
                 )
             if entry.get("expression"):
                 lines.append(f"         {entry['expression']}")
+            if entry.get("measured"):
+                lines.append(f"         measured: {entry['measured']}")
             if entry.get("literal"):
                 lines.append("         ^ NOT MEASURED — constant condition")
             if entry.get("unsourced"):

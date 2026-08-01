@@ -565,6 +565,48 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "recorded evidence is just the name" in result.stdout
 
+    def test_evidence_records_what_a_multiline_check_measured(self, workspace):
+        """The AST capture only reads a single expression at the call site.
+
+        A solver whose every substantive check was a multi-line function had two
+        options: a bare name (correctly flagged as opaque) or a one-expression
+        comprehension so unreadable it produced "a genuinely bad ledger entry I
+        had to retract". Neither is good.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples, invariants\n"
+            "shapes = [(len(s['output']), len(s['output'][0])) for s in train_samples]\n"
+            "ok = all(h == 2 for h, _ in shapes)\n"
+            "verify('every training output has two rows', ok, evidence=shapes)\n"
+            "print('MEASURED', invariants()[-1].get('measured'))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "recorded evidence is just the name" not in result.stdout
+        assert "MEASURED [(2, 3), (2, 3), (2, 3)]" in result.stdout
+
+    def test_evidence_answers_the_unreadable_call_site_warning(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        result = subprocess.run(
+            [_sys.executable, "-c",
+             "from arc import verify\nverify('a claim', True, evidence={'n': 3})\n"],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO EVIDENCE CAPTURED" not in result.stdout
+
+    def test_evidence_is_truncated_not_dumped(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, invariants\n"
+            "verify('a claim', True, evidence=list(range(500)))\n"
+            "print('LEN', len(invariants()[-1]['measured']))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LEN 400" in result.stdout
+
     def test_sweep_treats_a_raising_candidate_as_dead(self, workspace):
         result = self._run(
             workspace,

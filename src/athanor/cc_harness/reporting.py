@@ -167,7 +167,29 @@ def _unhedged_rival_prompt(rivals: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
+def _agreeing_rival_note(fitting_rivals: int) -> str:
+    """Say when the solver's live rivals simply do not reach the open slot.
+
+    A solver with one training-fitting rival that agreed on test 2 was shown the
+    dead-end list for test 2 instead — the less targeted path — with nothing
+    saying that its live rival had been considered and found irrelevant here.
+    That reads as though the harness had ignored the work.
+    """
+    if fitting_rivals <= 0:
+        return ""
+    plural = "s" if fitting_rivals > 1 else ""
+    verb = "do" if fitting_rivals > 1 else "does"
+    return (
+        f"You have {fitting_rivals} registered rival reading{plural} that reproduce{'' if plural else 's'} "
+        f"every training pair, and {verb} not disagree with you on the example{'s' if len(plural) else ''} "
+        "above — so they are not what the open slot is for. Whatever belongs there is a reading "
+        "you have not named yet."
+    )
+
+
+def _unspent_candidate_prompt(
+    unspent: list[int], ruled_out: list[str], fitting_rivals: int = 0
+) -> str:
     """Confront the solver with the alternatives it killed and did not hedge on.
 
     Derived from a measured loss. On `88e364bc` an agent ruled out a rival
@@ -181,15 +203,23 @@ def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
     """
     which = ", ".join(f"test {index}" for index in unspent)
     lines = [
-        f"UNSPENT SECOND ATTEMPT — {which} carries one candidate, and you ruled out "
-        f"{len(ruled_out)} rival reading(s) along the way:",
+        f"UNSPENT SECOND ATTEMPT — {which} carries one candidate. You recorded "
+        f"{len(ruled_out)} ruled-out hypothesis/hypotheses along the way:",
     ]
+    agreeing = _agreeing_rival_note(fitting_rivals)
     for claim in ruled_out[:6]:
         lines.append(f"  - {claim}")
     if len(ruled_out) > 6:
         lines.append(f"  … and {len(ruled_out) - 6} more")
     lines.append(
-        "Check how each one died. If a training pair it fails killed it, that is a proof and "
+        # Not everything a solver refutes is a reading of the puzzle. One
+        # refuted "training can separate the snake reading from the depth
+        # reading" — a claim about the *evidence*, whose death was the finding
+        # it wanted. Listing that under "rivals you ruled out, reconsider each"
+        # inverted its meaning.
+        "Some of these may be claims about the evidence rather than alternative readings of "
+        "the transformation; skip those. For the ones that do name an alternative reading: "
+        "check how each one died. If a training pair it fails killed it, that is a proof and "
         "the slot should stay empty. If it reproduced every training pair and died to a "
         "regularity you observed on the training outputs and then applied to the test input, "
         "that is an inductive leap — the invariant is real, but nothing established that it "
@@ -204,6 +234,8 @@ def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
         "confident the rule feels. ARC-AGI-2 scores two attempts per test example; an unspent "
         "one is a free attempt discarded."
     )
+    if agreeing:
+        lines.append(agreeing)
     return "\n".join(lines)
 
 
@@ -231,6 +263,8 @@ def format_submission_report(
     unspent_candidates: list[int] | None = None,
     ruled_out_claims: list[str] | None = None,
     unhedged_rivals: list[dict[str, Any]] | None = None,
+    fitting_rivals: int = 0,
+    partial_hedge: bool = False,
 ) -> str:
     """Render one formal iteration's outcome plus the directive that follows."""
     lines: list[str] = []
@@ -377,7 +411,19 @@ def format_submission_report(
             lines.append(_unhedged_rival_prompt(unhedged_rivals))
             lines.append("")
         elif unspent_candidates and ruled_out_claims:
-            lines.append(_unspent_candidate_prompt(unspent_candidates, ruled_out_claims))
+            lines.append(_unspent_candidate_prompt(
+                unspent_candidates, ruled_out_claims, fitting_rivals
+            ))
+            lines.append("")
+        if partial_hedge:
+            which = ", ".join(f"test {i}" for i in unspent_candidates or [])
+            lines.append(
+                f"PARTIAL HEDGE — solve() returned two candidates for at least one test input "
+                f"and only one for {which}. If that was deliberate, ignore this. If you meant "
+                "to hedge everywhere, the likely cause is your alternative path returning "
+                "early on that input rather than a decision you made — check it before you "
+                "spend the audit."
+            )
             lines.append("")
         lines.append(GENERALIZATION_AUDIT_DIRECTIVE.rstrip())
     else:
@@ -472,6 +518,8 @@ def format_status(
             # nothing at all.
             if entry.get("expression"):
                 lines.append(f"         {entry['expression']}")
+            if entry.get("measured"):
+                lines.append(f"         measured: {entry['measured']}")
             if entry.get("literal"):
                 lines.append("         ^ NOT MEASURED — constant condition; re-verify or retract")
             if entry.get("unsourced"):

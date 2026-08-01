@@ -363,6 +363,16 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         for row in evaluation.get("test", [])
         if not row.get("error") and 0 < len(row.get("candidates") or []) < allowed_candidates
     ]
+    fitting_rivals = sum(1 for entry in load_rivals(workspace) if entry.get("fits_training"))
+    # A solver that hedged on some test examples and not others almost certainly
+    # meant to hedge on all of them; one reported exactly that, its alternative
+    # path having returned early on a bug. "You chose not to hedge" and "your
+    # hedge silently failed" are different situations and were indistinguishable.
+    partial_hedge = bool(unspent_candidates) and any(
+        len(row.get("candidates") or []) >= allowed_candidates
+        for row in evaluation.get("test", [])
+        if not row.get("error")
+    )
 
     report = format_submission_report(
         iteration=iteration,
@@ -375,6 +385,8 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         unspent_candidates=unspent_candidates,
         ruled_out_claims=ruled_out_claims,
         unhedged_rivals=rivals,
+        fitting_rivals=fitting_rivals,
+        partial_hedge=partial_hedge,
     )
     (iteration_dir / "report.txt").write_text(report, encoding="utf-8")
 
