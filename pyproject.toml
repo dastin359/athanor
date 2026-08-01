@@ -30,6 +30,9 @@ phoenix = [
   "openinference-instrumentation-google-genai==0.1.14",
   "opentelemetry-instrumentation-fastapi==0.55b1",
 ]
+dev = [
+  "pytest>=8.0",
+]
 
 [project.scripts]
 athanor = "athanor.cli:main"
@@ -44,3 +47,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "athanor.solver" = ["*.md"]
 "athanor.web_demo" = ["templates/*.html", "saved_runs/.gitkeep"]
+"athanor.cc_harness" = ["assets/*.md", "assets/*.py", "assets/*.sh"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,220 @@
+"""System-prompt composition for the CC harness.
+
+The ARC-specific parts of the solver prompt — who the agent is, and what it
+knows about the benchmark's priors and primitives — are **shared verbatim with
+the flagship solver**. That is not just deduplication: comparing the two
+harnesses is only meaningful if the domain knowledge is held constant, so any
+measured difference is attributable to the harness rather than to the priors.
+
+Sections 3 onward (goal, methodology, tools, loop) are harness-specific and come
+from ``assets/CC_SOLVER_DOCTRINE.md``.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from .config import CCRunConfig
+
+ASSETS = Path(__file__).parent / "assets"
+
+#: Headings lifted unchanged from the flagship solver prompt.
+SHARED_SECTIONS: tuple[str, ...] = ("1. ROLE & IDENTITY", "2. ARC DOMAIN KNOWLEDGE")
+
+PROMPT_HEADER = "Please read and follow the instructions below.\n"
+
+
+def solver_prompt_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "solver" / "SOLVER_SYSTEM_PROMPT.md"
+
+
+def split_sections(markdown: str) -> dict[str, str]:
+    """Split a markdown document on its ``## `` headings.
+
+    Returns ``{heading_text: body}``; the body excludes the heading line and any
+    trailing horizontal rule.
+    """
+    sections: dict[str, str] = {}
+    current: str | None = None
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if current is None:
+            return
+        body = "\n".join(buffer).strip()
+        if body.endswith("---"):
+            body = body[: -len("---")].rstrip()
+        sections[current] = body
+
+    for line in markdown.splitlines():
+        if line.startswith("## "):
+            flush()
+            current = line[3:].strip()
+            buffer = []
+        elif current is not None:
+            buffer.append(line)
+    flush()
+    return sections
+
+
+def shared_arc_sections() -> str:
+    """The role + domain-knowledge half of the flagship solver prompt."""
+    path = solver_prompt_path()
+    sections = split_sections(path.read_text(encoding="utf-8"))
+    missing = [title for title in SHARED_SECTIONS if title not in sections]
+    if missing:
+        raise RuntimeError(
+            f"{path} no longer contains the section(s) {missing!r} that the CC harness shares "
+            "with the flagship solver. Update cc_harness.prompt.SHARED_SECTIONS to match, and "
+            "check whether the two harnesses still agree on ARC domain knowledge."
+        )
+    return "\n\n---\n\n".join(f"## {title}\n\n{sections[title]}" for title in SHARED_SECTIONS)
+
+
+def doctrine() -> str:
+    """The CC-harness-specific goal and methodology sections."""
+    return (ASSETS / "CC_SOLVER_DOCTRINE.md").read_text(encoding="utf-8").strip()
+
+
+def build_system_prompt() -> str:
+    """Full appended system prompt. Task-independent, so it caches across a batch."""
+    return "\n\n---\n\n".join([PROMPT_HEADER.strip(), shared_arc_sections(), doctrine()]) + "\n"
+
+
+# ── task presentation ────────────────────────────────────────────────────────
+
+def render_grid_text(grid: list[list[int]]) -> str:
+    """One row per line, one digit per cell."""
+    return "\n".join("".join(str(cell) for cell in row) for row in grid)
+
+
+def _shape(grid: list[list[int]]) -> str:
+    return f"{len(grid)}x{len(grid[0])}" if grid else "0x0"
+
+
+def render_task_markdown(task_id: str, puzzle_data: dict[str, Any]) -> str:
+    """The puzzle as text, written to ``task/grids.md`` and optionally inlined."""
+    lines = [f"# Task {task_id}", ""]
+    for idx, pair in enumerate(puzzle_data.get("train") or []):
+        lines.append(f"## Training pair {idx}")
+        lines.append("")
+        lines.append(f"input ({_shape(pair['input'])}):")
+        lines.append(render_grid_text(pair["input"]))
+        lines.append("")
+        lines.append(f"output ({_shape(pair['output'])}):")
+        lines.append(render_grid_text(pair["output"]))
+        lines.append("")
+    for idx, pair in enumerate(puzzle_data.get("test") or []):
+        lines.append(f"## Test input {idx}")
+        lines.append("")
+        lines.append(f"input ({_shape(pair['input'])}):")
+        lines.append(render_grid_text(pair["input"]))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def build_initial_prompt(
+    *,
+    task_id: str,
+    puzzle_data: dict[str, Any],
+    config: CCRunConfig,
+    image_files: list[str],
+) -> str:
+    """The opening user message handed to ``claude -p``."""
+    n_train = len(puzzle_data.get("train") or [])
+    n_test = len(puzzle_data.get("test") or [])
+
+    parts = [
+        f"Solve ARC-AGI-2 task `{task_id}`.",
+        "",
+        "Read ./CLAUDE.md first — it describes this workspace, the gate commands, and the "
+        "rules the gate enforces. Then read ./arc.py so you know what the toolkit gives you.",
+        "",
+        f"You have {n_train} training pair(s), {n_test} test input(s), and "
+        f"{config.max_iterations} formal submissions.",
+    ]
+
+    if image_files:
+        listed = ", ".join(image_files[:8])
+        more = f", … ({len(image_files)} files)" if len(image_files) > 8 else ""
+        parts += [
+            "",
+            "Every grid is rendered as a PNG under `task/images/` — "
+            f"{listed}{more}. Open them with the Read tool before you start reasoning; "
+            "gestalt perception catches structure that a numeric dump does not.",
+        ]
+
+    if config.inline_grids:
+        parts += [
+            "",
+            "The grids follow as text (one row per line, one digit per cell). The same content "
+            "is in `task/grids.md`, and `arc.py` loads it as `train_samples` / `test_samples`.",
+            "",
+            render_task_markdown(task_id, puzzle_data),
+        ]
+    else:
+        parts += ["", "The grids are in `task/grids.md` and loadable via `arc.py`."]
+
+    parts += [
+        "",
+        "Begin with perception and verification, not with a guess. When you have a rule, write "
+        "`solution/hypothesis.md` and `solution/solve.py`, dry-run it with `arc.check(solve)`, "
+        "and only then run `python gate.py submit`.",
+    ]
+    return "\n".join(parts)
+
+
+def build_workspace_claude_md(*, task_id: str, puzzle_data: dict[str, Any], config: CCRunConfig) -> str:
+    template = (ASSETS / "WORKSPACE_CLAUDE.md").read_text(encoding="utf-8")
+    substitutions = {
+        "__TASK_ID__": task_id,
+        "__N_TRAIN__": str(len(puzzle_data.get("train") or [])),
+        "__N_TEST__": str(len(puzzle_data.get("test") or [])),
+        "__MAX_ITERATIONS__": str(config.max_iterations),
+        "__BEST_EFFORT__": str(config.best_effort_iterations),
+        "__MAX_CANDIDATES__": str(config.max_test_predictions),
+        "__MIN_HYPOTHESIS_CHARS__": str(config.min_hypothesis_chars),
+    }
+    for key, value in substitutions.items():
+        template = template.replace(key, value)
+    return template
+
+
+def build_notes_seed(task_id: str) -> str:
+    return (
+        f"# NOTES — task {task_id}\n\n"
+        "Durable research state. Written for a fresh version of yourself: assume the\n"
+        "transcript above this file is gone.\n\n"
+        "## Current hypothesis\n\n_(none yet)_\n\n"
+        "## Confirmed observations\n\n"
+        "_(record invariants with `arc.verify()`; `python gate.py status` replays them)_\n\n"
+        "## Refuted hypotheses\n\n_(what was ruled out, and by which experiment)_\n\n"
+        "## Next experiment\n\n_(the specific check to run, and what each outcome would mean)_\n"
+    )
+
+
+def settings_json(*, hook_script: Path) -> str:
+    """Workspace ``.claude/settings.json`` — the compaction-recovery hook."""
+    return json.dumps(
+        {
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "compact",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "bash",
+                                "args": [str(hook_script)],
+                                "timeout": 60,
+                                "statusMessage": "Restoring distilled research state…",
+                            }
+                        ],
+                    }
+                ]
+            }
+        },
+        indent=2,
+    )

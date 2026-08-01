@@ -4,6 +4,10 @@ The `web` subcommand launches the batch dashboard from
 ``athanor.web_demo.batch_launcher``. The dashboard starts
 empty when no `--tasks` are given and supports adding more puzzle
 instances interactively via the "+" button.
+
+The `cc` subcommand runs the Claude Code harness variant, where Claude Code
+owns the agent loop and Athanor supplies only the workspace and the
+verification gate. See ``docs/cc_harness.md``.
 """
 
 from __future__ import annotations
@@ -23,14 +27,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    from athanor.web_demo.batch_launcher import add_arguments as _add_batch_arguments
+    try:
+        from athanor.web_demo.batch_launcher import add_arguments as _add_batch_arguments
+    except ImportError:
+        # The web dashboard pulls in the full model/serving stack. The `cc`
+        # subcommand needs none of it, so a partial install still gets a usable CLI.
+        _add_batch_arguments = None
 
-    web = subparsers.add_parser(
-        "web",
-        help="Run the batch dashboard (empty dashboard when --tasks is omitted)",
+    if _add_batch_arguments is not None:
+        web = subparsers.add_parser(
+            "web",
+            help="Run the batch dashboard (empty dashboard when --tasks is omitted)",
+        )
+        _add_batch_arguments(web)
+        web.set_defaults(func=_cmd_web)
+
+    from athanor.cc_harness.cli import add_arguments as _add_cc_arguments
+
+    cc = subparsers.add_parser(
+        "cc",
+        help="Claude Code harness variant (single solver agent, no reviewer)",
     )
-    _add_batch_arguments(web)
-    web.set_defaults(func=_cmd_web)
+    _add_cc_arguments(cc)
 
     return parser
 

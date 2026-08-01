@@ -1,0 +1,226 @@
+"""``athanor cc`` — command line for the Claude Code harness variant."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from athanor.data import list_tasks
+
+from .config import CCRunConfig
+from .runner import default_event_printer, rescore_run, run_batch, run_task
+from .scoring import aggregate, format_aggregate
+
+DEFAULT_OUT_DIR = "cc_runs"
+
+
+def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="Where run directories are written.")
+    parser.add_argument("--dataset-root", default=None, help="ARC dataset root (defaults to $ARC_DATA_ROOT).")
+    parser.add_argument("--split", default="public_eval", help="Dataset split (default: public_eval).")
+    parser.add_argument("--model", default="opus", help="Model alias or id passed to `claude --model`.")
+    parser.add_argument("--effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
+    parser.add_argument("--max-iterations", type=int, default=12, help="Budgeted `gate.py submit` calls.")
+    parser.add_argument(
+        "--best-effort-iterations",
+        type=int,
+        default=2,
+        help="Trailing iterations over which the train-100%% requirement is lifted.",
+    )
+    parser.add_argument("--max-test-predictions", type=int, default=2, choices=[1, 2])
+    parser.add_argument("--max-budget-usd", type=float, default=None, help="Per-task spend cap.")
+    parser.add_argument("--timeout", type=float, default=3600.0, help="Per-task wall-clock limit in seconds.")
+    parser.add_argument("--solve-timeout", type=float, default=60.0, help="Per-submission solve() limit.")
+    parser.add_argument("--no-visual", action="store_true", help="Skip PNG rendering of the grids.")
+    parser.add_argument("--no-inline-grids", action="store_true", help="Keep the grids out of the opening prompt.")
+    parser.add_argument("--permission-mode", default="bypassPermissions")
+    parser.add_argument(
+        "--bare",
+        action="store_true",
+        help="Run `claude --bare` for maximum reproducibility (requires ANTHROPIC_API_KEY).",
+    )
+    parser.add_argument("--setting-sources", default="project")
+    parser.add_argument("--overwrite", action="store_true", help="Replace an existing workspace.")
+    parser.add_argument("--quiet", action="store_true", help="Do not trace agent events to stdout.")
+
+
+def _config_from_args(args: argparse.Namespace) -> CCRunConfig:
+    return CCRunConfig(
+        model=args.model,
+        effort=args.effort,
+        max_iterations=args.max_iterations,
+        best_effort_iterations=args.best_effort_iterations,
+        max_test_predictions=args.max_test_predictions,
+        max_budget_usd=args.max_budget_usd,
+        wall_clock_timeout_s=args.timeout,
+        solve_timeout_s=args.solve_timeout,
+        visual=not args.no_visual,
+        inline_grids=not args.no_inline_grids,
+        permission_mode=args.permission_mode,
+        bare=args.bare,
+        setting_sources=args.setting_sources,
+    )
+
+
+def _print_task_result(record: dict) -> None:
+    score = record.get("score") or {}
+    status = "SOLVED" if score.get("solved") else ("partial" if score.get("num_solved") else "unsolved")
+    print(
+        f"  {record.get('task_id')}: {status}  "
+        f"{score.get('num_solved', 0)}/{score.get('num_test', 0)} test examples  "
+        f"{record.get('iterations_used', 0)}/{record.get('max_iterations', '?')} iterations"
+        + (f"  ${float(record['cost_usd']):.3f}" if record.get("cost_usd") is not None else "")
+    )
+    if record.get("error"):
+        print(f"    error: {record['error']}")
+    if (record.get("integrity") or {}).get("suspected"):
+        for item in record["integrity"]["evidence"]:
+            print(f"    INTEGRITY: {item}")
+    for finding in record.get("hardcoding_findings") or []:
+        print(f"    overfit signal: {finding}")
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    record = run_task(
+        args.task,
+        out_dir=args.out_dir,
+        config=_config_from_args(args),
+        dataset_root=args.dataset_root,
+        dataset_split=args.split,
+        event_callback=None if args.quiet else default_event_printer,
+        overwrite=args.overwrite,
+    )
+    _print_task_result(record)
+    return 0 if record.get("accepted") and not record.get("error") else 1
+
+
+def cmd_workspace(args: argparse.Namespace) -> int:
+    record = run_task(
+        args.task,
+        out_dir=args.out_dir,
+        config=_config_from_args(args),
+        dataset_root=args.dataset_root,
+        dataset_split=args.split,
+        overwrite=args.overwrite,
+        launch=False,
+    )
+    workspace = Path(record["workspace"])
+    run_dir = workspace.parent
+    print(f"workspace     : {workspace}")
+    print(f"system prompt : {run_dir / 'system_prompt.md'}")
+    print(f"opening prompt: {run_dir / 'initial_prompt.md'}")
+    print()
+    print("Point any Claude Code agent at that directory. From inside it:")
+    print("  python gate.py status | submit | accept")
+    print()
+    print("Score it afterwards with:")
+    print(f"  athanor cc score {args.out_dir} --rescore")
+    return 0
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    tasks = list(args.tasks or [])
+    if args.all:
+        tasks = list_tasks(split=args.split, dataset_root=args.dataset_root)
+    if args.limit:
+        tasks = tasks[: args.limit]
+    if not tasks:
+        print("No tasks selected. Pass --tasks, or --all.")
+        return 2
+
+    results = run_batch(
+        tasks,
+        out_dir=args.out_dir,
+        config=_config_from_args(args),
+        dataset_root=args.dataset_root,
+        dataset_split=args.split,
+        event_callback=None if args.quiet else default_event_printer,
+        overwrite=args.overwrite,
+        on_task_done=_print_task_result,
+    )
+
+    summary = aggregate(results)
+    out_dir = Path(args.out_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "summary.json").write_text(
+        json.dumps({"summary": summary, "results": results}, indent=2), encoding="utf-8"
+    )
+    print()
+    print(format_aggregate(summary, results))
+    return 0
+
+
+def cmd_score(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out_dir).resolve()
+    if not out_dir.is_dir():
+        print(f"No such run directory: {out_dir}")
+        return 2
+
+    results = []
+    for run_dir in sorted(p for p in out_dir.iterdir() if (p / "result.json").is_file()):
+        if args.rescore:
+            results.append(rescore_run(run_dir, dataset_root=args.dataset_root, dataset_split=args.split))
+        else:
+            results.append(json.loads((run_dir / "result.json").read_text(encoding="utf-8")))
+
+    if not results:
+        print(f"No runs found under {out_dir}")
+        return 2
+
+    summary = aggregate(results)
+    (out_dir / "summary.json").write_text(
+        json.dumps({"summary": summary, "results": results}, indent=2), encoding="utf-8"
+    )
+    print(format_aggregate(summary, results))
+    return 0
+
+
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    """Attach the `cc` sub-commands to an existing parser."""
+    sub = parser.add_subparsers(dest="cc_command", required=True)
+
+    run = sub.add_parser("run", help="Solve one task with Claude Code as the agent loop.")
+    run.add_argument("task", help="Task id or path to a task JSON.")
+    _add_common_arguments(run)
+    run.set_defaults(func=cmd_run)
+
+    workspace = sub.add_parser(
+        "workspace",
+        help="Prepare a workspace and its prompts without launching a solver.",
+    )
+    workspace.add_argument("task", help="Task id or path to a task JSON.")
+    _add_common_arguments(workspace)
+    workspace.set_defaults(func=cmd_workspace)
+
+    batch = sub.add_parser("batch", help="Solve many tasks sequentially.")
+    batch.add_argument("--tasks", nargs="*", default=[], help="Task ids.")
+    batch.add_argument("--all", action="store_true", help="Every task in the split.")
+    batch.add_argument("--limit", type=int, default=None, help="Cap the number of tasks.")
+    _add_common_arguments(batch)
+    batch.set_defaults(func=cmd_batch)
+
+    score = sub.add_parser("score", help="Aggregate finished runs in a directory.")
+    score.add_argument("out_dir", nargs="?", default=DEFAULT_OUT_DIR)
+    score.add_argument("--rescore", action="store_true", help="Recompute from each workspace on disk.")
+    score.add_argument("--dataset-root", default=None)
+    score.add_argument("--split", default="public_eval")
+    score.set_defaults(func=cmd_score)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="athanor cc",
+        description="Athanor with Claude Code as the harness: one solver agent, no reviewer.",
+    )
+    add_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

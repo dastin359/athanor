@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .pytest_cache/
+
+# Claude Code harness run directories (workspaces, transcripts, results)
+cc_runs/

@@ -1,0 +1,331 @@
+"""Token-efficient rendering of gate output.
+
+The gate is the only channel the harness has for speaking to the solver agent:
+Claude Code owns the agent loop, so Athanor's orchestrator-injected reflection
+prompts have to arrive as *tool output* instead. Everything the flagship
+orchestrator would have pushed into the conversation — the failure diff, the
+reflection schema, the generalization audit, the best-effort switch — is emitted
+here, appended to the result of ``python gate.py …``.
+
+Formatting follows the same rule the solver is held to: spend tokens on
+information the model cannot cheaply recompute, and nothing else.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .evaluate import Grid, grid_diff
+
+#: Grids at or below this cell count are printed in full; larger ones are
+#: summarised by their differences. A 20x20 grid is 400 cells.
+FULL_GRID_CELL_LIMIT = 900
+
+#: Tighter cap for a prediction whose shape is already wrong: the shape *is* the
+#: finding, and dumping a 30x30 grid of noise underneath it buys nothing.
+WRONG_SHAPE_CELL_LIMIT = 300
+
+#: Failed examples that get their grids printed in full. Beyond this, the
+#: difference listing carries the information at a fraction of the cost.
+FULL_GRID_EXAMPLE_LIMIT = 3
+
+#: Cap on per-example difference listings.
+DIFF_CELL_LIMIT = 40
+
+
+# ── grid rendering ───────────────────────────────────────────────────────────
+
+def render_grid(grid: Grid | None) -> str:
+    """One row per line, one digit per cell — compact and spatially readable."""
+    if not grid:
+        return "<empty>"
+    return "\n".join("".join(str(cell) for cell in row) for row in grid)
+
+
+def grid_shape(grid: Grid | None) -> str:
+    if not grid:
+        return "0x0"
+    return f"{len(grid)}x{len(grid[0])}"
+
+
+def render_grid_block(title: str, grid: Grid | None, *, limit: int = FULL_GRID_CELL_LIMIT) -> str:
+    """Labelled grid, elided when it is too large to be worth the tokens."""
+    if not grid:
+        return f"{title}: <none>"
+    cells = len(grid) * len(grid[0])
+    header = f"{title} ({grid_shape(grid)}):"
+    if cells > limit:
+        return f"{header} <{cells} cells — not inlined; inspect it with arc.show()>"
+    return f"{header}\n{render_grid(grid)}"
+
+
+# ── directives (Athanor reflection prompts, retargeted at the filesystem) ────
+
+TRAIN_FAILURE_DIRECTIVE = """\
+NEXT — reflect before your next submission. Append a dated entry to NOTES.md covering:
+
+1. Diff analysis — for each failed example, what differs between prediction and
+   ground truth, and where the logic went wrong.
+2. Failure root cause — wrong assumption, coding bug, or unhandled edge case?
+   "I assumed X, but actually Y" beats "my code was wrong".
+3. Verified rules — invariants that hold regardless of your current hypothesis.
+   Establish each one by running arc.verify() in an exploration script; do not
+   assert them from memory.
+4. Dead ends — hypotheses this attempt rules out, so you do not revisit them.
+5. Next experiment — the specific check you will run, and what each outcome
+   would tell you.
+
+Then go back to exploration. Run the experiment before writing the next
+hypothesis: a submission that is not preceded by a new verified fact is a guess.
+"""
+
+GENERALIZATION_AUDIT_DIRECTIVE = """\
+NEXT — training is solved, generalization is not. Nothing above tells you the
+rule is right; it tells you the rule is consistent with the examples you were
+allowed to see.
+
+Write solution/audit.md with exactly these sections:
+
+  CONFIDENCE: <1-5>
+  DECISION: ACCEPT | RETRY
+  REASONS:
+  <your analysis>
+
+Cover, in REASONS:
+- Assumption audit. Does the code lean on any training-only coincidence — exact
+  grid sizes, absolute coordinates, specific counts, colours with no semantic
+  role? For every constant in solve.py, say why it is role-based rather than
+  incidental.
+- Prediction plausibility. Do the test predictions above follow from the same
+  rule that explains all training pairs? Name any artefact that smells like
+  overfitting: stray pixels, missing structure, wrong recolour, bad alignment.
+- Verification. Back the audit with executed checks where you can — for
+  instance, confirm the predicted test outputs satisfy the invariants you
+  verified on the training outputs.
+
+Then run: python gate.py accept
+DECISION: RETRY refuses acceptance and returns you to the loop with an iteration
+spent — which is the correct outcome when the audit finds a real hole.
+"""
+
+BEST_EFFORT_DIRECTIVE = """\
+STRATEGY SHIFT — the training-accuracy requirement is lifted.
+
+Most of your iteration budget is gone without a train-perfect rule. That happens
+when the rule is unusually subtle, or when the training pairs are not quite
+self-consistent under any simple rule.
+
+`gate.py accept` will now accept your best submission regardless of training
+score. Stop optimising for training coverage and optimise for the test outputs
+being right: pick the hypothesis with the strongest evidence behind it, and use
+your second candidate on the genuine alternative reading rather than on a
+throwaway variant.
+"""
+
+
+# ── submission report ────────────────────────────────────────────────────────
+
+def format_submission_report(
+    *,
+    iteration: int,
+    max_iterations: int,
+    evaluation: dict[str, Any],
+    train_samples: list[dict[str, Any]],
+    hardcoding_findings: list[str],
+    best_effort_active: bool,
+) -> str:
+    """Render one formal iteration's outcome plus the directive that follows."""
+    lines: list[str] = []
+    remaining = max_iterations - iteration
+
+    if evaluation.get("status") != "ok":
+        lines.append(f"ITERATION {iteration}/{max_iterations} — SUBMISSION FAILED TO RUN")
+        lines.append("")
+        lines.append(str(evaluation.get("error") or "unknown error").rstrip())
+        if evaluation.get("stdout"):
+            lines.append("")
+            lines.append("--- stdout/stderr from your code ---")
+            lines.append(str(evaluation["stdout"]).rstrip())
+        lines.append("")
+        lines.append(f"Iterations remaining: {remaining}")
+        lines.append("")
+        lines.append(
+            "NEXT — this iteration is spent. Reproduce the failure in an exploration "
+            "script (`python explore/<name>.py`) and fix it there before resubmitting; "
+            "the gate is not a debugger."
+        )
+        return "\n".join(lines)
+
+    correct = int(evaluation.get("train_correct") or 0)
+    total = int(evaluation.get("train_total") or 0)
+    pixel = float(evaluation.get("train_pixel_accuracy") or 0.0)
+    passed = bool(evaluation.get("all_train_correct"))
+
+    lines.append(
+        f"ITERATION {iteration}/{max_iterations} — TRAIN {correct}/{total}"
+        f" (mean pixel accuracy {pixel:.3f})"
+    )
+    lines.append("")
+
+    if evaluation.get("multi_candidate_on_train"):
+        lines.append(
+            "WARNING: solve() returned multiple candidates for a training input. Training "
+            "scores the first candidate only. Ambiguity on an example whose output you can "
+            "see means the rule is not yet understood — resolve it rather than hedging."
+        )
+        lines.append("")
+
+    for finding in hardcoding_findings:
+        lines.append(f"WARNING: {finding}")
+    if hardcoding_findings:
+        lines.append("")
+
+    failures = [row for row in evaluation.get("train", []) if not row.get("correct")]
+    if failures:
+        lines.append(f"--- failed training examples ({len(failures)}/{total}) ---")
+        for position, row in enumerate(failures):
+            idx = int(row.get("index", -1))
+            lines.append("")
+            lines.append(f"[train {idx}]")
+            if row.get("error"):
+                lines.append(f"  raised: {row['error']}")
+                continue
+            expected = (train_samples[idx] or {}).get("output") if 0 <= idx < len(train_samples) else None
+            predicted = row.get("predicted")
+            diff = grid_diff(predicted, expected, limit=DIFF_CELL_LIMIT)
+            lines.append(
+                f"  shape expected {grid_shape(expected)}, got {grid_shape(predicted)}"
+                f" | pixel accuracy {float(row.get('pixel_accuracy') or 0.0):.3f}"
+            )
+            if not diff["shape_match"]:
+                lines.append("  SHAPE MISMATCH — the output-size rule is wrong.")
+            else:
+                bbox = diff.get("bbox")
+                lines.append(
+                    f"  {diff['num_diff']} differing cells"
+                    + (f", bounded by rows {bbox[0]}-{bbox[2]}, cols {bbox[1]}-{bbox[3]}" if bbox else "")
+                )
+                if diff["cells"]:
+                    listing = " ".join(
+                        f"({r},{c}) want {want} got {got}" for r, c, want, got in diff["cells"]
+                    )
+                    lines.append(f"  diffs: {listing}")
+                    if diff["truncated"]:
+                        lines.append(f"  … {diff['num_diff'] - len(diff['cells'])} more differing cells")
+
+            if position >= FULL_GRID_EXAMPLE_LIMIT:
+                lines.append(
+                    "  grids omitted (differences above carry the information; "
+                    "use arc.check(solve) to see them all)"
+                )
+                continue
+            predicted_limit = FULL_GRID_CELL_LIMIT if diff["shape_match"] else WRONG_SHAPE_CELL_LIMIT
+            lines.append("  " + render_grid_block("expected", expected).replace("\n", "\n  "))
+            lines.append(
+                "  " + render_grid_block("predicted", predicted, limit=predicted_limit).replace("\n", "\n  ")
+            )
+        lines.append("")
+
+    lines.append("--- test predictions ---")
+    for row in evaluation.get("test", []):
+        idx = row.get("index")
+        if row.get("error"):
+            lines.append(f"[test {idx}] raised: {row['error']}")
+            continue
+        candidates = row.get("candidates") or []
+        shapes = ", ".join(grid_shape(c) for c in candidates) or "none"
+        lines.append(f"[test {idx}] {len(candidates)} candidate(s): {shapes}")
+        for cand_idx, candidate in enumerate(candidates, start=1):
+            lines.append("  " + render_grid_block(f"candidate {cand_idx}", candidate).replace("\n", "\n  "))
+    lines.append("")
+
+    if evaluation.get("stdout"):
+        lines.append("--- stdout/stderr from your code ---")
+        lines.append(str(evaluation["stdout"]).rstrip())
+        lines.append("")
+
+    lines.append(f"Iterations remaining: {remaining}")
+    lines.append("")
+
+    if passed:
+        lines.append("TRAINING PASSED (100%).")
+        lines.append("")
+        lines.append(GENERALIZATION_AUDIT_DIRECTIVE.rstrip())
+    else:
+        if best_effort_active:
+            lines.append(BEST_EFFORT_DIRECTIVE.rstrip())
+            lines.append("")
+        lines.append(TRAIN_FAILURE_DIRECTIVE.rstrip())
+
+    return "\n".join(lines)
+
+
+# ── status / resume report ───────────────────────────────────────────────────
+
+def format_status(
+    *,
+    state: dict[str, Any],
+    invariants: list[dict[str, Any]],
+    hypothesis: str,
+    notes_excerpt: str,
+) -> str:
+    """The distilled research state, printed on demand.
+
+    Athanor's ICAE writes a memory checkpoint when context fills. Claude Code
+    compacts on its own schedule, so this variant keeps the equivalent state on
+    disk and reprints it here — one command restores continuity after a
+    compaction.
+    """
+    lines: list[str] = []
+    iterations = state.get("iterations") or []
+    max_iterations = int(state.get("max_iterations") or 0)
+    used = len(iterations)
+
+    lines.append(f"TASK {state.get('task_id', '?')} — iteration {used}/{max_iterations}")
+    accepted = state.get("accepted")
+    if accepted:
+        lines.append(f"STATUS: accepted at iteration {accepted.get('iteration')} — the run is finished.")
+    elif used >= max_iterations:
+        lines.append("STATUS: iteration budget exhausted. `gate.py accept` on your best submission.")
+    else:
+        lines.append("STATUS: in progress.")
+    lines.append("")
+
+    if iterations:
+        lines.append("--- submission history ---")
+        for record in iterations:
+            marker = "PASS" if record.get("all_train_correct") else "fail"
+            detail = record.get("error") or ""
+            lines.append(
+                f"  #{record.get('iteration')}  {marker}  "
+                f"train {record.get('train_correct')}/{record.get('train_total')}  "
+                f"pixel {float(record.get('train_pixel_accuracy') or 0.0):.3f}"
+                + (f"  [{detail.splitlines()[0][:80]}]" if detail else "")
+            )
+        lines.append("")
+
+    if invariants:
+        lines.append(f"--- verified invariants ({len(invariants)}) ---")
+        for entry in invariants:
+            mark = "OK  " if entry.get("holds") else "FAIL"
+            source = entry.get("source") or "?"
+            lines.append(f"  [{mark}] {entry.get('claim')}   ({source})")
+        lines.append("")
+    else:
+        lines.append(
+            "--- verified invariants: none ---\n"
+            "  Nothing about this puzzle has been established by execution yet. "
+            "Use arc.verify() in an exploration script before forming a hypothesis.\n"
+        )
+
+    if hypothesis:
+        lines.append("--- last submitted hypothesis ---")
+        lines.append(hypothesis.strip())
+        lines.append("")
+
+    if notes_excerpt:
+        lines.append("--- NOTES.md (tail) ---")
+        lines.append(notes_excerpt.strip())
+        lines.append("")
+
+    return "\n".join(lines)

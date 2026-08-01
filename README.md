@@ -79,11 +79,45 @@ Model-generated Python execution is **unsafe** and intended only for isolated lo
 
 See the [Threat Model section of docs/design.md](docs/design.md#threat-model).
 
+## Claude Code as harness (experimental variant)
+
+An exploratory variant in which **Claude Code owns the agent loop** and Athanor
+supplies only the workspace, the doctrine, and a verification gate. One solver
+agent, no reviewer.
+
+The point is to isolate the thesis from the bespoke loop: code-as-verification,
+artifact separation, and budgeted iteration are kept; the custom orchestrator is
+replaced by a general-purpose coding agent with a shell and a filesystem.
+Exploration becomes `python explore/<name>.py`, the hypothesis and `solve()`
+become files, and `arc.verify(claim, condition)` makes "establish it by
+executing it" the literal API — with every verified invariant recorded to a
+ledger that survives context compaction.
+
+```bash
+export ARC_DATA_ROOT=/path/to/ARC-AGI-2
+athanor cc run 28a6681f --max-iterations 8      # solve one task
+athanor cc batch --tasks 28a6681f 0934a4d8      # solve several
+athanor cc score cc_runs                        # aggregate
+athanor cc workspace 28a6681f                   # prepare a workspace, launch nothing
+```
+
+See [docs/cc_harness.md](docs/cc_harness.md) for the mechanism-by-mechanism
+mapping, what is deliberately dropped, and the open questions the variant exists
+to answer.
+
 ## Documentation
 
 - [RESULTS.md](RESULTS.md) — full-eval score, cost analysis, hard-pair frontier
 - [docs/design.md](docs/design.md) — design rationale, architecture, competitive context, terminology, threat model
+- [docs/cc_harness.md](docs/cc_harness.md) — the Claude Code harness variant: mechanism mapping, gate contract, open questions
 - [docs/zero_solve_subset.md](docs/zero_solve_subset.md) — frozen 2026-04-12 snapshot methodology and reproduction queries
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## License
 
