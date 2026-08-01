@@ -234,3 +234,59 @@ to produce failures:
 
 Agents were told the difficulty honestly and asked to prioritise evaluating the
 failure reports over solving.
+
+---
+
+## The finding that matters most
+
+`88e364bc` produced the first train-perfect-but-wrong result, and it is worth
+more than the six clean solves.
+
+The task's rule is "tokens slide until blocked". One question was genuinely
+ambiguous: may a diagonal slide pass the tip of a wall? Both readings reproduce
+all three training pairs. The agent killed the strict reading by execution — it
+strands a token in open space, "whereas all ten training tokens rest with a wall
+directly ahead" — and recorded that as a refutation. It then wrote, in its own
+report:
+
+> the ambiguity is gone and the second candidate slot went unused, which is the
+> right outcome.
+
+It was wrong. The prediction missed by **2 cells out of 400** — right shape,
+right palette, 99.5% pixel accuracy — and the alternative reading it had in hand
+was very likely the correct one. The result matched the flagship system exactly
+(1 of 2 test examples, the same one missed).
+
+Two things follow, and both are uncomfortable for the thesis.
+
+**Executed verification can produce confident wrong answers.** The invariant was
+real: all ten training tokens do rest against a wall. The error was extending it
+to the test input, which nothing had established. That is an inductive leap
+wearing a proof's clothes, and it is *more* dangerous than prose reasoning
+precisely because it comes with a `[REFUTED]` line in the ledger and reads as
+settled. Code-as-verification compresses the cost of checking; it does not
+convert induction into deduction, and the harness had been silent about the
+difference.
+
+**Mechanical signals cannot cover this.** `signals.py` fired nothing, correctly:
+shape, palette and structure were all consistent. A 2-cell semantic near-miss is
+exactly the class of failure that needs a *reasoning* reviewer, which is what
+Athanor's independent reflector is and what this variant drops. The mechanical
+substitute bounds the reviewer-shaped hole; it does not close it.
+
+There is also a cheaper lesson. Across every accepted run, **9 of 11 test
+examples got a single candidate** — ARC-AGI-2 allows two, so eight free attempts
+were forfeited. Athanor has a mechanism for exactly this: the reflector's
+EXPAND_CANDIDATES verdict, which fires when a rule is sound but ambiguity
+remains between plausible branches. The CC variant has no equivalent, and on
+`88e364bc` the cost was measurable.
+
+**Shipped in response:** the generalization-audit directive now asks the solver
+to examine *how* it ruled out an alternative — killing it with a training pair
+it fails is a proof; killing it by extending a training-only regularity to the
+test is a leap — and to spend the second candidate whenever an alternative
+reproduced every training pair and died only to a leap.
+
+That is guidance, not a mechanism, and it is weaker than what it replaces. The
+honest conclusion is that this is the first measured cost of dropping the
+reviewer.

@@ -109,6 +109,15 @@ Cover, in REASONS:
 - Verification. Back the audit with executed checks where you can — for
   instance, confirm the predicted test outputs satisfy the invariants you
   verified on the training outputs.
+- Candidate budget. ARC-AGI-2 scores two predictions per test example, so a
+  single candidate forfeits one for free. If you considered an alternative
+  reading and ruled it out, examine *how*. Killing it with a training pair it
+  fails is a proof. Killing it by extending a regularity that merely holds
+  across the training outputs to the test input is an inductive leap wearing a
+  proof's clothes — the invariant is real, but nothing established that it
+  survives out of sample. When an alternative reproduces every training pair and
+  died only to a leap like that, emit it as the second candidate. That is
+  exactly the case the second attempt exists for, and it costs you nothing.
 
 Then run: python gate.py accept
 DECISION: RETRY refuses acceptance and returns you to the loop with an iteration
