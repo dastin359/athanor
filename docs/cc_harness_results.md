@@ -804,3 +804,82 @@ recovers a loss it was designed for, rather than merely being used.
 A caveat that applies whatever comes back: n=1 per task, and these are the
 puzzles where outcomes are least stable. A solve would be evidence the
 mechanism can reach the answer, not that it reliably does.
+
+### Round 6 results
+
+| task | result | iterations | candidates | flagship |
+|---|---|---|---|---|
+| `800d221b` | **1/1** | 1 | 2 | **0/1** |
+| `88e364bc` | **2/2** | 1 | 2, 2 | **1/2** |
+
+Both are puzzles `RESULTS.md` records the flagship failing.
+
+**`88e364bc` is the controlled retry, and it worked.** The earlier run on this
+puzzle finished 1/2 — a solver killed a valid rival by extending a
+training-output regularity to the test input, and missed by 2 cells out of 400.
+The entire rival mechanism was built from that single failure. This run shipped
+two candidates on *both* test inputs and took both.
+
+The agent's account is mechanistic rather than lucky. Its uncertainty was
+precisely located — whether a diagonal ray may pass a cell with an occupied
+shoulder — and it identified that training contains only 4 diagonal rays, none
+of which witnesses the case. Test 0 needs one reading, test 1 the other. It
+found this by writing a script that enumerated the situation types its rule had
+to handle on each test input and diffed them against what training witnesses;
+that script found a case it "had already dismissed and would otherwise have
+shipped unhedged."
+
+Still worth stating plainly: this is one run against one earlier run. It
+establishes that the mechanism *can* recover the loss it was designed for, on
+the puzzle it was designed from. It does not establish a rate.
+
+### What round 6 cost: four more defects, one of them a repeat
+
+The repeat is the one that matters. The paragraph that produced that decisive
+script — *"enumerate the situation types your rule has to handle on the test
+input, and check that each one is actually witnessed in a training pair"* — was
+printed **only after a submission**. The solver called it "the single
+highest-value string the harness printed" and then noted it had arrived only
+once the iteration was spent.
+
+This is the third time a convenience has been found on the budgeted path alone,
+after the candidate-spread line in round 4 and the hedging prompt before it. The
+rule keeps having to be relearned: **anything that changes what a solver ships
+must be reachable for free.** It now prints on every dry-run branch, with a test
+that fails if the workspace copy and the gate copy drift apart.
+
+The other three:
+
+- `rival()` announced nothing when a re-registration replaced what a name meant.
+  A solver fixed a buggy rival by re-registering the same name; the earlier
+  entry — which had claimed divergence on both tests — vanished without trace.
+  `verify()` goes to considerable trouble to announce supersession; `rival()`
+  did not.
+- The opaque-name warning fired even when `note=` carried the measured values,
+  telling a solver to do the thing it had just done.
+- `[DEAD]` read as though the *check* were broken rather than the hypothesis.
+  Now `[KILLED]`, matching the word `refute()` itself prints.
+
+And one gap that three separate solvers had reported without my noticing the
+pattern: `arc.sweep()`. Each of them ran a tie-break sweep — 8, 14 and 18
+candidate rules scored against training in a single pass — and each recorded
+two or three of them and left the rest in prose, because `refute()` is
+per-claim. One said it directly: "the ledger under-represents what was actually
+ruled out." In every case the sweep was what produced the second candidate: the
+highest-yield work in the run, and the least durable. `sweep()` records the
+whole thing as one entry, and when more than one reading survives it says so —
+that is a hedging obligation discovered before any budget is spent, and it names
+the exact readings to put through `rival()`.
+
+### A note on the durability check
+
+Watching this round also showed the empty-ledger reminder was reaching almost
+nobody: it hung off `arc.show()`, which agents call in roughly one script out of
+five to eight, usually an early one. So it was gated on a call they had largely
+stopped making by the time the condition became true. It now runs at interpreter
+exit as well.
+
+Honesty about the case that prompted it: `d35bdbdc` spent about forty minutes
+and nine scripts before recording anything — and then recorded eight invariants
+unprompted. The window of unprotected work was real; the agent recovered from it
+without help. The fix is justified by the exposure, not by an observed loss.
