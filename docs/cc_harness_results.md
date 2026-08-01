@@ -1209,3 +1209,40 @@ construction, a solver that thinks it is at 4 or 5. If the anchors change
 nothing, that is worth knowing too, and it would be evidence for the stronger
 reading of `design.md`'s claim: that self-review cannot reject its own work and
 only an independent reader can.
+
+### Ablation, replicated
+
+A second ablated arm, `dbff022c`, same method — doctrine stripped from
+`CLAUDE.md`, system prompt withheld, toolkit untouched.
+
+| puzzle | ablated | doctrine |
+|---|---|---|
+| `88e364bc` | 1/2 | **2/2** |
+| `dbff022c` | **1/1** | **1/1** |
+
+One doctrine win, one tie. That is what "inside the noise" looks like, and it is
+the reason the first result was not written up as an effect.
+
+The **qualitative** finding replicated much harder than the score did. Told
+nothing about verification, rivals, hedging, or the second candidate, the second
+ablated agent used `verify`, `refute`, `sweep`, `rival`, `load_solution`,
+`solution_module`, and `verify(..., over=)` — a parameter shipped thirty minutes
+before its run. It found the same ambiguity the doctrine arm found (which cell
+of a legend pair is the key, unresolvable because every training legend is flush
+with the top or left edge while the test legend is flush with the bottom), and
+hedged it the same way, on the same axis.
+
+It also caught itself writing a tautology — `... or True` — and retracted it
+unprompted, which is the round-1 literal-detection fix doing its job for an
+agent that was never told the ledger mattered.
+
+So across two arms: **the practice transfers without the doctrine.** An agent
+that reads `arc.py` adopts code-as-verification, registers rivals, sweeps ties
+and hedges — because the toolkit's API and its printed advice carry the
+discipline, not because a system prompt asked for it.
+
+That is a useful thing to know for anyone who would build on this. The
+shippable, portable part of the harness is the toolkit. The doctrine may still
+supply the specific out-of-sample question that decides a hard pair — that is
+what `88e364bc` hints at — but two arms cannot distinguish that from chance, and
+this experiment should not pretend otherwise.
