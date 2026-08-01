@@ -348,3 +348,47 @@ reach.
 - `arc.check(..., show_diff=True)` — which cells a prediction got wrong.
 - A durability nudge in `dryrun.py` when the invariant ledger is empty, after
   two hard-task agents were observed running many scripts and recording nothing.
+
+---
+
+## Consolidated results (rounds 1–3)
+
+| task | solved | iterations | confidence | explore scripts | invariants | candidates | note |
+|---|---|---|---|---|---|---|---|
+| `13e47133` | 2/2 | 1 | 5 | 10 | 16 | 1, 1 | zero-solve frontier |
+| `28a6681f` | 1/1 | 1 | 4 | 12 | 29 | 1 | |
+| `67e490f4` | 1/1 | 1 | 4 | 13 | 21 | 2 | 30x30 |
+| `88e364bc` | 1/2 | 1 | 4 | 14 | 13 | 1, 1 | flagship also 1/2, same example |
+| `89565ca0` | 1/1 | 1 | 4 | 9 | 14 | 1 | |
+| `9bbf930d` | 0/1 | 2 | 4 | 13 | 18 | 2 | frontier; starved 3-iteration budget |
+| `b0039139` | 2/2 | 2 | 5 | 5 | 17 | 1, 1 | |
+| `dd6b8c4b` | 2/2 | 1 | 4 | 6 | 15 | 2, 1 | |
+| `faa9f03d` | 0/1 | 1 | 4 | 16 | 16 | 2 | flagship 0/1 at 120 turns; 0/127 public |
+
+**10 of 13 test examples across 9 accepted tasks**, every run integrity-clean,
+zero gate refusals, mean 1.2 iterations.
+
+Two of the three misses are tasks the flagship also fails, and one of those
+(`faa9f03d`) has never been solved by any submission in the public corpus. The
+third (`88e364bc`) matches the flagship exactly, missing the same test example.
+
+### Did the candidate fixes work?
+
+The `88e364bc` analysis produced a sequence of changes aimed at one failure:
+a solver killing a live alternative with an inductive leap and discarding the
+free second attempt. The runs split cleanly around them.
+
+| | test examples | used the second attempt |
+|---|---|---|
+| before the fixes | 11 | 2 (18%) |
+| after | 2 | 2 (100%) |
+
+Two data points is not a result, and both post-fix runs were hard tasks where
+hedging is more obviously attractive. But the mechanism is not merely
+correlated with the change — one agent stated the causal path directly, and the
+other's candidate count went 1 → 2 in the iteration immediately after the prompt
+fired. Round 4 adds three more frontier runs to the post-fix sample.
+
+The honest caveat in the other direction: hedging did not rescue either task.
+`faa9f03d` and `9bbf930d` both shipped two candidates and both scored 0/1. A
+second attempt helps only when one of the two readings is right.
