@@ -418,8 +418,24 @@ def check(
             if row.get("error"):
                 print(f"test  {row['index']}  ERROR  {row['error']}")
             else:
-                print(f"test  {row['index']}  -> {len(row.get('candidates') or [])} candidate(s) "
+                candidates = row.get("candidates") or []
+                print(f"test  {row['index']}  -> {len(candidates)} candidate(s) "
                       f"{row.get('shapes')}")
+                # Otherwise the only way to see how far apart two candidates are
+                # is the gate's report, which costs an iteration — a solver spent
+                # one using the gate as a viewer.
+                if len(candidates) > 1:
+                    first, second = candidates[0], candidates[1]
+                    if shape(first) != shape(second):
+                        print("           candidates differ in shape")
+                    else:
+                        n = sum(
+                            1
+                            for r in range(len(first))
+                            for c in range(len(first[0]))
+                            if first[r][c] != second[r][c]
+                        )
+                        print(f"           candidates differ in {n} cell(s)")
         print(
             f"== {summary['train_correct']}/{summary['train_total']} training examples reproduced "
             f"(mean pixel {summary['train_pixel_accuracy']:.3f})"
@@ -450,7 +466,23 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
     if not unspent:
         return
 
-    live_rivals = [r for r in rivals() if r.get("fits_training")]
+    # A rival only belongs in the advice for a test example where it actually
+    # predicts something different. Naming a rival that diverges on test 1 while
+    # test 0 is the one with the free slot trains the solver to skim the nudge.
+    live_rivals = []
+    for entry in rivals():
+        if not entry.get("fits_training"):
+            continue
+        predictions = entry.get("predictions") or []
+        relevant = [
+            index for index in unspent
+            if index < len(predictions) and predictions[index] is not None
+        ]
+        divergent = _rival_divergence(predictions)
+        if divergent is not None:
+            relevant = [index for index in relevant if index in divergent]
+        if relevant:
+            live_rivals.append({**entry, "relevant": relevant})
     dead_ends = [e for e in invariants() if e.get("mode") == "ruled_out" and e.get("holds")]
 
     where = ", ".join(f"test {index}" for index in unspent)
@@ -470,7 +502,8 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
 
     if live_rivals:
         for entry in live_rivals[:3]:
-            print(f"   rival that also fits every training pair: {entry['name']}")
+            where = ", ".join(f"test {i}" for i in entry["relevant"])
+            print(f"   rival fitting every training pair, differing on {where}: {entry['name']}")
         print("   Training cannot separate it from your reading. Unless you can point at")
         print("   evidence that rules it out, return it as the second candidate.")
     else:

@@ -348,8 +348,50 @@ class TestArcToolkit:
             "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
         )
         assert result.returncode == 0, result.stderr
-        assert "rival that also fits every training pair: the strict reading" in result.stdout
+        assert "differing on test 0: the strict reading" in result.stdout
         assert "Training cannot separate it" in result.stdout
+
+    def test_hedging_advice_skips_a_rival_that_diverges_elsewhere(self, workspace):
+        """Naming a rival that differs on another test example trains the solver
+        to skim the nudge. Reported from a two-test frontier run."""
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        (workspace.root / ".athanor" / "rivals.jsonl").write_text(
+            json.dumps(
+                {
+                    "name": "agrees here, differs elsewhere",
+                    "fits_training": True,
+                    # identical to the mirror solution's prediction for test 0
+                    "predictions": [[[3, 0, 6], [0, 4, 0]]],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "agrees here, differs elsewhere" not in result.stdout
+        # It should fall through to the generic prompt, not stay silent.
+        assert "carries one candidate" in result.stdout
+
+    def test_check_reports_how_far_apart_two_candidates_are(self, workspace):
+        """Otherwise the only way to see this is the gate's report, which costs
+        an iteration — a solver spent one using the gate as a viewer."""
+        result = self._run(
+            workspace,
+            "from arc import check\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[r[::-1] for r in g], [[3, 0, 6], [0, 4, 9]]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "check(alt)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "candidates differ in 1 cell(s)" in result.stdout
 
     def test_hedging_advice_is_raised_even_with_nothing_recorded(self, workspace):
         """An empty rival ledger is not evidence that there are no rivals.
