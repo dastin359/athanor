@@ -500,10 +500,14 @@ def format_status(
     if invariants:
         suspect = [entry for entry in invariants if entry.get("literal")]
         dead = sum(1 for e in invariants if e.get("mode") == "ruled_out" and e.get("holds"))
-        held = len(invariants) - dead
-        header = f"--- executed ledger ({held} verified"
-        header += f", {dead} ruled out) ---" if dead else ") ---"
-        lines.append(header)
+        swept = sum(1 for e in invariants if e.get("mode") == "sweep")
+        held = len(invariants) - dead - swept
+        parts = [f"{held} verified"]
+        if dead:
+            parts.append(f"{dead} ruled out")
+        if swept:
+            parts.append(f"{swept} sweep{'s' if swept > 1 else ''}")
+        lines.append(f"--- executed ledger ({', '.join(parts)}) ---")
         for entry in invariants:
             # A refute() entry that *holds* means the hypothesis is dead, not
             # that it is true. Rendering it "[OK  ]" beside a claim worded as

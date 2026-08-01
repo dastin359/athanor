@@ -507,6 +507,33 @@ class TestUnspentCandidatePrompt:
         assert "a very distinctive notes marker" not in brief.stdout
         assert len(brief.stdout.splitlines()) < len(full.stdout.splitlines())
 
+    def test_status_header_counts_sweeps_separately(self, workspace):
+        """A sweep is neither a verified fact nor a ruled-out hypothesis.
+
+        Same family as the cc trace miscount: the header called a sweep
+        "verified", which is not what it is.
+        """
+        import json
+        import subprocess
+        import sys as _sys
+
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "outputs keep the shape", "holds": True,
+                        "source": "explore/a.py"}) + "\n"
+            + json.dumps({"claim": "which reading?", "holds": True, "mode": "sweep",
+                          "decisive": False, "survivors": ["a", "b"], "killed": [],
+                          "source": "explore/b.py"}) + "\n"
+            + json.dumps({"claim": "a dead end", "holds": True, "mode": "ruled_out",
+                          "source": "explore/c.py"}) + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "gate.py", "status"],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "1 verified, 1 ruled out, 1 sweep" in result.stdout
+
     def test_status_replays_the_rival_ledger_too(self, workspace):
         """status replayed invariants but not rivals.
 
