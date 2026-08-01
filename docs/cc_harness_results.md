@@ -392,3 +392,55 @@ fired. Round 4 adds three more frontier runs to the post-fix sample.
 The honest caveat in the other direction: hedging did not rescue either task.
 `faa9f03d` and `9bbf930d` both shipped two candidates and both scored 0/1. A
 second attempt helps only when one of the two readings is right.
+
+---
+
+## The loop closing: a failure turned into a mechanism turned into a solve
+
+This is the result the improvement loop exists to produce, and it is worth
+stating precisely because the causal chain is fully traceable.
+
+**The failure.** `88e364bc` passed training 3/3 and missed by 2 cells out of
+400. Its agent had implemented a rival reading, killed it by extending a
+regularity from the training *outputs* to the test *input*, and wrote: "the
+ambiguity is gone and the second candidate slot went unused, which is the right
+outcome." It was wrong, and the free second attempt was discarded.
+
+**The mechanisms built from it**, in order:
+
+1. a paragraph in the generalization audit distinguishing killing a rival with
+   a training pair it fails (a proof) from killing it with an out-of-sample
+   extrapolation (a leap);
+2. `UNSPENT SECOND ATTEMPT` — the gate pairs recorded dead ends with test
+   examples still carrying one candidate;
+3. `arc.rival(name, fn)` — register an alternative reading; it is scored against
+   training and its test predictions kept;
+4. `UNHEDGED RIVAL` — the gate reports a registered rival that fits every
+   training pair and disagrees with the submission;
+5. the same question raised at dry-run time, where acting on it is free, and
+   `accept` re-running `solve.py` so hedging costs no iteration.
+
+**The recovery.** On `abc82100` — a zero-solve frontier task, unsolved by any of
+121 logged attempts in the public corpus — the agent registered the rival
+*"unmatched dots (a colour no legend names as a source) survive unchanged"*,
+which reproduced all 4 training pairs. `UNHEDGED RIVAL` fired. It spent the slot.
+
+| | matches ground truth |
+|---|---|
+| candidate 1 (its primary reading) | no — off by 7 cells |
+| candidate 2 (the registered rival) | **yes, exactly** |
+
+The agent's own best reading was wrong. The mechanism is the entire reason the
+task scored.
+
+**What this does and does not show.** It is one conversion, and a single
+instance does not establish a rate. But the chain is not inferential: the rival
+is named in the ledger, the gate's prompt is in the archived report, the
+candidate ordering shows the primary reading losing, and the rival's stored
+prediction is byte-identical to the ground truth.
+
+It also sharpens the earlier, more pessimistic finding rather than replacing it.
+Hedging still buys coverage, not insight — `faa9f03d` and `9bbf930d` both shipped
+two candidates and both scored 0/1, because neither reading was right. What
+changed on `abc82100` is that the correct reading *was* among the two, and the
+harness is what put it there.
