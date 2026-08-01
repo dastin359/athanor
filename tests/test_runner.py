@@ -214,6 +214,59 @@ class TestRescoringFromAWorkspace:
         assert runner.discover_runs(tmp_path / "nope") == []
 
 
+class TestBatch:
+    """A batch is sequential so the provider cache warms across tasks; one bad
+    task must not cost the rest of the sweep."""
+
+    def _fake_result(self, task):
+        return {
+            "task_id": task, "accepted": True, "cost_usd": 1.5, "iterations_used": 2,
+            "score": {"scored": True, "solved": True, "score": 1.0, "num_solved": 1, "num_test": 1},
+        }
+
+    def test_a_failing_task_does_not_stop_the_sweep(self, tmp_path, monkeypatch):
+        attempted = []
+
+        def fake_run_task(task, **kwargs):
+            attempted.append(task)
+            if task == "boom":
+                raise RuntimeError("resolver exploded")
+            return self._fake_result(task)
+
+        monkeypatch.setattr(runner, "run_task", fake_run_task)
+        results = runner.run_batch(["a", "boom", "c"], out_dir=tmp_path, config=CCRunConfig())
+
+        assert attempted == ["a", "boom", "c"]
+        assert results[1]["error"].startswith("RuntimeError")
+        assert [r.get("task_id") for r in results] == ["a", "boom", "c"]
+
+    def test_aggregate_separates_errors_from_unsolved(self, tmp_path, monkeypatch):
+        from athanor.cc_harness.scoring import aggregate
+
+        def fake_run_task(task, **kwargs):
+            if task == "boom":
+                raise RuntimeError("nope")
+            return self._fake_result(task)
+
+        monkeypatch.setattr(runner, "run_task", fake_run_task)
+        results = runner.run_batch(["a", "boom", "c"], out_dir=tmp_path, config=CCRunConfig())
+        summary = aggregate(results)
+
+        assert summary["solved"] == 2
+        assert summary["scored"] == 2, "an errored task must not count as scored"
+        assert summary["errors"] == ["boom"]
+        assert summary["mean_cost_usd"] == 1.5
+
+    def test_on_task_done_fires_per_task(self, tmp_path, monkeypatch):
+        seen = []
+        monkeypatch.setattr(runner, "run_task", lambda task, **kw: self._fake_result(task))
+        runner.run_batch(
+            ["a", "b"], out_dir=tmp_path, config=CCRunConfig(),
+            on_task_done=lambda record: seen.append(record["task_id"]),
+        )
+        assert seen == ["a", "b"]
+
+
 class TestResume:
     """Crash recovery works because the workspace is the state."""
 
