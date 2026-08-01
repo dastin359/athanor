@@ -768,3 +768,39 @@ That is the number to quote. It is a good result — every one of these pairs ha
 100+ failed attempts behind it — and it is one pair short of the system this
 variant is being compared against, on a frontier of nine. Both facts belong in
 the same sentence.
+
+---
+
+## Round 6 — aimed at the flagship's own misses
+
+With the frontier exhausted, the sharper comparison is `RESULTS.md`'s other
+hard set: the 22 pairs no CoT-only Opus 4.6 configuration solved in 8 attempts.
+The flagship solves 16 of those and names the 6 it does not:
+
+`88e364bc/0`, `d35bdbdc/0`, `d35bdbdc/1`, `2b83f449/0`, `dbff022c/0`,
+`faa9f03d/0` — five puzzles.
+
+That set is the most informative target left, because on it a difference in
+either direction is a capability signal rather than a variance one. Standing
+before this round: `2b83f449` **solved** (the flagship fails it), `faa9f03d`
+missed by both, `dbff022c` not yet attempted.
+
+Round 6 takes three:
+
+| task | why |
+|---|---|
+| `d35bdbdc` | flagship 1/3; its two unsolved pairs are both in the set |
+| `800d221b` | flagship 0/1 (CoT-only Opus 4.6 solves it 3/8, so not in the 22) |
+| `88e364bc` | **controlled retry** |
+
+`88e364bc` is the one to watch. It is where this variant lost 2 cells out of
+400 in an early round — a solver killed a valid rival by extending a
+training-output regularity to the test input, and finished 1/2, matching the
+flagship exactly. The entire rival mechanism was built in response to that
+single failure. Re-running the same puzzle with the mechanism in place is the
+closest thing this experiment has to a controlled test of whether the machinery
+recovers a loss it was designed for, rather than merely being used.
+
+A caveat that applies whatever comes back: n=1 per task, and these are the
+puzzles where outcomes are least stable. A solve would be evidence the
+mechanism can reach the answer, not that it reliably does.
