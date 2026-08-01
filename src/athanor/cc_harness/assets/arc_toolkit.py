@@ -906,6 +906,14 @@ def _exploration_durability_check() -> None:
     solution. Two agents were observed forty minutes into a hard task with six
     exploration scripts, no `solve.py`, and nothing recorded — the exact window
     where a compaction costs the most and where nothing was saying so.
+
+    Hung off ``show()`` alone, this reached almost nobody: measured across a
+    round, agents called ``show()`` in one script out of five to eight, usually
+    an early one — so the reminder was gated on a function they had mostly
+    stopped calling by the time the condition became true. It now also runs at
+    interpreter exit, which is both broader and more precise: a script that
+    records something during its run clears the condition and stays silent, and
+    one that records nothing says so where the agent is already reading.
     """
     global _DURABILITY_REMINDED
     if _DURABILITY_REMINDED:
@@ -926,6 +934,21 @@ def _exploration_durability_check() -> None:
         "       and NOTES.md are what `gate.py status` replays. Record the facts you are\n"
         "       already relying on.\n"
     )
+
+
+def _register_durability_atexit() -> None:
+    import atexit
+
+    def _at_exit() -> None:
+        try:
+            _exploration_durability_check()
+        except Exception:  # noqa: BLE001 - never let a reminder break a run
+            pass
+
+    atexit.register(_at_exit)
+
+
+_register_durability_atexit()
 
 
 def show(grid: Grid, title: str | None = None, ruler: bool = True) -> None:

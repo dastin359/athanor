@@ -381,6 +381,43 @@ class TestArcToolkit:
         assert "CHANGED VERDICT" not in result.stdout
         assert "supersedes" not in result.stdout
 
+    def test_durability_note_fires_without_show(self, workspace):
+        """Hung off show() alone it reached almost nobody.
+
+        Measured across a round: agents called show() in one script out of five
+        to eight, usually an early one — so the reminder was gated on a call
+        they had mostly stopped making by the time the condition became true.
+        """
+        explore = workspace.root / "explore"
+        for index in range(5):
+            (explore / f"probe_{index}.py").write_text("pass\n", encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import train_samples\nprint('rows', len(train_samples))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "exploration scripts, nothing recorded" in result.stdout
+
+    def test_durability_note_is_silent_once_something_is_recorded(self, workspace):
+        explore = workspace.root / "explore"
+        for index in range(5):
+            (explore / f"probe_{index}.py").write_text("pass\n", encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('there are three training pairs', len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "nothing recorded" not in result.stdout
+
+    def test_durability_note_is_silent_below_the_threshold(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import train_samples\nprint('rows', len(train_samples))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "nothing recorded" not in result.stdout
+
     def test_verify_flags_a_bare_name_as_opaque_evidence(self, workspace):
         """Observed live: a ledger entry whose recorded evidence was `allok`.
 
