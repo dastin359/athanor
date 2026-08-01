@@ -615,3 +615,93 @@ Against the flagship's $3.12 mean and $1.71 median per task. These are
 first-iteration solves, so they are the cheap end of the distribution and not a
 mean — but they are no longer inflated by a defect, which is the part that
 changed.
+
+---
+
+## Round 5 — the last two frontier pairs, and four ledger defects
+
+`8b7bacbf` and `da515329`, the two zero-solve frontier pairs left. Both
+accepted on the first submission.
+
+| task | result | iterations | confidence | candidates | rivals registered |
+|---|---|---|---|---|---|
+| `8b7bacbf` | **2/2** | 1 | 4 | 2, 1 | 4 |
+| `da515329` | **1/1** | 1 | 4 | 2 | 3 |
+
+That completes the sweep: **six zero-solve frontier pairs attempted, six
+solved** — `13e47133`, `269e22fb`, `a32d8b75`, `abc82100`, `8b7bacbf`,
+`da515329`. Each is a pair no submission in the frozen public corpus had ever
+solved.
+
+Both runs are also clean demonstrations of the candidate mechanism doing the
+thing it was built for. `da515329`'s rule has one parameter that training
+cannot pin down — the chamfer width, observable only at `a >= 4`, and no
+training example reaches it. The agent shipped both readings and got it right.
+`8b7bacbf` hedged on a wire-crossing that occurs nowhere in training: "no
+training pair contains a crossing at all, so nothing says whether an
+interrupted stroke continues through."
+
+### Four defects, all in how the ledger reads itself back
+
+The interesting thing about this round is that none of the four was a wrong
+answer. All four were the harness **misdescribing its own state** to the agent.
+
+**1. Every dead end was rendered as a success.** `gate.py status` marked
+entries by whether the recorded check *held* — but a `refute()` entry that
+holds means the hypothesis is dead. The replay therefore read:
+
+```
+[OK  ] contact by 4-adjacency only also explains the training data
+```
+
+about a reading the agent had killed. As the solver put it: "On a skim after
+compaction that reads as the *opposite* of what was found." The status replay
+is the workspace's most durable artifact — it is what a post-compaction agent
+reads first — so this was inverting the single record most likely to be read
+without its context. Now `[DEAD]` / `[OPEN]`.
+
+**2. `rival()` told a solver to delete a correct hedge.** `da515329` had
+already shipped its 3/3-fitting rival as candidate 2. `rival()` then said:
+
+> It predicts exactly what you do on every test input, so it is not a divergent
+> reading and needs no slot.
+
+The rival was "not divergent" only because it had been found inside the
+candidate list it was already in. The solver caught it: "Had I trusted that
+line I would have deleted the hedge and forfeited the slot… the one message a
+solver most needs to be right about is the one that inverts when you follow the
+advice early."
+
+This is the second bug in the same function, and both came from collapsing
+distinct situations into one boolean. There are four, and they now print
+differently: redundant with candidate 1; *is* candidate 2 already; diverges
+from both; diverges but both slots are spent on other readings. `8b7bacbf`
+independently hit that last one — told "That is your second candidate" about a
+test example whose second slot was already taken.
+
+**3. A claim recorded from a heredoc captured no evidence, silently.** The
+constant-condition check is derived from the caller's AST, so when the call
+site cannot be read the check cannot fire. A solver recorded a refutation from
+a heredoc with a literal `True` — precisely the anti-pattern the check exists
+to catch — and got no warning, because the warning depends on source the parser
+never reached. It noticed unaided and re-recorded from a file. "No evidence"
+and "good evidence" looked identical in the ledger; entries now carry
+`unsourced` and say so.
+
+**4. A corrected claim had nowhere to put the correction.** `da515329`'s ledger
+contains this live, `[VERIFIED]` invariant:
+
+> the corner jog has a fixed width of 1 (m = a-1); it is instead always a - 2
+> wide (m = 2)
+
+A sentence whose first clause is false, stamped verified. Nothing was wrong
+with the agent's reasoning — it had killed the first reading and found the
+second, and `key=` supersedes by key, so amending the claim text and re-running
+is the natural motion. There was simply no way to say *"that reading died, here
+is what replaced it"*. Replacements now carry and print what they displaced,
+and a claim whose verdict flips between runs says so loudly, because code
+written while it held is now built on sand.
+
+The through-line: **a ledger that survives compaction is read by someone with
+no memory of writing it, and every one of these four defects was invisible to
+the agent that had the context and misleading to the one that would not.**
