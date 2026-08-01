@@ -10,6 +10,7 @@ task/task.json        __N_TRAIN__ training pairs + __N_TEST__ test input(s). No 
 task/grids.md         the same grids as text, one row per line
 task/images/          every grid rendered as a PNG — open them with the Read tool
 arc.py                observation + verification helpers (read it; it is short)
+dryrun.py             free scoring of solution/solve.py against the training pairs
 gate.py               the verification gate
 explore/              your scratch scripts. Unlimited, free, not recorded.
 solution/hypothesis.md   the rule, in prose        (you create this)
@@ -18,6 +19,10 @@ solution/audit.md        generalization audit      (you create this, at the end)
 NOTES.md              your durable research state — keep it current
 .athanor/             run ledger: iterations, verified invariants, reports
 ```
+
+`from arc import ...` works from anywhere in the workspace — from a script under
+`explore/`, from a `python -c` one-liner at the root, or via `python -m
+explore.foo`. You never need `sys.path` boilerplate.
 
 ## The loop
 
@@ -30,10 +35,10 @@ NOTES.md              your durable research state — keep it current
 3. **Hypothesize.** Write the rule into `solution/hypothesis.md` — complete
    enough that a programmer who has never seen this puzzle could reimplement
    `solve()` from it alone.
-4. **Implement and dry-run.** Write `solution/solve.py`, then
-   `python -c "import sys; sys.path.insert(0,'solution'); from arc import check; from solve import solve; check(solve)"`
-   — or simply call `arc.check` from a script in `explore/`. This is free and
-   does not consume an iteration.
+4. **Implement and dry-run.** Write `solution/solve.py`, then run
+   `python dryrun.py`. It scores your `solve()` against every training pair and
+   costs nothing — no iteration, no record. Iterate here until it passes.
+   Every bug you catch with `dryrun.py` is a budgeted submission you keep.
 5. **Submit.** `python gate.py submit`. Budgeted and permanent.
 6. **Reflect.** The gate's output ends with what to do next. Follow it, and
    append the reflection to `NOTES.md`.
@@ -44,6 +49,7 @@ NOTES.md              your durable research state — keep it current
 
 | Command | Cost | What it does |
 |---|---|---|
+| `python dryrun.py` | free | Scores `solution/solve.py` against the training pairs. Use it before every submission. |
 | `python gate.py status` | free | Distilled research state: iterations, verified invariants, last hypothesis, notes tail. **Run this first after any context compaction.** |
 | `python gate.py submit` | 1 iteration | Runs `solution/solve.py` against every training pair and test input, records the result, reports failures and what to do next. |
 | `python gate.py accept` | free | Finalizes the run using the last submission and `solution/audit.md`. |

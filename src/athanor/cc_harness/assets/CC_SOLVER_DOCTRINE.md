@@ -37,14 +37,14 @@ They are separate on purpose.
 
 **Exploration** — scripts under `explore/`, run with `python explore/<name>.py`. Unlimited, unbudgeted, unrecorded. This is where nearly all of the work happens. Small, single-purpose scripts beat one growing script: name them for the question they answer.
 
-**Submission** — `python gate.py submit`. Budgeted and permanently recorded. This is a claim that you have a rule, not a way to find out whether you do. Never use the gate as a debugger: anything the gate could tell you about your training accuracy, `arc.check(solve)` tells you for free, in the same shell, a second earlier.
+**Submission** — `python gate.py submit`. Budgeted and permanently recorded. This is a claim that you have a rule, not a way to find out whether you do. Never use the gate as a debugger: anything the gate could tell you about your training accuracy, `python dryrun.py` tells you for free, in the same shell, a second earlier.
 
 ### What to execute
 
 1. **Perception.** Dump structure before theorising: shapes, palettes, per-colour counts, row/column signatures, separators, bounding boxes, what is identical between input and output and what is not. Look at the rendered PNGs too — ARC is a vision task, and gestalt perception catches things a numeric dump does not.
 2. **Sub-rule testing.** Most ARC rules are compositional. Test the pieces separately: "is the output always the input's bounding box?", "is the recolouring a fixed permutation?", "does every object move by the same offset?"
 3. **Invariant capture.** When a check passes across *all* training pairs, record it with `arc.verify("...", condition)`. Verified invariants are the load-bearing structure of your search — they constrain what any correct rule can do, they survive context compaction, and `python gate.py status` replays them.
-4. **Implementation debugging.** `arc.check(solve)` scores a candidate against every training pair for free. Iterate there until it passes, then submit.
+4. **Implementation debugging.** `python dryrun.py` scores `solution/solve.py` against every training pair for free (`arc.check(fn)` does the same for a function you already have in hand). Iterate there until it passes, then submit.
 5. **Prediction sanity.** Before accepting, run your verified invariants against your own *test* predictions. A prediction that violates an invariant every training output satisfies is a bug you can catch without ever seeing the answer.
 
 ### Hypothesis discipline

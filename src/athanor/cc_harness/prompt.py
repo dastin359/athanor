@@ -160,7 +160,7 @@ def build_initial_prompt(
     parts += [
         "",
         "Begin with perception and verification, not with a guess. When you have a rule, write "
-        "`solution/hypothesis.md` and `solution/solve.py`, dry-run it with `arc.check(solve)`, "
+        "`solution/hypothesis.md` and `solution/solve.py`, dry-run it with `python dryrun.py`, "
         "and only then run `python gate.py submit`.",
     ]
     return "\n".join(parts)

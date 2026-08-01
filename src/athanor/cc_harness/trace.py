@@ -48,6 +48,30 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return entries
 
 
+#: Shipped with the workspace, not written by the agent. Counting it would
+#: inflate verification density in every trace — including a run that explored
+#: nothing at all.
+_HARNESS_OWNED_EXPLORE_FILES = {"arc.py"}
+
+
+def _explore_scripts(root: Path) -> list[dict[str, Any]]:
+    """Exploration scripts the agent actually wrote."""
+    explore_dir = root / "explore"
+    if not explore_dir.is_dir():
+        return []
+    return sorted(
+        (
+            {
+                "name": path.name,
+                "lines": len(path.read_text(encoding="utf-8", errors="replace").splitlines()),
+            }
+            for path in explore_dir.glob("*.py")
+            if path.name not in _HARNESS_OWNED_EXPLORE_FILES
+        ),
+        key=lambda script: script["name"],
+    )
+
+
 def _parse_time(value: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(str(value))
@@ -66,21 +90,7 @@ def collect_trace(workspace_root: Path | str) -> dict[str, Any]:
     events = _read_jsonl(root / STATE_DIR / EVENTS_FILE)
     invariants = load_invariants(root) if (root / STATE_DIR / INVARIANTS_FILE).is_file() else []
 
-    explore_dir = root / "explore"
-    scripts = (
-        sorted(
-            (
-                {
-                    "name": p.name,
-                    "lines": len(p.read_text(encoding="utf-8", errors="replace").splitlines()),
-                }
-                for p in explore_dir.glob("*.py")
-            ),
-            key=lambda s: s["name"],
-        )
-        if explore_dir.is_dir()
-        else []
-    )
+    scripts = _explore_scripts(root)
 
     iterations = state.get("iterations") or []
     refusals = [e for e in events if e.get("command") == "refused"]

@@ -1,8 +1,13 @@
 """arc — observation and verification helpers for this puzzle workspace.
 
-Import this from any script under ``explore/``::
+Import it the same way from anywhere in the workspace::
 
     from arc import train_samples, test_samples, verify, check, show, diff
+
+That works from a script under ``explore/`` (``python explore/foo.py``), from a
+one-liner at the workspace root (``python -c "from arc import ..."``), and from
+a module invocation (``python -m explore.foo``). No ``sys.path`` boilerplate is
+needed in any of them.
 
 Design rule, and it is deliberate: **this module contains no transformation
 primitives.** No rotate, no flood-fill, no connected components. Building those

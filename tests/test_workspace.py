@@ -50,6 +50,8 @@ class TestLayout:
             "CLAUDE.md",
             "NOTES.md",
             "arc.py",
+            "dryrun.py",
+            "explore/arc.py",
             "gate.py",
             "task/task.json",
             "task/grids.md",
@@ -112,6 +114,79 @@ class TestArcToolkit:
             text=True,
             timeout=60,
         )
+
+    def test_import_works_from_the_documented_invocation(self, workspace):
+        """`python explore/foo.py` puts explore/ on sys.path, not the workspace.
+
+        Regression test: the contract tells the agent to run experiments exactly
+        this way, and without the mirrored module `from arc import ...` raises
+        ModuleNotFoundError — friction on the single most common action in the
+        loop.
+        """
+        result = self._run(workspace, "from arc import train_samples\nprint(len(train_samples))\n")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "3"
+
+    def test_import_works_from_a_root_one_liner(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        result = subprocess.run(
+            [_sys.executable, "-c", "from arc import train_samples; print(len(train_samples))"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "3"
+
+    def test_dryrun_scores_a_correct_solution(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "3/3 training examples reproduced" in result.stdout
+
+    def test_dryrun_reports_a_missing_solution_without_a_traceback(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 1
+        assert "does not exist yet" in result.stdout
+        assert "Traceback" not in result.stderr
+
+    def test_dryrun_reports_a_broken_solution_without_a_traceback(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        (workspace.root / "solution" / "solve.py").write_text("def solve(grid)\n", encoding="utf-8")
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 1
+        assert "failed to load" in result.stdout
 
     def test_loads_puzzle_data(self, workspace):
         result = self._run(

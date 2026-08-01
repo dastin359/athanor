@@ -51,6 +51,14 @@ class TestCollect:
         assert [s["name"] for s in trace["explore_scripts"]] == ["colours.py", "shapes.py"]
         assert trace["explore_scripts"][1]["lines"] == 2
 
+    def test_excludes_the_harness_owned_toolkit_mirror(self, workspace):
+        """explore/arc.py ships with the workspace; counting it would inflate
+        verification density in a run that explored nothing."""
+        assert (workspace.root / "explore" / "arc.py").exists()
+        trace = collect_trace(workspace.root)
+        assert trace["explore_scripts"] == []
+        assert trace["density"]["scripts_per_iteration"] == 0.0
+
 
 class TestVerificationDensity:
     def test_splits_held_from_refuted(self, workspace):

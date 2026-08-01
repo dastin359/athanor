@@ -106,6 +106,25 @@ def _render_images(root: Path, puzzle_data: dict[str, Any]) -> list[str]:
     return written
 
 
+def _mirror_toolkit_into_explore(root: Path) -> None:
+    """Make ``from arc import …`` work from a script under ``explore/``.
+
+    ``python explore/foo.py`` puts *the script's* directory on ``sys.path``, not
+    the working directory, so a toolkit sitting at the workspace root is invisible
+    to exactly the invocation the contract tells the agent to use. Mirroring the
+    module into ``explore/`` fixes the documented path without making the agent
+    write ``sys.path`` boilerplate at the top of every experiment — friction that
+    would land on the single most common action in the whole loop.
+    """
+    target = root / "explore" / "arc.py"
+    if target.exists() or target.is_symlink():
+        target.unlink()
+    try:
+        target.symlink_to(Path("..") / "arc.py")
+    except (OSError, NotImplementedError):
+        shutil.copyfile(root / "arc.py", target)  # filesystems without symlinks
+
+
 def athanor_src_root() -> str:
     """Directory to put on ``sys.path`` so a workspace can import athanor."""
     return str(Path(__file__).resolve().parents[2])
@@ -139,6 +158,8 @@ def build_workspace(
     image_files = _render_images(root, visible) if config.visual else []
 
     shutil.copyfile(ASSETS / "arc_toolkit.py", root / "arc.py")
+    _mirror_toolkit_into_explore(root)
+    shutil.copyfile(ASSETS / "dryrun.py", root / "dryrun.py")
 
     gate_source = (ASSETS / "gate_shim.py").read_text(encoding="utf-8")
     _write(root / "gate.py", gate_source.replace("__ATHANOR_SRC__", athanor_src_root()), executable=True)
