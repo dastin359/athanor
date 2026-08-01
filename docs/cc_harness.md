@@ -309,16 +309,30 @@ Three places where this variant does not mirror the flagship, each on purpose:
 
 ## Open questions
 
-The variant exists to answer these, and does not yet.
+The variant exists to answer these. See
+[cc_harness_results.md](cc_harness_results.md) for the running experiment log;
+partial answers so far are noted inline below.
 
 - **Does the doctrine survive without the loop?** The flagship *forces* the
   hypothesis-then-code ordering through tool sequencing. Here it is a gate
   refusal after the fact. Does the agent internalise the discipline, or does it
   learn to satisfy the check?
+
+  *Early evidence: internalised.* Across six tasks, agents established 7–29
+  invariants before their first submission and never once tripped the ordering
+  refusal. Each independently named an experiment that changed its answer and
+  that it would not have run unprompted. But the sample is small, the tasks were
+  not randomly chosen, and every run was driven as a sub-agent rather than
+  through the subprocess launcher.
+
 - **What does losing the reviewer cost?** `docs/design.md` claims artifact-only
   review is the only mechanism that can reject a train-perfect but overfit
   solution. The self-audit is a weaker substitute by construction. The gap
   should be measurable on the hard-pair frontier in `RESULTS.md`.
+
+  *Not yet measured.* Six for six leaves the question open: nothing has been
+  train-perfect and wrong. `signals.py` now recovers the model-free half of the
+  reviewer's job mechanically, which bounds the gap but does not close it.
 - **Is compaction a real regression?** ICAE compresses on measured context
   pressure with a purpose-built schema; Claude Code compacts on its own schedule
   with a general summarizer. The disk-backed state is meant to cover the
