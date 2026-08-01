@@ -41,7 +41,34 @@ def main() -> int:
         return 1
 
     summary = check(solve)
+    _durability_nudge()
     return 0 if summary["all_train_correct"] else 1
+
+
+def _durability_nudge() -> None:
+    """Warn when nothing has been committed to the invariant ledger.
+
+    Running experiments and *recording* what they established are different
+    acts, and the second is easy to skip during a long search — exactly when it
+    matters most, because a context compaction discards everything the ledger
+    does not hold.
+
+    Deliberately not a count target: recording trivia to satisfy a number is the
+    same failure as recording a tautology. The point is durability.
+    """
+    from arc import invariants
+
+    try:
+        if invariants():
+            return
+    except Exception:  # noqa: BLE001 - a nudge must never break the dry run
+        return
+    print(
+        "\n== nothing recorded in the invariant ledger yet.\n"
+        "   If your context is compacted, everything you have worked out so far goes with it —\n"
+        "   `gate.py status` replays only what arc.verify() recorded. Commit the facts your\n"
+        "   current reading actually rests on."
+    )
 
 
 if __name__ == "__main__":

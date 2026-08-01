@@ -158,6 +158,48 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "3/3 training examples reproduced" in result.stdout
 
+    def test_dryrun_nudges_when_the_ledger_is_empty(self, workspace):
+        """Running experiments and recording them are different acts.
+
+        On the hardest observed tasks agents wrote several exploration scripts
+        and recorded nothing — so a compaction would have discarded everything
+        they had worked out.
+        """
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert "nothing recorded in the invariant ledger yet" in result.stdout
+
+    def test_dryrun_is_quiet_once_something_is_recorded(self, workspace):
+        import subprocess
+        import sys as _sys
+
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "outputs keep the input shape", "holds": True}) + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "dryrun.py"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert "nothing recorded" not in result.stdout
+
     def test_dryrun_reports_a_missing_solution_without_a_traceback(self, workspace):
         import subprocess
         import sys as _sys
