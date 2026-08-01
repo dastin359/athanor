@@ -732,3 +732,39 @@ written while it held is now built on sand.
 The through-line: **a ledger that survives compaction is read by someone with
 no memory of writing it, and every one of these four defects was invisible to
 the agent that had the context and misleading to the one that would not.**
+
+---
+
+## The frontier, counted properly
+
+I described round 5 as completing "six zero-solve frontier pairs attempted, six
+solved". That count was selective, and the correction matters more than the
+headline did.
+
+`RESULTS.md` defines the frontier as 9 test outputs across 8 puzzles: pairs
+where no submission in the frozen 2026-04-12 public corpus ever succeeded,
+with at least 80 logged attempts each. **All 8 puzzles have now been
+attempted.** Two of them were attempted in earlier rounds and *missed* — and
+listing only the six that were solved quietly dropped them.
+
+| pair | HF attempts | this variant | flagship |
+|---|---:|---|---|
+| `13e47133 / 0` | 117 | solved | solved |
+| `269e22fb / 0` | 119 | solved | solved |
+| `269e22fb / 1` | 119 | solved | solved |
+| `8b7bacbf / 0` | 125 | solved | solved |
+| `a32d8b75 / 0` | 118 | solved | solved |
+| `abc82100 / 0` | 121 | solved | solved |
+| `da515329 / 0` | 120 | solved | solved |
+| `9bbf930d / 0` | 117 | **missed** | solved |
+| `faa9f03d / 0` | 127 | **missed** | **missed** |
+
+**7 of 9, against the flagship's 8 of 9.** One pair the flagship solves and
+this variant does not (`9bbf930d`, missed on 2 iterations); one pair neither
+solves (`faa9f03d`, which no logged submission has ever solved and which
+resisted a 120-turn flagship attempt).
+
+That is the number to quote. It is a good result — every one of these pairs had
+100+ failed attempts behind it — and it is one pair short of the system this
+variant is being compared against, on a frontier of nine. Both facts belong in
+the same sentence.
