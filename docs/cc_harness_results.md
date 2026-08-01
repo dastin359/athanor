@@ -805,6 +805,9 @@ this variant does not (`9bbf930d`, missed on 2 iterations); one pair neither
 solves (`faa9f03d`, which no logged submission has ever solved and which
 resisted a 120-turn flagship attempt).
 
+> **Superseded.** `faa9f03d` was solved in round 8 — see "faa9f03d" below. The
+> frontier standing is now 8 of 9. This table is kept as the round-5 record.
+
 That is the number to quote. It is a good result — every one of these pairs had
 100+ failed attempts behind it — and it is one pair short of the system this
 variant is being compared against, on a frontier of nine. Both facts belong in
@@ -997,8 +1000,12 @@ have now been attempted.
 | `dbff022c / 0` | solved | missed |
 | `faa9f03d / 0` | **missed** | missed |
 
-**5 of 6.** The one miss is `faa9f03d`, which no logged submission in the frozen
-public corpus has ever solved and which resisted a 120-turn flagship attempt.
+**5 of 6** at the time of writing. The one miss was `faa9f03d`, which no logged
+submission in the frozen public corpus had ever solved and which resisted a
+120-turn flagship attempt.
+
+> **Superseded.** `faa9f03d` was solved in round 8. All six pairs the flagship
+> fails are now taken.
 
 Set against the frontier table earlier — where this variant takes 7 of 9 and the
 flagship 8 of 9 — the two results say something more specific than either alone.
@@ -1026,7 +1033,8 @@ Which of those three is doing the work is exactly what the next experiment asks.
 and this variant does not, and a retry carrying `sweep()`, the situation-types
 prompt on the free path, and the rival-standing fixes **still missed it** — this
 time with two candidates and a well-argued hedge rather than an unhedged guess.
-Two attempts, two misses. The frontier standing is unchanged at 7 of 9.
+Two attempts, two misses. The frontier standing was 7 of 9 at this point;
+`faa9f03d` later took it to 8 of 9, but `9bbf930d` remains the sole miss.
 
 Worth saying plainly: several rounds of harness improvements did not convert
 this pair. The improvements are real and measurable elsewhere; they are not a
