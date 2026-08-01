@@ -35,6 +35,7 @@ __all__ = [
     "train_samples",
     "test_samples",
     "verify",
+    "refute",
     "check",
     "load_solution",
     "show",
@@ -143,7 +144,7 @@ def _condition_evidence() -> tuple[str, bool]:
             continue
         func = node.func
         name = getattr(func, "id", None) or getattr(func, "attr", None)
-        if name != "verify" or node.lineno != frame.lineno:
+        if name not in {"verify", "refute"} or node.lineno != frame.lineno:
             continue
 
         condition = None
@@ -166,12 +167,32 @@ def _condition_evidence() -> tuple[str, bool]:
     return "", False
 
 
+def refute(claim: str, condition: bool | Callable[[], Any], note: str | None = None,
+           *, key: str | None = None) -> bool:
+    """Record a hypothesis as *ruled out* by an executed check.
+
+    ``verify()`` has one channel for two different findings, and a false one
+    leaves a `[REFUTED]` line that reads like a defect in your own work rather
+    than like the discovery it is. Ruling something out is a result::
+
+        refute("8-connectivity explains the selection",
+               selected_under_8 != expected)
+
+    Returns True when the hypothesis was successfully ruled out. Dead ends are
+    worth as much as live ones — re-deriving a hypothesis you already killed is
+    the most common way to burn an iteration budget.
+    """
+    return verify(claim, condition, note, key=key, _mode="ruled_out")
+
+
 def verify(
     claim: str,
     condition: bool | Callable[[], Any] = False,
     note: str | None = None,
     *,
     retract: bool = False,
+    key: str | None = None,
+    _mode: str = "invariant",
 ) -> bool:
     """Establish a claim about this puzzle by executing it.
 
@@ -199,6 +220,15 @@ def verify(
     ``gate.py status``. Withdrawing a bad invariant matters: the whole point of
     the ledger is that everything in it has been executed, and one claim that
     only looks verified poisons the rest.
+
+    Supersession is keyed on the claim string, which silently fails the moment
+    you reword a claim while correcting it. Pass ``key=`` to make it explicit::
+
+        verify("output height equals input height", ..., key="height-relation")
+        verify("output height equals input height times 2", ..., key="height-relation")
+
+    Use :func:`refute` rather than a false ``verify`` when the finding is that a
+    hypothesis is dead.
     """
     error = ""
     if retract:
@@ -218,7 +248,10 @@ def verify(
         "claim": str(claim),
         "holds": holds,
         "source": _caller_source(),
+        "key": str(key) if key else str(claim),
     }
+    if _mode == "ruled_out":
+        entry["mode"] = "ruled_out"
     if expression:
         entry["expression"] = expression
     if literal:
@@ -238,7 +271,12 @@ def verify(
     except OSError:
         pass  # a read-only workspace must not break exploration
 
-    label = "RETRACTED" if retract else ("VERIFIED " if holds else "REFUTED  ")
+    if retract:
+        label = "RETRACTED"
+    elif _mode == "ruled_out":
+        label = "RULED OUT" if holds else "STILL OPEN"
+    else:
+        label = "VERIFIED " if holds else "REFUTED  "
     suffix = f"  ({note})" if note else ""
     if error:
         suffix += f"  [{error}]"
@@ -266,7 +304,7 @@ def invariants() -> list[dict[str, Any]]:
             entry = json.loads(line)
         except json.JSONDecodeError:
             continue
-        latest[str(entry.get("claim"))] = entry
+        latest[str(entry.get("key") or entry.get("claim"))] = entry
     return [entry for entry in latest.values() if not entry.get("retracted")]
 
 

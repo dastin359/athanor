@@ -43,6 +43,7 @@ from typing import Any
 
 from .evaluate import detect_hardcoding, run_solution_isolated
 from .reporting import format_status, format_submission_report
+from .signals import output_space_signals
 
 STATE_DIR = ".athanor"
 STATE_FILE = "state.json"
@@ -118,7 +119,7 @@ def load_invariants(workspace: Path) -> list[dict[str, Any]]:
     # it has actually been executed.
     deduped: dict[str, dict[str, Any]] = {}
     for entry in entries:
-        deduped[str(entry.get("claim"))] = entry
+        deduped[str(entry.get("key") or entry.get("claim"))] = entry
     return [entry for entry in deduped.values() if not entry.get("retracted")]
 
 
@@ -239,6 +240,13 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
     elapsed = time.time() - started
 
     findings = detect_hardcoding(code, train_samples)
+    # Mechanical stand-in for the reviewer this variant drops: regularities every
+    # training output obeys that a test prediction breaks.
+    signals = output_space_signals(
+        train_samples,
+        [sample.get("input") for sample in test_samples],
+        [row.get("candidates") or [] for row in evaluation.get("test", [])],
+    )
     iteration = used + 1
 
     record = {
@@ -258,6 +266,7 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         "multi_candidate_on_train": bool(evaluation.get("multi_candidate_on_train")),
         "num_test_candidates": int(evaluation.get("num_test_candidates") or 0),
         "hardcoding_findings": findings,
+        "generalization_signals": signals,
         "elapsed_s": round(elapsed, 3),
     }
 
@@ -286,6 +295,7 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         train_samples=train_samples,
         hardcoding_findings=findings,
         best_effort_active=best_effort_active(state, used=iteration),
+        generalization_signals=signals,
     )
     (iteration_dir / "report.txt").write_text(report, encoding="utf-8")
 

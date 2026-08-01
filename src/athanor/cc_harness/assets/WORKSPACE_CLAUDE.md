@@ -61,16 +61,25 @@ NOTES.md              your durable research state — keep it current
 
 ## The invariant ledger
 
-`arc.verify(claim, condition)` appends to `.athanor/invariants.jsonl`. Two
-semantics worth knowing:
+`arc.verify(claim, condition)` appends to `.athanor/invariants.jsonl`, and the
+gate replays it. Four things worth knowing:
 
-- **Most recent entry per claim wins.** Re-verifying the same claim string
-  supersedes the earlier record rather than duplicating it.
-- **Retraction.** If a check was wrong — a condition that was accidentally a
-  tautology, say — withdraw it with `arc.verify("the claim", retract=True)`. It
-  then disappears from `gate.py status`. Do this rather than leaving it: the
-  ledger is only worth reading because everything in it has been executed, and
-  one claim that merely looks verified devalues all of them.
+- **The expression is recorded, not just the claim.** `verify()` reads the
+  condition's source from your script, so the ledger says what was executed. A
+  condition that is a compile-time constant is flagged: it measured nothing.
+- **Ruling something out is a result — use `arc.refute()` for it.**
+  `refute("8-connectivity explains the selection", ...)` records a dead end as a
+  finding rather than leaving a `[REFUTED]` line that reads like a defect in
+  your own work. Re-deriving a hypothesis you already killed is the most common
+  way to burn an iteration budget.
+- **Most recent entry per key wins**, and the key defaults to the claim string —
+  so rewording a claim while correcting it silently creates a duplicate instead
+  of superseding. Pass `key="height-relation"` when you expect to revise.
+- **Retraction.** If a check was wrong — a tautology, say — withdraw it with
+  `arc.verify("the claim", retract=True)`. It then disappears from `gate.py
+  status`. Do this rather than leaving it: the ledger is only worth reading
+  because everything in it has been executed, and one claim that merely looks
+  verified devalues all of them.
 
 ## Rules the gate enforces
 
@@ -113,6 +122,8 @@ semantics worth knowing:
 
 - Print summaries, not grids you have already seen. A boolean, a count, or a
   set of shapes usually carries the finding.
+- `NOTES.md` already exists with template content, so `Read` it before your
+  first `Write` — otherwise the write is rejected and you spend a round trip.
 
 ## Out of bounds
 

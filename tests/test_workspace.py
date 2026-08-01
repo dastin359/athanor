@@ -276,6 +276,55 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "WARNING" not in result.stdout
 
+    def test_refute_records_a_dead_end_as_a_finding(self, workspace):
+        """A false verify() reads as a defect; ruling something out is a result."""
+        result = self._run(
+            workspace,
+            "from arc import refute, train_samples\n"
+            "refute('every output equals its input',\n"
+            "       any(s['input'] != s['output'] for s in train_samples))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[RULED OUT]" in result.stdout
+
+        entry = json.loads(
+            (workspace.root / ".athanor" / "invariants.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert entry["mode"] == "ruled_out"
+        assert "s['input'] != s['output']" in entry["expression"]
+
+    def test_refute_that_fails_to_rule_out_says_still_open(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import refute\nrefute('something', False)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[STILL OPEN]" in result.stdout
+
+    def test_key_supersedes_across_a_reworded_claim(self, workspace):
+        """Supersession keyed on the claim string fails the moment you reword."""
+        result = self._run(
+            workspace,
+            "from arc import verify, invariants, train_samples\n"
+            "verify('outputs are 3 rows tall', len(train_samples) == 99, key='height')\n"
+            "verify('outputs are exactly 2 rows tall',\n"
+            "       all(len(s['output']) == 2 for s in train_samples), key='height')\n"
+            "print('LIVE', len(invariants()))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LIVE 1" in result.stdout
+
+    def test_without_a_key_a_reworded_claim_duplicates(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, invariants, train_samples\n"
+            "verify('outputs are 2 rows tall', len(train_samples) == 3)\n"
+            "verify('outputs are exactly 2 rows tall', len(train_samples) == 3)\n"
+            "print('LIVE', len(invariants()))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "LIVE 2" in result.stdout
+
     def test_retraction_removes_a_claim(self, workspace):
         result = self._run(
             workspace,

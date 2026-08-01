@@ -121,16 +121,21 @@ def build_initial_prompt(
     puzzle_data: dict[str, Any],
     config: CCRunConfig,
     image_files: list[str],
+    interpreter: dict[str, Any] | None = None,
 ) -> str:
     """The opening user message handed to ``claude -p``."""
     n_train = len(puzzle_data.get("train") or [])
     n_test = len(puzzle_data.get("test") or [])
+    python = (interpreter or {}).get("command") or "python"
 
     parts = [
         f"Solve ARC-AGI-2 task `{task_id}`.",
         "",
         "Read ./CLAUDE.md first — it describes this workspace, the gate commands, and the "
         "rules the gate enforces. Then read ./arc.py so you know what the toolkit gives you.",
+        "",
+        f"Run everything with `{python}` — that is the interpreter carrying this workspace's "
+        "libraries. CLAUDE.md lists what is installed.",
         "",
         f"You have {n_train} training pair(s), {n_test} test input(s), and "
         f"{config.max_iterations} formal submissions.",
@@ -160,8 +165,8 @@ def build_initial_prompt(
     parts += [
         "",
         "Begin with perception and verification, not with a guess. When you have a rule, write "
-        "`solution/hypothesis.md` and `solution/solve.py`, dry-run it with `python dryrun.py`, "
-        "and only then run `python gate.py submit`.",
+        f"`solution/hypothesis.md` and `solution/solve.py`, dry-run it with `{python} dryrun.py`, "
+        f"and only then run `{python} gate.py submit`.",
     ]
     return "\n".join(parts)
 

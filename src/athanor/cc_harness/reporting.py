@@ -32,6 +32,13 @@ FULL_GRID_EXAMPLE_LIMIT = 3
 #: Cap on per-example difference listings.
 DIFF_CELL_LIMIT = 40
 
+#: Test predictions the solver generated itself. It can reload them at will
+#: (`arc.load_solution()`, or the archived predictions.json), so the gate prints
+#: them in full only while they are cheap. Two agents independently pointed out
+#: that dumping two 30x30 grids on each of eight iterations is ~16k tokens of
+#: material the doctrine tells the solver never to print.
+TEST_CANDIDATE_CELL_LIMIT = 400
+
 
 # ── grid rendering ───────────────────────────────────────────────────────────
 
@@ -125,6 +132,18 @@ throwaway variant.
 
 # ── submission report ────────────────────────────────────────────────────────
 
+def _colour_histogram(grid: Grid | None) -> str:
+    """`{colour: count}`, most frequent first — cheap plausibility evidence."""
+    if not grid:
+        return "{}"
+    counts: dict[int, int] = {}
+    for row in grid:
+        for cell in row:
+            counts[int(cell)] = counts.get(int(cell), 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return "{" + ", ".join(f"{colour}:{count}" for colour, count in ordered) + "}"
+
+
 def format_submission_report(
     *,
     iteration: int,
@@ -133,6 +152,7 @@ def format_submission_report(
     train_samples: list[dict[str, Any]],
     hardcoding_findings: list[str],
     best_effort_active: bool,
+    generalization_signals: list[str] | None = None,
 ) -> str:
     """Render one formal iteration's outcome plus the directive that follows."""
     lines: list[str] = []
@@ -227,6 +247,7 @@ def format_submission_report(
         lines.append("")
 
     lines.append("--- test predictions ---")
+    elided = False
     for row in evaluation.get("test", []):
         idx = row.get("index")
         if row.get("error"):
@@ -236,7 +257,22 @@ def format_submission_report(
         shapes = ", ".join(grid_shape(c) for c in candidates) or "none"
         lines.append(f"[test {idx}] {len(candidates)} candidate(s): {shapes}")
         for cand_idx, candidate in enumerate(candidates, start=1):
-            lines.append("  " + render_grid_block(f"candidate {cand_idx}", candidate).replace("\n", "\n  "))
+            histogram = _colour_histogram(candidate)
+            lines.append(f"  candidate {cand_idx}: {grid_shape(candidate)}  colours {histogram}")
+            cells = len(candidate) * len(candidate[0]) if candidate else 0
+            if cells <= TEST_CANDIDATE_CELL_LIMIT:
+                lines.append("  " + render_grid(candidate).replace("\n", "\n  "))
+            else:
+                elided = True
+    if elided:
+        lines.append(
+            f"  (grids over {TEST_CANDIDATE_CELL_LIMIT} cells not printed — you generated them, so "
+            f"reload with arc.load_solution() or read "
+            f".athanor/iterations/{iteration}/predictions.json)"
+        )
+
+    for signal in generalization_signals or []:
+        lines.append(f"  GENERALIZATION: {signal}")
     lines.append("")
 
     if evaluation.get("stdout"):

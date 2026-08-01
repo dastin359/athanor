@@ -211,6 +211,8 @@ def build_workspace(
     for subdir in ("task", "explore", "solution", ".athanor", ".claude/hooks"):
         (root / subdir).mkdir(parents=True, exist_ok=True)
 
+    interpreter = choose_interpreter()
+
     visible = strip_test_outputs(puzzle_data)
     _write(root / "task" / "task.json", json.dumps({"task_id": task_id, **visible}, indent=1))
     _write(root / "task" / "grids.md", prompt_mod.render_task_markdown(task_id, visible))
@@ -233,7 +235,6 @@ def build_workspace(
     )
     _write(root / ".claude" / "settings.json", prompt_mod.settings_json(hook_script=hook_path))
 
-    interpreter = choose_interpreter()
     _write(root / STATE_SUBDIR / "harness_python", sys.executable)
     _write(
         root / "CLAUDE.md",
@@ -245,8 +246,11 @@ def build_workspace(
     _write(
         root / "explore" / "README.md",
         "Scratch scripts live here. One question per script, named for the question.\n"
-        "Run them with `python explore/<name>.py`. Nothing here is budgeted or recorded;\n"
-        "only `arc.verify()` results and `gate.py submit` are.\n",
+        f"Run them with `{interpreter.get('command') or 'python'} explore/<name>.py`.\n"
+        "Start a name with a letter so other scripts can import it (`from lib import ...`);\n"
+        "`05_thing.py` is not a valid module name.\n"
+        "Nothing here is budgeted or recorded; only `arc.verify()` results and\n"
+        "`gate.py submit` are.\n",
     )
 
     state = {
@@ -274,6 +278,7 @@ def build_workspace(
         puzzle_data=visible,
         config=config,
         image_files=image_files,
+        interpreter=interpreter,
     )
     # Written next to the workspace so any Claude Code agent — the subprocess
     # launcher, or a sub-agent inside an existing session — can be pointed at
