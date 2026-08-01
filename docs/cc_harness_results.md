@@ -1400,3 +1400,86 @@ correctness. The self-audit has never rejected anything in 26 runs. The cache
 fix is invisible at scale. Several rounds of improvements did not convert
 `9bbf930d`. None of these are flattering and all of them are load-bearing for
 anyone deciding what to build on.
+
+---
+
+## `faa9f03d`
+
+`RESULTS.md` describes this pair as the one remaining frontier task: 127 logged
+attempts in the frozen public corpus, `ever_solved = 0`. Never solved by any
+CoT-only Opus 4.6 configuration at any thinking level. The flagship fails it
+0/1, including a dedicated 120-turn attempt.
+
+**This variant solved it. 1/1, on the first submission, at confidence 3.**
+
+### Verification, because the claim warrants it
+
+| check | result |
+|---|---|
+| test outputs present in the workspace `task.json` | no |
+| answer grid in `task/grids.md`, `CLAUDE.md`, `NOTES.md`, `arc.py`, either prompt | no |
+| only file containing the answer | `.athanor/iterations/1/report.txt` — the gate's own report, written *after* submission, echoing the agent's prediction back |
+| ground-truth match | exact, at **candidate index 1** |
+
+### The primary reading was wrong
+
+That last row is the whole story. The agent's *first* candidate did not match.
+The answer came from the **second** candidate — the hedge.
+
+The ambiguity it hedged was precise and it could state it: at a wire crossing,
+which wire is drawn on top? Training cannot distinguish "fewest cells" from
+"shortest longest-straight-run", because every training pair happens to agree
+under both. The test grid separates them. The agent enumerated 98 candidate
+orderings against 9 observed decisions in a single `sweep()`, found exactly two
+survivors, registered both through `rival()`, and shipped them as the two
+candidates. `rival()` told it — correctly — that the second reading "is already
+your second candidate, leave it in place", and told it of a third reading that
+both slots were spent and the question was "which two of the three survive the
+most evidence".
+
+That is the entire mechanism chain, built over five rounds from a two-cell loss
+on `88e364bc`, working end to end on the hardest puzzle in the corpus. Without
+the second candidate this run scores 0/1, exactly like every other attempt ever
+logged against it.
+
+### The confidence anchors fired on their first outing
+
+Two hours before this run, the confidence scale was found collapsed to `{4, 5}`
+across 26 audits, with `RETRY` never once fired, and was anchored to whether the
+situations the test requires are witnessed in training. This is the first run
+under those anchors, and it produced the **first sub-4 confidence in the
+experiment**. The agent:
+
+> "the situation-types paragraph … produced `11_situation_types.py`, which found
+> that 5 of the 6 things the test needs are unwitnessed and, crucially,
+> separated the four harmless ones from the one real leap. Without it I would
+> have written 'confidence 4' and not noticed that the non-terminal re-route is
+> a distinct reading. **It directly set my confidence number.**"
+
+A 3 was the right answer: the run was correct, and correct *via the hedge*, with
+one genuine unhedged leap remaining. An anchored scale reached down and said so.
+
+### Frontier standing
+
+**8 of 9 pairs — the same count as the flagship, and a different eight.**
+
+| pair | this variant | flagship |
+|---|---|---|
+| `13e47133`, `269e22fb`×2, `8b7bacbf`, `a32d8b75`, `abc82100`, `da515329` | solved | solved |
+| `faa9f03d / 0` | **solved** | missed |
+| `9bbf930d / 0` | **missed** | solved |
+
+Each system solves exactly one pair the other cannot. Between them the entire
+frontier falls; neither does it alone.
+
+### Caveats
+
+n=1. This variant attempted `faa9f03d` once and took it; the corpus's 127
+failures come from other systems and configurations, and nothing here says a
+second attempt would succeed. The run cost 260k tokens and 58 tool calls, well
+above this experiment's average — appropriate for the hardest task in the set,
+but not a figure to generalise from.
+
+And the honest shape of the win: the agent did not find the right rule. It found
+that *two* rules survived all available evidence, declined to choose between
+them, and spent the free attempt it was owed.
