@@ -101,15 +101,42 @@ athanor cc score cc_runs                        # aggregate
 athanor cc workspace 28a6681f                   # prepare a workspace, launch nothing
 ```
 
+### Where it stands
+
+**23 tasks attempted, 21 fully solved, 30 of 32 test examples**, ~1.2 formal
+iterations per task, zero gate refusals across the whole experiment.
+
+Read that percentage with care: the 23 tasks were **chosen for difficulty**, not
+sampled — six of the eight zero-solve frontier puzzles and all five puzzles the
+flagship itself fails — so it says nothing about the other 97 public-eval tasks.
+The numbers worth comparing are the head-to-head ones, on identical puzzles:
+
+| | this variant | flagship |
+|---|---|---|
+| zero-solve frontier (9 pairs) | 7 | 8 |
+| pairs the flagship itself fails (6) | 5 | 0 |
+| cost per task (n=4 batch) | $1.86 | $3.12 mean / $1.71 median |
+
+The two systems fail on *different* puzzles and neither dominates. This variant
+carries no reviewer, no second model and no inter-agent artifact exchange.
+
+An ablation — doctrine stripped from the workspace contract, toolkit left intact
+— found that agents adopt the practice anyway: told nothing about verification
+or hedging, they read `arc.py` and register rivals, sweep ties and hedge. The
+portable part appears to be the toolkit rather than the system prompt.
+
 See [docs/cc_harness.md](docs/cc_harness.md) for the mechanism-by-mechanism
 mapping, what is deliberately dropped, and the open questions the variant exists
-to answer.
+to answer, and [docs/cc_harness_results.md](docs/cc_harness_results.md) for the
+running experiment log — including the negative results, of which there are
+several.
 
 ## Documentation
 
 - [RESULTS.md](RESULTS.md) — full-eval score, cost analysis, hard-pair frontier
 - [docs/design.md](docs/design.md) — design rationale, architecture, competitive context, terminology, threat model
 - [docs/cc_harness.md](docs/cc_harness.md) — the Claude Code harness variant: mechanism mapping, gate contract, open questions
+- [docs/cc_harness_results.md](docs/cc_harness_results.md) — the variant's experiment log: round-by-round results, every harness defect found and fixed, and the negative results
 - [docs/zero_solve_subset.md](docs/zero_solve_subset.md) — frozen 2026-04-12 snapshot methodology and reproduction queries
 
 ## Tests
