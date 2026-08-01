@@ -54,6 +54,11 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         help="Run `claude --bare` for maximum reproducibility (requires ANTHROPIC_API_KEY).",
     )
     parser.add_argument("--setting-sources", default="project")
+    parser.add_argument(
+        "--no-stable-system-prompt",
+        action="store_true",
+        help="Keep cwd and env info in the system prompt (breaks cross-task prompt-cache reuse).",
+    )
     parser.add_argument("--overwrite", action="store_true", help="Replace an existing workspace.")
     parser.add_argument("--quiet", action="store_true", help="Do not trace agent events to stdout.")
 
@@ -73,6 +78,7 @@ def _config_from_args(args: argparse.Namespace) -> CCRunConfig:
         permission_mode=args.permission_mode,
         bare=args.bare,
         setting_sources=args.setting_sources,
+        stable_system_prompt=not args.no_stable_system_prompt,
     )
 
 

@@ -88,6 +88,32 @@ class TestCliArgs:
             args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
             assert args[args.index("--permission-mode") + 1] == mode
 
+    def test_dynamic_system_prompt_sections_are_excluded_by_default(
+        self, workspace, tmp_path, full_featured_cli, monkeypatch
+    ):
+        """Per-task workspaces mean per-task cwd, which sits in the default
+        system prompt and breaks cross-task prompt-cache reuse. Measured: the
+        second task of a sequential batch wrote more cache than the first."""
+        monkeypatch.setattr(
+            runner, "supports_flag",
+            lambda flag: flag in FULL_HELP or flag == "--exclude-dynamic-system-prompt-sections",
+        )
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert "--exclude-dynamic-system-prompt-sections" in args
+
+    def test_stable_system_prompt_can_be_turned_off(self, workspace, tmp_path, monkeypatch):
+        monkeypatch.setattr(runner, "claude_binary", lambda: "/usr/bin/claude")
+        monkeypatch.setattr(runner, "supports_flag", lambda flag: True)
+        workspace.config = CCRunConfig(stable_system_prompt=False, visual=False)
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert "--exclude-dynamic-system-prompt-sections" not in args
+
+    def test_the_flag_is_dropped_on_a_cli_that_lacks_it(self, workspace, tmp_path, monkeypatch):
+        monkeypatch.setattr(runner, "claude_binary", lambda: "/usr/bin/claude")
+        monkeypatch.setattr(runner, "supports_flag", lambda flag: False)
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert "--exclude-dynamic-system-prompt-sections" not in args
+
     def test_default_permission_mode_works_as_root(self):
         assert CCRunConfig().permission_mode == "acceptEdits"
 

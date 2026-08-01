@@ -115,6 +115,8 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path) -> list[st
     else:
         args += ["--append-system-prompt", workspace.system_prompt]
 
+    if config.stable_system_prompt and supports_flag("--exclude-dynamic-system-prompt-sections"):
+        args.append("--exclude-dynamic-system-prompt-sections")
     if config.setting_sources and supports_flag("--setting-sources"):
         args += ["--setting-sources", config.setting_sources]
     if supports_flag("--strict-mcp-config"):

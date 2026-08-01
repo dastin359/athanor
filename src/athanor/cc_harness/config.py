@@ -66,6 +66,22 @@ class CCRunConfig:
     """
     tools: tuple[str, ...] = DEFAULT_TOOLS
     disallowed_tools: tuple[str, ...] = DEFAULT_DISALLOWED_TOOLS
+    stable_system_prompt: bool = True
+    """Pass `--exclude-dynamic-system-prompt-sections`.
+
+    Every task runs in its own workspace, so cwd differs per task — and cwd sits
+    in Claude Code's default system prompt. That changes the cached prefix on
+    every task and defeats cross-task prompt-cache reuse, which is the
+    amortisation the flagship's per-task cost figure depends on. Measured across
+    a sequential batch: the second task wrote *more* cache than the first
+    (61k vs 52k) rather than reusing it.
+
+    The flag moves cwd, env info, memory paths and git status into the first
+    user message instead. It applies only alongside the default system prompt,
+    which is what this harness uses (`--append-system-prompt`, not
+    `--system-prompt`).
+    """
+
     setting_sources: str = "project"
     """Which Claude Code settings sources to load. 'project' keeps the
     workspace's own .claude/settings.json (the compaction hook) while ignoring
