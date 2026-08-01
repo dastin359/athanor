@@ -435,9 +435,22 @@ def format_status(
 
     if invariants:
         suspect = [entry for entry in invariants if entry.get("literal")]
-        lines.append(f"--- verified invariants ({len(invariants)}) ---")
+        dead = sum(1 for e in invariants if e.get("mode") == "ruled_out" and e.get("holds"))
+        held = len(invariants) - dead
+        header = f"--- executed ledger ({held} verified"
+        header += f", {dead} ruled out) ---" if dead else ") ---"
+        lines.append(header)
         for entry in invariants:
-            mark = "OK  " if entry.get("holds") else "FAIL"
+            # A refute() entry that *holds* means the hypothesis is dead, not
+            # that it is true. Rendering it "[OK  ]" beside a claim worded as
+            # the hypothesis inverts its meaning to anyone skimming — which,
+            # after a compaction, is the only way this gets read. Reported live
+            # by a solver whose ledger said "[OK  ] contact by 4-adjacency only
+            # also explains the training data" about a reading it had killed.
+            if entry.get("mode") == "ruled_out":
+                mark = "DEAD" if entry.get("holds") else "OPEN"
+            else:
+                mark = "OK  " if entry.get("holds") else "FAIL"
             source = entry.get("source") or "?"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({source})")
             # The expression is the evidence. A claim without one was recorded
@@ -447,6 +460,25 @@ def format_status(
                 lines.append(f"         {entry['expression']}")
             if entry.get("literal"):
                 lines.append("         ^ NOT MEASURED — constant condition; re-verify or retract")
+            if entry.get("unsourced"):
+                lines.append(
+                    "         ^ NO EVIDENCE — recorded from a -c/heredoc; nothing here says "
+                    "what ran"
+                )
+            # A claim that replaced an earlier one carries what it displaced.
+            # Post-compaction this is the only surviving record of the reading
+            # you already ruled out — without it the dead branch looks unexplored.
+            superseded = entry.get("supersedes")
+            if isinstance(superseded, dict) and superseded.get("claim"):
+                if superseded["claim"] != entry.get("claim"):
+                    lines.append(
+                        f"         replaced [{superseded.get('verdict', '?')}]: {superseded['claim']}"
+                    )
+                else:
+                    lines.append(
+                        f"         ^ verdict changed from [{superseded.get('verdict', '?')}] "
+                        "— re-check whatever assumed the old one"
+                    )
         if suspect:
             lines.append("")
             lines.append(

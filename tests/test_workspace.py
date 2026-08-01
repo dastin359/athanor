@@ -175,7 +175,7 @@ class TestArcToolkit:
         )
         assert result.returncode == 0, result.stderr
         assert "reproduces all 3 training pairs" in result.stdout
-        assert "needs no slot" in result.stdout
+        assert "would change nothing" in result.stdout
 
     def test_rival_names_where_it_diverges(self, workspace):
         from conftest import MIRROR_SOLVE
@@ -193,6 +193,69 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "predicts differently on test 0" in result.stdout
         assert "your second candidate" in result.stdout
+
+    def test_rival_recognises_itself_as_the_existing_second_candidate(self, workspace):
+        """Reported live, and the advice was inverted where it mattered most.
+
+        A solver hedged correctly — its 3/3-fitting rival was already candidate
+        2 — and rival() told it the reading "is not a divergent reading and
+        needs no slot", because the rival's prediction was found inside the
+        candidate list it had just been added to. Acting on that line deletes a
+        correct hedge. "Already your second candidate" and "redundant with your
+        first" are opposite situations.
+        """
+        (workspace.root / "solution" / "solve.py").write_text(
+            "def solve(grid):\n"
+            "    mine = [row[::-1] for row in grid]\n"
+            "    if grid[0][0] == 6:\n"        # the test input, not any training input
+            "        return [mine, [[9, 9, 9], [9, 9, 9]]]\n"
+            "    return mine\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('the reading already hedged into slot 2', alt)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "already your second candidate" in result.stdout
+        assert "Leave it in place" in result.stdout
+        assert "needs no slot" not in result.stdout
+        assert "would change nothing" not in result.stdout
+
+    def test_rival_says_when_both_slots_are_already_spent_elsewhere(self, workspace):
+        """Reported by both round-5 solvers.
+
+        With two candidates already shipped on a test example, "That is your
+        second candidate" describes an addition that is not available — the
+        second candidate exists and holds a different reading. The real choice
+        is which two of three survive.
+        """
+        (workspace.root / "solution" / "solve.py").write_text(
+            "def solve(grid):\n"
+            "    mine = [row[::-1] for row in grid]\n"
+            "    if grid[0][0] == 6:\n"
+            "        return [mine, [[7, 7, 7], [7, 7, 7]]]\n"
+            "    return mine\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"   # neither shipped candidate
+            "    return [r[::-1] for r in g]\n"
+            "rival('a third reading', alt)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "both slots are already spent" in result.stdout
+        assert "which two of the three" in result.stdout
+        assert "That is your second candidate" not in result.stdout
 
     def test_rival_defers_when_there_is_no_solution_yet(self, workspace):
         result = self._run(
@@ -229,6 +292,94 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "registered no rival readings" in result.stdout
         assert "arc.rival(name, fn)" in result.stdout
+
+    def test_verify_flags_a_claim_recorded_without_a_readable_call_site(self, workspace):
+        """Reported live: a heredoc refutation with a literal True, and no warning.
+
+        The constant-condition check is derived from the caller's source, so
+        when the source cannot be read the check cannot fire — and the entry
+        looked exactly like a well-evidenced one.
+        """
+        import subprocess
+        import sys as _sys
+
+        result = subprocess.run(
+            [_sys.executable, "-c", "from arc import verify\nverify('a claim from a one-liner', True)\n"],
+            cwd=str(workspace.root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO EVIDENCE CAPTURED" in result.stdout
+        assert "explore/" in result.stdout
+
+        import json as _json
+
+        ledger = workspace.root / ".athanor" / "invariants.jsonl"
+        entries = [_json.loads(line) for line in ledger.read_text().splitlines() if line.strip()]
+        assert entries[-1]["unsourced"] is True
+
+    def test_verify_from_a_file_is_not_flagged_as_unsourced(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('there are three training pairs', len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "NO EVIDENCE CAPTURED" not in result.stdout
+
+    def test_verify_shows_the_claim_a_rewording_displaced(self, workspace):
+        """Observed live: a live invariant whose own first clause was false.
+
+        With no way to say "that reading died, here is the replacement", a
+        solver wrote the correction into the claim text — "the jog has a fixed
+        width of 1 (m = a-1); it is instead always a-2 wide" — and the harness
+        stamped [VERIFIED] on it. After a compaction that sentence is what gets
+        read back.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "n = len(train_samples)\n"
+            "verify('there are four training pairs', n == 4, key='pair-count')\n"
+            "verify('there are three training pairs', n == 3, key='pair-count')\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "supersedes under key `pair-count`" in result.stdout
+        assert "there are four training pairs" in result.stdout
+        assert "[REFUTED]" in result.stdout
+        assert "State only what is true" in result.stdout
+
+    def test_verify_announces_a_changed_verdict(self, workspace):
+        """A claim that flips is the most informative event in the ledger.
+
+        It used to print twice, identically, with nothing marking that the
+        second run contradicted the first.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify\n"
+            "import os\n"
+            "verify('the flag file exists', os.path.exists('flag.tmp'))\n"
+            "open('flag.tmp', 'w').close()\n"
+            "verify('the flag file exists', os.path.exists('flag.tmp'))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CHANGED VERDICT" in result.stdout
+        assert "[REFUTED]" in result.stdout
+        assert "now suspect" in result.stdout
+
+    def test_verify_is_quiet_when_a_claim_is_merely_reconfirmed(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('there are three training pairs', len(train_samples) == 3)\n"
+            "verify('there are three training pairs', len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "CHANGED VERDICT" not in result.stdout
+        assert "supersedes" not in result.stdout
 
     def test_verify_flags_a_bare_name_as_opaque_evidence(self, workspace):
         """Observed live: a ledger entry whose recorded evidence was `allok`.

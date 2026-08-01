@@ -120,25 +120,32 @@ def _parse_caller(filename: str) -> Any:
     return _AST_CACHE[key]
 
 
-def _condition_evidence() -> tuple[str, bool, bool]:
+def _condition_evidence() -> tuple[str, bool, bool, bool]:
     """Recover the *expression* the caller passed as ``condition``.
 
-    Returns ``(source_text, is_literal, is_opaque)``. The ledger records what was actually
-    executed, not just what was claimed — and a condition that is a compile-time
-    constant is an assertion wearing a verification's clothes, which is exactly
-    what the whole discipline exists to prevent.
+    Returns ``(source_text, is_literal, is_opaque, is_unsourced)``. The ledger
+    records what was actually executed, not just what was claimed — and a
+    condition that is a compile-time constant is an assertion wearing a
+    verification's clothes, which is exactly what the whole discipline exists to
+    prevent.
 
-    Best-effort: returns ``("", False, False)`` when the call site cannot be
-    recovered (a ``-c`` one-liner, a REPL, a call the parser cannot match).
+    ``is_unsourced`` marks the case where the call site could not be read at all:
+    a ``python -c`` one-liner, a heredoc piped to stdin, a REPL. That used to be
+    indistinguishable from a clean capture — the entry simply carried no
+    expression, and the constant-condition warning could not fire because the
+    warning is derived from source the parser never reached. A solver recorded a
+    refutation from a heredoc with a literal ``True`` condition, the exact
+    anti-pattern the check exists to catch, and got no warning; it noticed
+    unaided. "No evidence" and "good evidence" must not look alike.
     """
     import ast
 
     frame = _caller_frame()
     if frame is None:
-        return "", False, False
+        return "", False, False, True
     tree = _parse_caller(frame.filename)
     if tree is None:
-        return "", False, False
+        return "", False, False, True
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -157,7 +164,7 @@ def _condition_evidence() -> tuple[str, bool, bool]:
                     condition = keyword.value
                     break
         if condition is None:
-            return "", False, False
+            return "", False, False, False
 
         body = condition.body if isinstance(condition, ast.Lambda) else condition
         literal = isinstance(body, ast.Constant)
@@ -173,10 +180,10 @@ def _condition_evidence() -> tuple[str, bool, bool]:
             if any(isinstance(o, ast.Constant) and isinstance(o.value, bool) for o in operands):
                 literal = True
         try:
-            return ast.unparse(condition), literal, opaque
+            return ast.unparse(condition), literal, opaque, False
         except Exception:  # noqa: BLE001 - unparse is a convenience, not a contract
-            return "", literal, opaque
-    return "", False, False
+            return "", literal, opaque, False
+    return "", False, False, False
 
 
 def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | None = None,
@@ -197,6 +204,37 @@ def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | 
     Withdraw a mistaken dead end with ``refute(claim, retract=True)``.
     """
     return verify(claim, condition, note, key=key, retract=retract, _mode="ruled_out")
+
+
+def _previous_entry(entry_key: str) -> dict[str, Any] | None:
+    """The most recent ledger entry filed under ``entry_key``, if any."""
+    ledger = WORKSPACE / ".athanor" / "invariants.jsonl"
+    if not ledger.is_file():
+        return None
+    found: dict[str, Any] | None = None
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if str(entry.get("key") or entry.get("claim")) == entry_key:
+            found = entry
+    return found
+
+
+def _verdict_word(entry: dict[str, Any]) -> str:
+    if entry.get("retracted"):
+        return "RETRACTED"
+    if entry.get("mode") == "ruled_out":
+        return "RULED OUT" if entry.get("holds") else "STILL OPEN"
+    return "VERIFIED" if entry.get("holds") else "REFUTED"
 
 
 def verify(
@@ -241,6 +279,15 @@ def verify(
         verify("output height equals input height", ..., key="height-relation")
         verify("output height equals input height times 2", ..., key="height-relation")
 
+    When a record replaces an earlier one, the replacement carries the claim it
+    displaced and prints it. So **state only what is currently true** — do not
+    write the correction into the claim text ("X is 1; it is instead 2"), which
+    leaves a live invariant whose own first clause is false. The ledger keeps
+    the history; the claim should carry the finding.
+
+    A claim whose verdict changes between runs prints ``CHANGED VERDICT``, which
+    is worth stopping for: code written while it held is now built on sand.
+
     Use :func:`refute` rather than a false ``verify`` when the finding is that a
     hypothesis is dead.
     """
@@ -255,7 +302,9 @@ def verify(
     else:
         holds = bool(condition)
 
-    expression, literal, opaque = ("", False, False) if retract else _condition_evidence()
+    expression, literal, opaque, unsourced = (
+        ("", False, False, False) if retract else _condition_evidence()
+    )
 
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -264,6 +313,17 @@ def verify(
         "source": _caller_source(),
         "key": str(key) if key else str(claim),
     }
+
+    prior = None if retract else _previous_entry(entry["key"])
+    if prior is not None and not prior.get("retracted"):
+        reworded = str(prior.get("claim", "")) != str(claim)
+        flipped = bool(prior.get("holds")) != holds
+        if reworded or flipped:
+            entry["supersedes"] = {
+                "claim": str(prior.get("claim", "")),
+                "verdict": _verdict_word(prior),
+                "at": prior.get("at", ""),
+            }
     if _mode == "ruled_out":
         entry["mode"] = "ruled_out"
     if expression:
@@ -272,6 +332,8 @@ def verify(
         entry["literal"] = True
     if opaque:
         entry["opaque"] = True
+    if unsourced:
+        entry["unsourced"] = True
     if retract:
         entry["retracted"] = True
     if note:
@@ -297,6 +359,27 @@ def verify(
     if error:
         suffix += f"  [{error}]"
     print(f"[{label}] {claim}{suffix}")
+    superseded = entry.get("supersedes")
+    if superseded:
+        was = superseded["verdict"]
+        old_claim = superseded["claim"]
+        if old_claim != str(claim):
+            print(
+                f"           ^ supersedes under key `{entry['key']}`: "
+                f'"{old_claim}" [{was}]'
+            )
+            if was == "REFUTED":
+                print(
+                    "           The ledger now carries both the dead reading and its "
+                    "replacement, so you do not need to encode the correction in the "
+                    "claim text. State only what is true."
+                )
+        else:
+            print(
+                f"           ^ CHANGED VERDICT: this same claim was [{was}] at "
+                f"{superseded['at']}. Anything you built on the old verdict is now "
+                "suspect — re-check the code that assumed it."
+            )
     if opaque and not literal:
         print(
             f"           ^ the recorded evidence is just the name `{expression}`. After a "
@@ -308,6 +391,14 @@ def verify(
             "           ^ WARNING: that condition is a compile-time constant "
             f"({expression or 'literal'}). Nothing was measured, so this records an "
             "assertion, not a verification. Re-run it with a real check, or retract it."
+        )
+    if unsourced:
+        print(
+            "           ^ NO EVIDENCE CAPTURED: this ran from a -c one-liner, a heredoc "
+            "or a REPL, so the condition's source could not be read. The ledger entry "
+            "carries the claim but nothing about what was executed, and the "
+            "constant-condition check could not run at all. Put the check in a file "
+            "under explore/ — or at minimum pass note= with the measured value."
         )
     return holds
 
@@ -565,20 +656,40 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
         # The whole point is to stop a slot being forfeited, so the payload is
         # whether spending it would change anything. This function holds the
         # rival's predictions; comparing them costs nothing.
-        diverges = _rival_divergence(predictions)
-        if diverges is None:
+        standing = _rival_standing(predictions)
+        if standing is None:
             print(
                 "           No solution/solve.py to compare against yet — the gate will check "
                 "at submission time."
             )
-        elif diverges:
-            where = ", ".join(f"test {i}" for i in diverges)
-            print(f"           It predicts differently on {where}. That is your second candidate.")
         else:
-            print(
-                "           It predicts exactly what you do on every test input, so it is not a "
-                "divergent reading and needs no slot."
-            )
+            differs = [i for i, s in standing.items() if s == "differs"]
+            hedged = [i for i, s in standing.items() if s == "hedged"]
+            contested = [i for i, s in standing.items() if s == "contested"]
+            if contested:
+                where = ", ".join(f"test {i}" for i in contested)
+                print(
+                    f"           On {where} both slots are already spent, on readings that are "
+                    "not this one. Taking this rival means dropping one of them — so the "
+                    "question is which two of the three survive the most evidence, not "
+                    "whether to add a third."
+                )
+            if differs:
+                where = ", ".join(f"test {i}" for i in differs)
+                print(
+                    f"           It predicts differently on {where}. That is your second candidate."
+                )
+            if hedged:
+                where = ", ".join(f"test {i}" for i in hedged)
+                print(
+                    f"           On {where} it is already your second candidate — the slot is "
+                    "spent on it and the hedge is doing its job. Leave it in place."
+                )
+            if not differs and not hedged and not contested:
+                print(
+                    "           It predicts exactly what your first candidate does on every test "
+                    "input, so spending a slot on it would change nothing."
+                )
     else:
         print(
             f"[RIVAL   ] {name} — fails training "
@@ -588,8 +699,20 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
     return entry
 
 
-def _rival_divergence(predictions: list[Any]) -> list[int] | None:
-    """Test indices where a rival disagrees with the current solution.
+def _rival_standing(predictions: list[Any]) -> dict[int, str] | None:
+    """How a rival stands against the current solution, per test index.
+
+    ``"differs"``  — predicts something neither of your candidates does.
+    ``"hedged"``   — it *is* one of your later candidates already.
+    ``"same"``     — identical to your first candidate; spending a slot is a no-op.
+
+    The three were once collapsed into "diverges or not", which produced
+    actively inverted advice: a solver hedged correctly with a rival as its
+    second candidate, and ``rival()`` then told it the reading "is not a
+    divergent reading and needs no slot" — because the rival was found inside
+    the candidate list it had just been added to. Following that line would have
+    deleted a correct hedge. "Already your second candidate" and "redundant with
+    your first" are opposite situations and must not print the same sentence.
 
     Returns None when there is no loadable solution to compare against.
     """
@@ -598,7 +721,7 @@ def _rival_divergence(predictions: list[Any]) -> list[int] | None:
     except Exception:  # noqa: BLE001 - no solution yet, or it does not load
         return None
 
-    differing: list[int] = []
+    standing: dict[int, str] = {}
     for index, prediction in enumerate(predictions):
         if prediction is None or index >= len(test_samples):
             continue
@@ -607,9 +730,29 @@ def _rival_divergence(predictions: list[Any]) -> list[int] | None:
         except Exception:  # noqa: BLE001
             continue
         mine = raw if _looks_like_candidate_list(raw) else [raw]
-        if prediction not in mine:
-            differing.append(index)
-    return differing
+        if not mine:
+            standing[index] = "differs"
+        elif prediction == mine[0]:
+            standing[index] = "same"
+        elif prediction in mine[1:]:
+            standing[index] = "hedged"
+        elif len(mine) >= 2:
+            # Divergent, but there is no free slot to put it in. "That is your
+            # second candidate" is wrong here — the second candidate exists and
+            # is a different reading, so this is a swap, not an addition. Both
+            # round-5 solvers reported being told to add what could only replace.
+            standing[index] = "contested"
+        else:
+            standing[index] = "differs"
+    return standing
+
+
+def _rival_divergence(predictions: list[Any]) -> list[int] | None:
+    """Test indices where a rival's prediction is not among the shipped candidates."""
+    standing = _rival_standing(predictions)
+    if standing is None:
+        return None
+    return [index for index, status in standing.items() if status == "differs"]
 
 
 def rivals() -> list[dict[str, Any]]:

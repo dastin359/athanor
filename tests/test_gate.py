@@ -473,6 +473,33 @@ class TestUnspentCandidatePrompt:
         assert "the strict diagonal reading" in report
         assert "inductive leap" in report or "applied to the test input" in report
 
+    def test_status_marks_a_dead_end_dead_not_ok(self, workspace):
+        """Reported live: the status replay inverted every refute() entry.
+
+        `[OK  ] contact by 4-adjacency only also explains the training data`
+        reads, on a skim after compaction, as the finding rather than its
+        negation — and a skim after compaction is the only way this gets read.
+        """
+        import json
+        import subprocess
+        import sys as _sys
+
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "4-adjacency explains the data", "holds": True,
+                        "mode": "ruled_out", "source": "explore/a.py"}) + "\n"
+            + json.dumps({"claim": "outputs are square", "holds": True,
+                          "source": "explore/b.py"}) + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "gate.py", "status"],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[DEAD] 4-adjacency explains the data" in result.stdout
+        assert "[OK  ] outputs are square" in result.stdout
+        assert "1 verified, 1 ruled out" in result.stdout
+
     def test_silent_when_nothing_was_ruled_out(self, workspace):
         write_solution(workspace)
         report, _ = gate.cmd_submit(workspace.root)
