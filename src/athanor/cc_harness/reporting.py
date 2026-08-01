@@ -451,11 +451,16 @@ def format_submission_report(
         if partial_hedge:
             which = ", ".join(f"test {i}" for i in unspent_candidates or [])
             lines.append(
+                # The first wording asserted a likely cause. A solver whose
+                # alternative genuinely agreed on the unhedged example was told
+                # its "alternative path returned early", which was simply false.
+                # The asymmetry is worth flagging; the explanation is not the
+                # harness's to guess.
                 f"PARTIAL HEDGE — solve() returned two candidates for at least one test input "
-                f"and only one for {which}. If that was deliberate, ignore this. If you meant "
-                "to hedge everywhere, the likely cause is your alternative path returning "
-                "early on that input rather than a decision you made — check it before you "
-                "spend the audit."
+                f"and only one for {which}. Two readings that diverge on one example and agree "
+                "on another is perfectly possible, so this may be exactly right. It is also "
+                "what an alternative path returning early looks like from outside. Confirm "
+                "which before you spend the audit."
             )
             lines.append("")
         lines.append(GENERALIZATION_AUDIT_DIRECTIVE.rstrip())

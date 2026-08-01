@@ -720,7 +720,10 @@ class TestHedgeDiagnostics:
         report, _ = gate.cmd_submit(workspace_two_tests.root)
         assert "PARTIAL HEDGE" in report
         assert "test 1" in report
-        assert "returning early" in report
+        assert "Confirm which before you spend the audit" in report
+        # It must not assert a cause it cannot know: a solver whose alternative
+        # genuinely agreed there was told its path "returned early", which was false.
+        assert "likely cause" not in report
 
     def test_no_partial_hedge_warning_when_hedging_is_uniform(self, workspace_two_tests):
         write_solution(workspace_two_tests)  # one candidate everywhere

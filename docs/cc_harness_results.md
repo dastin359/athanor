@@ -1548,3 +1548,54 @@ effort in hindsight, and a solver cannot tell in advance which kind it is doing.
 That is exactly the situation the harness's advice exists for, and it is why the
 advice is framed as *"you cannot separate these on the evidence you have"*
 rather than *"this one is probably right"*.
+
+---
+
+## Testing my own variance claim — and losing
+
+When the third ablation arm came in at 3/6 against the doctrine arms' 6/6, I
+argued the gap was run-to-run variance rather than a doctrine effect, on the
+grounds that the mechanism differed per puzzle. That was an assertion, so I ran
+the cheapest decisive test: a **second doctrine run on `d35bdbdc`**, the puzzle
+with the largest gap, on a fresh workspace with the current toolkit.
+
+| `d35bdbdc` | score | iterations |
+|---|---|---|
+| doctrine, round 6 | **3/3** | 1 |
+| doctrine, replicate | **3/3** | 2 |
+| ablated | 1/3 | 1 |
+
+**The doctrine arm replicated exactly, and my variance claim is weaker for it.**
+Two independent doctrine runs both took all three test examples; the ablated run
+took one. A coin-flip story has to explain why the coin landed the same way
+twice on one side and not the other.
+
+What survives of the original argument is narrower but still stands: the
+*mechanism* differs across puzzles. On `88e364bc` the ablated arm lost a pair it
+had not hedged; here it hedged **more** than the doctrine arm (2,2,2 against
+2,2,1) and lost anyway, because its primary rule was wrong. "The doctrine
+teaches you to hedge" still does not explain both.
+
+What is now missing is the symmetric test. The doctrine arm has n=2 on this
+puzzle; the ablated arm has n=1. A second ablated run is the obvious completion
+and is underway. If it also lands 1/3, variance is a poor explanation and the
+honest conclusion is that something in the doctrine matters on this task — most
+plausibly in *rule discovery* rather than hedging, which is a stronger and more
+surprising claim than the one I started with.
+
+Recording this while the answer is still unknown, because the value of stating a
+prediction is lost if it is written afterwards.
+
+### One report that did not survive checking
+
+The replicate's friction section reported two `sweep()` defects: that the
+printed summary shows only a count rather than the survivor names, and that the
+`details` field "came out empty even though I passed tuples". Both were checked
+directly against its own workspace. Neither is true — `sweep()` prints each
+survivor by name with its detail inline, and that workspace's ledger contains a
+fully populated `details` map for all seven readings.
+
+Solver friction reports have been the highest-yield source of defects in this
+experiment by a wide margin. They are still reports, not measurements, and two
+of the three claims in this one were wrong. Checking before fixing cost two
+minutes and avoided "repairing" working code.
