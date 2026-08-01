@@ -167,7 +167,7 @@ def _unhedged_rival_prompt(rivals: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _agreeing_rival_note(fitting_rivals: int) -> str:
+def _agreeing_rival_note(fitting_rivals: int, unspent: int = 1) -> str:
     """Say when the solver's live rivals simply do not reach the open slot.
 
     A solver with one training-fitting rival that agreed on test 2 was shown the
@@ -177,13 +177,18 @@ def _agreeing_rival_note(fitting_rivals: int) -> str:
     """
     if fitting_rivals <= 0:
         return ""
-    plural = "s" if fitting_rivals > 1 else ""
-    verb = "do" if fitting_rivals > 1 else "does"
+    if fitting_rivals == 1:
+        subject = "You have 1 registered rival reading that reproduces every training pair, "
+        subject += "and it does not disagree"
+    else:
+        subject = (
+            f"You have {fitting_rivals} registered rival readings that reproduce every "
+            "training pair, and none of them disagrees"
+        )
+    where = "the examples above" if unspent > 1 else "the example above"
     return (
-        f"You have {fitting_rivals} registered rival reading{plural} that reproduce{'' if plural else 's'} "
-        f"every training pair, and {verb} not disagree with you on the example{'s' if len(plural) else ''} "
-        "above — so they are not what the open slot is for. Whatever belongs there is a reading "
-        "you have not named yet."
+        f"{subject} with you on {where} — so they are not what the open slot is for. "
+        "Whatever belongs there is a reading you have not named yet."
     )
 
 
@@ -206,7 +211,7 @@ def _unspent_candidate_prompt(
         f"UNSPENT SECOND ATTEMPT — {which} carries one candidate. You recorded "
         f"{len(ruled_out)} ruled-out hypothesis/hypotheses along the way:",
     ]
-    agreeing = _agreeing_rival_note(fitting_rivals)
+    agreeing = _agreeing_rival_note(fitting_rivals, len(unspent))
     for claim in ruled_out[:6]:
         lines.append(f"  - {claim}")
     if len(ruled_out) > 6:
