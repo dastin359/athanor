@@ -252,6 +252,29 @@ contract is identical either way; only the delivery of the doctrine differs
 Note that `--max-budget-usd` is a real ceiling only under API-key billing. On a
 subscription it has nothing to meter, so it defaults to `None`.
 
+### Operational notes
+
+Validated against Claude Code 2.1.220:
+
+- **Permission mode.** The default is `acceptEdits`. Not `bypassPermissions`:
+  Claude Code maps that to `--dangerously-skip-permissions`, which the CLI
+  refuses outright when running as root — the normal case for a containerised
+  harness — and the refusal arrives as an empty stream with one line of stderr.
+  A `bypassPermissions` config is swapped for `acceptEdits` automatically when
+  the harness detects root. `dontAsk` also works and is stricter: it denies
+  anything not allow-listed rather than prompting.
+- **Runtime libraries.** The workspace probes its interpreter at build time and
+  writes what it found into `CLAUDE.md`. If the solver's `python` is not the one
+  that installed Athanor's dependencies, the contract says so rather than
+  letting the agent discover it mid-experiment.
+- **Compaction hook.** `.claude/settings.json` registers a `SessionStart`
+  matcher on `compact`, whose stdout Claude Code injects as context. Settings
+  that fail validation are silently ignored in `-p` mode, so the hook is a
+  best-effort accelerator: `CLAUDE.md` independently instructs the agent to run
+  `gate.py status` after any compaction, and the run is correct either way.
+- **No result message.** If the CLI exits without one, the runner records the
+  stderr tail in `result.json` rather than reporting an empty run.
+
 ## Integrity and scoring
 
 Ground truth never enters the workspace: `task.json` is written with test
