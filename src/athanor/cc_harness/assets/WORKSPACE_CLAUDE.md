@@ -77,8 +77,8 @@ gate replays it. Four things worth knowing:
   so rewording a claim while correcting it silently creates a duplicate instead
   of superseding. Pass `key="height-relation"` when you expect to revise.
 - **Retraction.** If a check was wrong — a tautology, say — withdraw it with
-  `arc.verify("the claim", retract=True)`. It then disappears from `gate.py
-  status`. Do this rather than leaving it: the ledger is only worth reading
+  `arc.verify("the claim", retract=True)`, or `arc.refute("the claim",
+  retract=True)` for a dead end. It then disappears from `gate.py status`. Do this rather than leaving it: the ledger is only worth reading
   because everything in it has been executed, and one claim that merely looks
   verified devalues all of them.
 
@@ -93,10 +93,11 @@ def strict(grid): ...          # the reading you suspect is wrong
 rival("diagonals may not brush a wall corner", strict)
 ```
 
-`rival()` scores it against every training pair and keeps its test predictions.
-If it reproduces all of them and predicts something different from your own
-solution, the gate says so at submission time — because training cannot then
-separate the two, and ARC-AGI-2 gives you two attempts per test example.
+`rival()` scores it against every training pair, and if `solution/solve.py`
+already exists it compares predictions and tells you immediately whether the
+rival diverges — that is, whether spending the second slot on it would change
+anything. Register rivals **before** your first dry run, so the answer arrives
+while acting on it is still free.
 
 This exists because of a measured loss. A solver ruled out exactly such a rival
 by taking a regularity that held across the training *outputs* and applying it

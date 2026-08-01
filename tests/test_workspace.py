@@ -158,6 +158,78 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "3/3 training examples reproduced" in result.stdout
 
+    def test_rival_says_when_the_slot_would_change_nothing(self, workspace):
+        """The payload is whether spending the slot changes anything.
+
+        A solver reported rival() advising "consider it for your second
+        candidate" about a reading that predicted identically — advice the
+        function had the data to know was wrong.
+        """
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "rival('a differently-argued but identical rule', lambda g: [r[::-1] for r in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "reproduces all 3 training pairs" in result.stdout
+        assert "needs no slot" in result.stdout
+
+    def test_rival_names_where_it_diverges(self, workspace):
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"           # the test input, not any training input
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('a genuinely divergent reading', alt)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "predicts differently on test 0" in result.stdout
+        assert "your second candidate" in result.stdout
+
+    def test_rival_defers_when_there_is_no_solution_yet(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import rival\nrival('early rival', lambda g: [r[::-1] for r in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "No solution/solve.py to compare against yet" in result.stdout
+
+    def test_refute_accepts_retract(self, workspace):
+        """Reported as a TypeError: retraction only worked through verify()."""
+        result = self._run(
+            workspace,
+            "from arc import refute, invariants\n"
+            "refute('a mistaken dead end', True)\n"
+            "refute('a mistaken dead end', retract=True)\n"
+            "print('LIVE', len(invariants()))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[RETRACTED]" in result.stdout
+        assert "LIVE 0" in result.stdout
+
+    def test_hedging_advice_fires_on_an_empty_rival_ledger(self, workspace):
+        """The first dry run is the one moment before submitting when acting is free.
+
+        Requiring a pre-existing rival meant silence exactly there: a solver
+        registered its rivals afterwards and only saw the question from the
+        gate, after the iteration was spent.
+        """
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "registered no rival readings" in result.stdout
+        assert "arc.rival(name, fn)" in result.stdout
+
     def test_verify_flags_a_bare_name_as_opaque_evidence(self, workspace):
         """Observed live: a ledger entry whose recorded evidence was `allok`.
 
@@ -279,12 +351,19 @@ class TestArcToolkit:
         assert "rival that also fits every training pair: the strict reading" in result.stdout
         assert "Training cannot separate it" in result.stdout
 
-    def test_no_hedging_advice_without_a_rival_or_dead_end(self, workspace):
+    def test_hedging_advice_is_raised_even_with_nothing_recorded(self, workspace):
+        """An empty rival ledger is not evidence that there are no rivals.
+
+        Superseded an earlier design where silence was the response; that
+        skipped the prompt on the first dry run, the one place it is free to
+        act on.
+        """
         result = self._run(
             workspace,
             "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
         )
-        assert "carries one candidate" not in result.stdout
+        assert "carries one candidate" in result.stdout
+        assert "not the same as there being" in result.stdout
 
     def test_no_hedging_advice_once_the_slot_is_spent(self, workspace):
         (workspace.root / ".athanor" / "invariants.jsonl").write_text(

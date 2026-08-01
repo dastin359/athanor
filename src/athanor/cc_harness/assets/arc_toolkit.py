@@ -171,8 +171,8 @@ def _condition_evidence() -> tuple[str, bool, bool]:
     return "", False, False
 
 
-def refute(claim: str, condition: bool | Callable[[], Any], note: str | None = None,
-           *, key: str | None = None) -> bool:
+def refute(claim: str, condition: bool | Callable[[], Any] = False, note: str | None = None,
+           *, key: str | None = None, retract: bool = False) -> bool:
     """Record a hypothesis as *ruled out* by an executed check.
 
     ``verify()`` has one channel for two different findings, and a false one
@@ -185,8 +185,10 @@ def refute(claim: str, condition: bool | Callable[[], Any], note: str | None = N
     Returns True when the hypothesis was successfully ruled out. Dead ends are
     worth as much as live ones — re-deriving a hypothesis you already killed is
     the most common way to burn an iteration budget.
+
+    Withdraw a mistaken dead end with ``refute(claim, retract=True)``.
     """
-    return verify(claim, condition, note, key=key, _mode="ruled_out")
+    return verify(claim, condition, note, key=key, retract=retract, _mode="ruled_out")
 
 
 def verify(
@@ -442,11 +444,22 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
 
     live_rivals = [r for r in rivals() if r.get("fits_training")]
     dead_ends = [e for e in invariants() if e.get("mode") == "ruled_out" and e.get("holds")]
-    if not live_rivals and not dead_ends:
-        return
 
     where = ", ".join(f"test {index}" for index in unspent)
     print(f"\n== {where} carries one candidate, and ARC-AGI-2 scores two.")
+
+    if not live_rivals and not dead_ends:
+        # An empty rival ledger used to mean silence — which skipped the prompt
+        # on the very first dry run, the one moment before the first submission
+        # when acting on it is free. A solver reported exactly that: it
+        # registered its rivals afterwards and only saw the question from the
+        # gate, after the iteration was spent.
+        print("   You have registered no rival readings, which is not the same as there being")
+        print("   none. Name the interpretation you rejected on the way here and run it through")
+        print("   arc.rival(name, fn): if it reproduces every training pair and predicts")
+        print("   something different, it is the best possible use of the second slot.")
+        return
+
     if live_rivals:
         for entry in live_rivals[:3]:
             print(f"   rival that also fits every training pair: {entry['name']}")
@@ -506,9 +519,25 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
     if entry["fits_training"]:
         print(
             f"[RIVAL   ] {name} — reproduces all "
-            f"{entry['train_total']} training pairs. Training cannot separate it from your "
-            "reading; consider it for your second candidate."
+            f"{entry['train_total']} training pairs. Training cannot separate it from yours."
         )
+        # The whole point is to stop a slot being forfeited, so the payload is
+        # whether spending it would change anything. This function holds the
+        # rival's predictions; comparing them costs nothing.
+        diverges = _rival_divergence(predictions)
+        if diverges is None:
+            print(
+                "           No solution/solve.py to compare against yet — the gate will check "
+                "at submission time."
+            )
+        elif diverges:
+            where = ", ".join(f"test {i}" for i in diverges)
+            print(f"           It predicts differently on {where}. That is your second candidate.")
+        else:
+            print(
+                "           It predicts exactly what you do on every test input, so it is not a "
+                "divergent reading and needs no slot."
+            )
     else:
         print(
             f"[RIVAL   ] {name} — fails training "
@@ -516,6 +545,30 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
             "assumption."
         )
     return entry
+
+
+def _rival_divergence(predictions: list[Any]) -> list[int] | None:
+    """Test indices where a rival disagrees with the current solution.
+
+    Returns None when there is no loadable solution to compare against.
+    """
+    try:
+        solve = load_solution()
+    except Exception:  # noqa: BLE001 - no solution yet, or it does not load
+        return None
+
+    differing: list[int] = []
+    for index, prediction in enumerate(predictions):
+        if prediction is None or index >= len(test_samples):
+            continue
+        try:
+            raw = solve([row[:] for row in test_samples[index]["input"]])
+        except Exception:  # noqa: BLE001
+            continue
+        mine = raw if _looks_like_candidate_list(raw) else [raw]
+        if prediction not in mine:
+            differing.append(index)
+    return differing
 
 
 def rivals() -> list[dict[str, Any]]:
