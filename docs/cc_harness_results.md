@@ -1246,3 +1246,56 @@ shippable, portable part of the harness is the toolkit. The doctrine may still
 supply the specific out-of-sample question that decides a hard pair — that is
 what `88e364bc` hints at — but two arms cannot distinguish that from chance, and
 this experiment should not pretend otherwise.
+
+### Ablation, third arm — a big gap with an incoherent mechanism
+
+| puzzle | ablated | doctrine | flagship |
+|---|---|---|---|
+| `88e364bc` | 1/2 | **2/2** | 1/2 |
+| `dbff022c` | **1/1** | **1/1** | 0/1 |
+| `d35bdbdc` | 1/3 | **3/3** | 1/3 |
+| **test examples** | **3/6** | **6/6** | — |
+
+3 of 6 against 6 of 6 looks like a decisive result, and on both puzzles where
+the ablated arm lost pairs it landed on *exactly the flagship's score*. It is
+tempting to write that up as "the doctrine is worth three test examples".
+
+**That would be wrong, and the reason is in the candidate counts.**
+
+| puzzle | ablated hedges | doctrine hedges |
+|---|---|---|
+| `d35bdbdc` | 2, 2, 2 | 2, 2, 1 |
+
+On `d35bdbdc` the ablated agent hedged **more** than the doctrine agent — two
+candidates on all three test inputs, against the doctrine arm's two-two-one —
+and still scored 1/3 against 3/3. It did not fail to hedge. Its *primary rule
+was wrong*: it read the puzzle as pointer chains resolved by absorption, where
+the doctrine arm read it as dropping every other level of a containment forest.
+Two different rules, both reproducing all three training pairs, only one right.
+
+So the mechanism is not consistent across the three puzzles. On `88e364bc` the
+gap is a missing hedge; on `d35bdbdc` it is a wrong reading arrived at despite
+more hedging; on `dbff022c` there is no gap. "The doctrine teaches you to hedge"
+predicts the first and is contradicted by the second.
+
+An inconsistent mechanism across three puzzles is what run-to-run variance looks
+like. The alternative — that the doctrine somehow produces better *rule
+discovery*, not just better hedging — is a much stronger claim, has no proposed
+mechanism, and three runs cannot support it.
+
+One confound worth stating because it runs *against* the ablated arm, not for
+it: the ablated runs used a strictly newer toolkit than the doctrine runs they
+are compared against — `sweep()` per-reading details, `verify(over=)`, rival
+contention detection, all shipped between the two sets. The ablated arm had the
+better tools and did worse. That makes the toolkit-improvements story weaker,
+not the doctrine story stronger; both are undercut by the same variance.
+
+**What survives from all three arms** is the qualitative finding, which
+replicated cleanly every time: an agent given the toolkit and no doctrine reads
+`arc.py` and adopts the practice — `verify`, `refute`, `sweep`, `rival`,
+`solution_module`, `over=` — registers rivals, enumerates unwitnessed situation
+types, and hedges. The third ablated agent wrote a `situation_types.py` script
+unprompted and used it to add two hedges it had not originally framed. Nobody
+told it to.
+
+The score difference is not established. The behaviour transfer is.
