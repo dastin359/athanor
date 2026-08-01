@@ -103,8 +103,10 @@ athanor cc workspace 28a6681f                   # prepare a workspace, launch no
 
 ### Where it stands
 
-**23 tasks attempted, 21 fully solved, 30 of 32 test examples**, ~1.2 formal
-iterations per task, zero gate refusals across the whole experiment.
+**24 completed tasks, 23 fully solved, 33 of 34 test examples**, ~1.2 formal
+iterations per task, zero gate refusals across the whole experiment. That
+includes `faa9f03d`, which no logged submission in the frozen public corpus had
+ever solved in 127 attempts.
 
 Read that percentage with care: the 23 tasks were **chosen for difficulty**, not
 sampled — six of the eight zero-solve frontier puzzles and all five puzzles the
@@ -113,11 +115,12 @@ The numbers worth comparing are the head-to-head ones, on identical puzzles:
 
 | | this variant | flagship |
 |---|---|---|
-| zero-solve frontier (9 pairs) | 7 | 8 |
-| pairs the flagship itself fails (6) | 5 | 0 |
+| zero-solve frontier (9 pairs) | **8** | 8 |
+| pairs the flagship itself fails (6) | **6** | 0 |
 | cost per task (n=4 batch) | $1.86 | $3.12 mean / $1.71 median |
 
-The two systems fail on *different* puzzles and neither dominates. This variant
+The two systems fail on *different* puzzles: each solves exactly one frontier
+pair the other cannot, and between them the whole frontier falls. This variant
 carries no reviewer, no second model and no inter-agent artifact exchange.
 
 An ablation — doctrine stripped from the workspace contract, toolkit left intact

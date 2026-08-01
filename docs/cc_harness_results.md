@@ -15,12 +15,15 @@ about it that no amount of reading the code reveals.
 
 ## Standing
 
-**23 tasks attempted, 21 fully solved, 30 of 32 test examples.** Mean ~1.2
+**24 completed tasks, 23 fully solved, 33 of 34 test examples.** Mean ~1.2
 formal iterations. Zero gate refusals in the entire experiment.
 
-The two misses are `9bbf930d` (two attempts, both 0/1; the flagship solves it)
-and `faa9f03d` (0/1; no logged submission in the public corpus has ever solved
-it).
+The single miss is `9bbf930d` — two attempts, both 0/1, the second carrying
+every toolkit improvement. The flagship solves it.
+
+`faa9f03d`, which no logged submission in the frozen public corpus has ever
+solved in 127 attempts, **is solved** — see the section below. It came from the
+second candidate, not the first.
 
 **Read that percentage carefully — it is not comparable to a full-benchmark
 score, for two reasons pulling in opposite directions.**
@@ -40,13 +43,14 @@ What the numbers do support, because they are head-to-head on the same puzzles:
 
 | comparison | this variant | flagship |
 |---|---|---|
-| zero-solve frontier (9 pairs) | 7 | 8 |
-| pairs the flagship itself fails (6) | 5 | 0 |
+| zero-solve frontier (9 pairs) | **8** | 8 |
+| pairs the flagship itself fails (6) | **6** | 0 |
 | cost per task (n=4 batch) | $1.86 | $3.12 mean / $1.71 median |
 
-The systems fail on *different* puzzles. Neither dominates, and `faa9f03d`
-defeats both. This variant carries no reviewer, no second model, and no
-inter-agent artifact exchange.
+The systems fail on *different* puzzles: each solves exactly one frontier pair
+the other cannot — `faa9f03d` here, `9bbf930d` there. Between them the entire
+frontier falls; neither does it alone. This variant carries no reviewer, no
+second model, and no inter-agent artifact exchange.
 
 ---
 
