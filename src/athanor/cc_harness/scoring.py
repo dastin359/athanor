@@ -68,6 +68,17 @@ def score_final(
 _FORBIDDEN_TOOLS = ("WebFetch", "WebSearch")
 
 
+#: Absolute paths a solver mentions in a command or tool argument. Relative
+#: paths are workspace-relative by construction and are not interesting here.
+_OUT_OF_WORKSPACE = re.compile(r"/(?:root|home|etc|usr|var|opt|srv|mnt|media)/[\w./\\-]{2,}")
+
+#: Paths every run legitimately touches. The solver's interpreter lives outside
+#: the workspace by design, and the harness tells it so in CLAUDE.md.
+_BENIGN_PATH_PREFIXES = (
+    "/usr/", "/home/user/athanor/.venv/", "/home/user/athanor/src/",
+)
+
+
 def contamination_scan(
     *,
     workspace_root: Path | str,
@@ -84,6 +95,7 @@ def contamination_scan(
     """
     workspace_root = Path(workspace_root).resolve()
     evidence: list[str] = []
+    own_spill_marker = str(workspace_root).replace("/", "-")
 
     task_file = workspace_root / "task" / "task.json"
     if task_file.is_file():
@@ -113,6 +125,26 @@ def contamination_scan(
         for tool in _FORBIDDEN_TOOLS:
             if f'"name":"{tool}"' in stream_text or f'"name": "{tool}"' in stream_text:
                 evidence.append(f"transcript contains a {tool} tool call")
+
+        # A solver reading a file outside its workspace is the route the other
+        # checks do not cover. Observed live: an agent ran `sed` against a path
+        # under /root/.claude/projects/ — which turned out to be its own
+        # truncated tool output, and was benign, but nothing in this scan said
+        # so. It was established by hand. That is the wrong division of labour.
+        for match in set(_OUT_OF_WORKSPACE.findall(stream_text)):
+            resolved = match.replace("\\", "/")
+            if resolved.startswith(str(workspace_root)):
+                continue
+            if any(resolved.startswith(prefix) for prefix in _BENIGN_PATH_PREFIXES):
+                continue
+            # Claude Code spills large tool results to a project directory whose
+            # name is the workspace path with separators replaced. A reference
+            # to *its own* spill is the CLI's storage, not an external read —
+            # and it is common enough that flagging it would bury a real one.
+            # A spill path encoding a *different* workspace is still flagged.
+            if own_spill_marker and own_spill_marker in resolved:
+                continue
+            evidence.append(f"transcript references a path outside the workspace: {match}")
 
     return {"suspected": bool(evidence), "evidence": sorted(set(evidence))}
 

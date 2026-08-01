@@ -137,3 +137,76 @@ class TestAggregate:
         text = format_aggregate(aggregate(records), records)
         assert "solved     : 1/2" in text
         assert "wall-clock timeout" in text
+
+
+class TestOutOfWorkspacePaths:
+    """The route the other contamination checks did not cover.
+
+    Observed live: a solver ran `sed` against a path under
+    /root/.claude/projects/. It was its own truncated tool output and entirely
+    benign — but nothing in the scan said so, and it had to be established by
+    hand. The scan should raise it for a human, not stay silent.
+    """
+
+    def _stream(self, tmp_path, command: str):
+        import json
+        path = tmp_path / "stream.jsonl"
+        path.write_text(json.dumps({
+            "message": {"content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": command}}
+            ]}
+        }) + "\n", encoding="utf-8")
+        return path
+
+    def test_a_read_outside_the_workspace_is_flagged(self, tmp_path):
+        from athanor.cc_harness.scoring import contamination_scan
+        ws = tmp_path / "workspace"
+        (ws / "task").mkdir(parents=True)
+        stream = self._stream(tmp_path, "sed -n 1,50p /root/.claude/projects/other/thing.jsonl")
+        result = contamination_scan(workspace_root=ws, stream_path=stream)
+        assert result["suspected"] is True
+        assert any("outside the workspace" in e for e in result["evidence"])
+
+    def test_the_workspace_itself_is_not_flagged(self, tmp_path):
+        from athanor.cc_harness.scoring import contamination_scan
+        ws = tmp_path / "workspace"
+        (ws / "task").mkdir(parents=True)
+        stream = self._stream(tmp_path, f"sed -n 1,50p {ws.resolve()}/explore/probe.py")
+        result = contamination_scan(workspace_root=ws, stream_path=stream)
+        assert not any("outside the workspace" in e for e in result["evidence"])
+
+    def test_the_solver_interpreter_is_not_flagged(self, tmp_path):
+        """CLAUDE.md tells the agent to run this exact path; flagging it is noise."""
+        from athanor.cc_harness.scoring import contamination_scan
+        ws = tmp_path / "workspace"
+        (ws / "task").mkdir(parents=True)
+        stream = self._stream(tmp_path, "/home/user/athanor/.venv/bin/python explore/probe.py")
+        result = contamination_scan(workspace_root=ws, stream_path=stream)
+        assert not any("outside the workspace" in e for e in result["evidence"])
+
+    def test_the_cli_own_tool_result_spill_is_not_flagged(self, tmp_path):
+        """Claude Code writes large tool results to a dir named for the workspace.
+
+        Eight of thirty-seven real runs reference their own spill; flagging
+        those would bury a genuine finding in noise.
+        """
+        from athanor.cc_harness.scoring import contamination_scan
+        ws = tmp_path / "workspace"
+        (ws / "task").mkdir(parents=True)
+        encoded = str(ws.resolve()).replace("/", "-")
+        stream = self._stream(
+            tmp_path, f"sed -n 1,50p /root/.claude/projects/{encoded}/tool-results/abc123"
+        )
+        result = contamination_scan(workspace_root=ws, stream_path=stream)
+        assert not any("outside the workspace" in e for e in result["evidence"])
+
+    def test_another_runs_spill_is_still_flagged(self, tmp_path):
+        from athanor.cc_harness.scoring import contamination_scan
+        ws = tmp_path / "workspace"
+        (ws / "task").mkdir(parents=True)
+        stream = self._stream(
+            tmp_path, "sed -n 1,50p /root/.claude/projects/-some-other-run-workspace/tool-results/x"
+        )
+        result = contamination_scan(workspace_root=ws, stream_path=stream)
+        assert result["suspected"] is True
+        assert any("outside the workspace" in e for e in result["evidence"])

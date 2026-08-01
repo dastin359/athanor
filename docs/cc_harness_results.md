@@ -1716,3 +1716,60 @@ harness's job is to hold the standard that only a training pair can do the
 refuting.** Both ablated agents were rigorous, executed their check, and recorded
 it honestly with `refute()`. Rigour was not the missing ingredient. The standard
 was.
+
+---
+
+## The random sample: 6 of 6
+
+The 24-task standing is hand-picked for difficulty, and the log has said so
+throughout. The check: **6 tasks drawn with a fixed seed (20260801) from the 96
+public-eval tasks never attempted here**, run through the production launcher.
+
+| task | result | iterations | cost |
+|---|---|---|---|
+| `35ab12c3` | SOLVED 1/1 | 1 | $3.04 |
+| `58490d8a` | SOLVED 1/1 | 1 | $1.18 |
+| `a6f40cea` | SOLVED 1/1 | 1 | $5.21 |
+| `aa4ec2a5` | SOLVED 1/1 | 1 | $1.36 |
+| `de809cff` | SOLVED 1/1 | 1 | $2.68 |
+| `e87109e9` | SOLVED 1/1 | 1 | $2.43 |
+
+**6/6, every one on the first submission, mean $2.65.** The rate holds off the
+hand-picked set — on a small sample, but a genuinely random one.
+
+The cost spread is the more interesting number: $1.18 to $5.21, a 4.4x range
+across six tasks of no special difficulty. That matches the flagship's reported
+$0.23–$20.04 spread and confirms what the earlier cache analysis implied — per-
+task cost here is dominated by how long a run takes, and single-task figures
+should not be read as characteristic of anything.
+
+## An integrity gap the batch exposed
+
+The last of those six ran `sed` against a path under `/root/.claude/projects/`.
+That is outside its workspace, and the benchmark rules given to every solver
+forbid it.
+
+It was benign: the path encodes the run's *own* workspace, and is where Claude
+Code spills tool results too large to hold inline. The file contains the agent's
+own truncated output. Verified directly — the expected grid appears in neither
+that spill nor any workspace file.
+
+**But the contamination scan said nothing, and it should have.** It checked for
+dataset-root references, out-of-workspace task files, network tools, and test
+outputs appearing in `task.json` — not for a solver simply reading a file
+outside its workspace, which is the most direct route of all. That gap was
+closed by hand-checking, which is the wrong division of labour: the scan exists
+so the harness can state what it verified.
+
+The scan now flags absolute paths outside the workspace, with two exemptions
+established by rescanning every run:
+
+- the solver's own interpreter and the harness source, which `CLAUDE.md`
+  explicitly directs it to use;
+- the CLI's own tool-result spill, identified by the workspace path being
+  encoded in the directory name. A spill path encoding a *different* workspace
+  is still flagged.
+
+**Every run in the experiment — 37 of them — was rescanned under the new check.
+Zero flagged.** That is now a statement the harness makes rather than one I made
+by hand.
