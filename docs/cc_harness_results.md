@@ -444,3 +444,42 @@ Hedging still buys coverage, not insight — `faa9f03d` and `9bbf930d` both ship
 two candidates and both scored 0/1, because neither reading was right. What
 changed on `abc82100` is that the correct reading *was* among the two, and the
 harness is what put it there.
+
+---
+
+## Production path: first end-to-end run and first cost figure
+
+Every result above was driven by a sub-agent inside an existing Claude Code
+session. `athanor cc run` — the subprocess launcher users would actually invoke
+— had been smoke-tested but never used for a full solve. It has now.
+
+```
+28a6681f   SOLVED 1/1   2/6 iterations   46 turns   841s   $3.80
+           integrity clean · 472 stream messages · 0 malformed
+           tokens: 58k out, 2.73M cache read, 97k cache write
+```
+
+This validates the last untested component: argv construction against the real
+CLI, working directory, permission mode, the tool allowlist, `stream-json`
+capture, event translation, PNG reads by the agent, and the contamination scan
+running against a real transcript.
+
+**On the cost number.** $3.80 for one task, against the flagship's reported
+$3.12/task average. The comparison does not hold yet, in both directions:
+
+- This is a **cold single run**. The flagship's $3.12 is explicitly a
+  batch-deployment figure in which only the first puzzle pays the system-prompt
+  cache write; every later task hits the provider cache. This run paid 97k
+  tokens of cache *writes* that a batch would amortise.
+- It is n=1, on a task of middling difficulty that took 2 iterations. The
+  flagship's per-task cost ranges from $0.23 to $20.04 with a median of $1.71,
+  so a single sample says very little about a mean.
+- Claude Code carries a larger default system prompt and a general-purpose tool
+  surface that the flagship does not pay for; against that, this variant runs no
+  reviewer context and does not re-send puzzle data every turn.
+
+The honest statement is that the CC variant lands in the same order of magnitude
+as the flagship on its first measured task, and that a comparable number
+requires `athanor cc batch` over a real task set with a warm cache. The harness
+can now produce that figure; this run is the evidence the machinery works, not
+the answer.
