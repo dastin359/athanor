@@ -71,10 +71,16 @@ class CCRunConfig:
 
     Every task runs in its own workspace, so cwd differs per task — and cwd sits
     in Claude Code's default system prompt. That changes the cached prefix on
-    every task and defeats cross-task prompt-cache reuse, which is the
-    amortisation the flagship's per-task cost figure depends on. Measured across
-    a sequential batch: the second task wrote *more* cache than the first
-    (61k vs 52k) rather than reusing it.
+    every task and defeats cross-task prompt-cache reuse entirely: measured
+    directly, a second workspace wrote byte-identical cache to the first rather
+    than reading it.
+
+    Keep the size honest. What this recovers is the system-prompt prefix across
+    tasks, a few thousand tokens; the bulk of a run's cache traffic is
+    within-task, as each turn writes the growing conversation. The flagship's
+    own figure puts batch amortisation at $5.80 over 119 tasks — about $0.05 a
+    task. This is a correctness fix to a mechanism that was fully broken, not a
+    material cost lever.
 
     The flag moves cwd, env info, memory paths and git status into the first
     user message instead. It applies only alongside the default system prompt,

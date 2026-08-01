@@ -603,18 +603,45 @@ statement — that a comparable cost figure "requires `athanor cc batch` over a
 real task set with a warm cache" — was true but incomplete. The harness could
 not have produced a warm cache at all, however many tasks it ran.
 
-**Cost after the fix**, sequential batch, four unseen public-eval tasks:
+### How much this is worth, honestly
+
+Less than the framing above implies, and the distinction matters.
+
+What the flag recovers is the **system-prompt prefix** across tasks — a few
+thousand tokens. The bulk of a run's cache traffic is *within* a task, as each
+turn writes the growing conversation forward; the completed batch below writes
+84k-228k cache tokens per task against 1.0M-2.1M read, and none of that is
+touched by this fix. The flagship's own accounting puts batch amortisation at
+$5.80 across 119 tasks, roughly **$0.05 a task**.
+
+So: a mechanism that was completely broken now works, and it is worth about
+five cents per puzzle. Both halves of that are true and the second one is the
+one easy to lose. The reason to fix it is that a harness whose cost model
+silently doesn't apply is a harness you cannot reason about — not that the
+number moved.
+
+### The completed batch
+
+Four unseen public-eval tasks, run sequentially through `athanor cc batch`
+(before the fix — this batch is what exposed it):
 
 | task | result | iterations | cost |
 |---|---|---|---|
 | `e8686506` | SOLVED 1/1 | 1 | $1.702 |
 | `78332cb0` | SOLVED 2/2 | 1 | $1.707 |
 | `7b5033c1` | SOLVED 1/1 | 1 | $1.066 |
+| `3dc255db` | SOLVED 1/1 | 1 | $2.970 |
 
-Against the flagship's $3.12 mean and $1.71 median per task. These are
-first-iteration solves, so they are the cheap end of the distribution and not a
-mean — but they are no longer inflated by a defect, which is the part that
-changed.
+**4/4 solved, $1.861 per task, 1.0 iterations mean.** Against the flagship's
+$3.12 mean and $1.71 median.
+
+Two caveats worth keeping attached to that number. Every one of the four solved
+on the first submission, which is the cheap end of the distribution — the
+flagship's per-task cost ranges $0.23 to $20.04, and a set of four
+first-iteration solves is not a sample of that spread. And n=4 is n=4. What can
+be said is that the variant is not in a different cost regime from the
+flagship, and that the earlier single-run $3.80 figure was a cold run rather
+than a representative one.
 
 ---
 
