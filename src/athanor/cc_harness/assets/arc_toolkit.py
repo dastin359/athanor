@@ -81,17 +81,88 @@ _PALETTE = {
 
 # ── verification ─────────────────────────────────────────────────────────────
 
-def _caller_source() -> str:
-    """Best-effort workspace-relative path of the script that called verify()."""
+def _caller_frame() -> Any:
+    """The frame of the script that called into this module."""
     for frame in inspect.stack()[1:]:
         filename = frame.filename or ""
         if filename == __file__ or filename.startswith("<"):
             continue
+        return frame
+    return None
+
+
+def _caller_source() -> str:
+    """Best-effort workspace-relative path of the script that called verify()."""
+    frame = _caller_frame()
+    if frame is None:
+        return "<unknown>"
+    try:
+        return str(Path(frame.filename).resolve().relative_to(WORKSPACE))
+    except ValueError:
+        return os.path.basename(frame.filename)
+
+
+_AST_CACHE: dict[str, Any] = {}
+
+
+def _parse_caller(filename: str) -> Any:
+    key = f"{filename}:{os.path.getmtime(filename)}" if os.path.exists(filename) else filename
+    if key not in _AST_CACHE:
         try:
-            return str(Path(filename).resolve().relative_to(WORKSPACE))
-        except ValueError:
-            return os.path.basename(filename)
-    return "<unknown>"
+            import ast
+
+            _AST_CACHE[key] = ast.parse(Path(filename).read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, ValueError):
+            _AST_CACHE[key] = None
+    return _AST_CACHE[key]
+
+
+def _condition_evidence() -> tuple[str, bool]:
+    """Recover the *expression* the caller passed as ``condition``.
+
+    Returns ``(source_text, is_literal)``. The ledger records what was actually
+    executed, not just what was claimed — and a condition that is a compile-time
+    constant is an assertion wearing a verification's clothes, which is exactly
+    what the whole discipline exists to prevent.
+
+    Best-effort: returns ``("", False)`` when the call site cannot be recovered
+    (a ``-c`` one-liner, a REPL, a multi-line call the parser cannot match).
+    """
+    import ast
+
+    frame = _caller_frame()
+    if frame is None:
+        return "", False
+    tree = _parse_caller(frame.filename)
+    if tree is None:
+        return "", False
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = getattr(func, "id", None) or getattr(func, "attr", None)
+        if name != "verify" or node.lineno != frame.lineno:
+            continue
+
+        condition = None
+        if len(node.args) >= 2:
+            condition = node.args[1]
+        else:
+            for keyword in node.keywords:
+                if keyword.arg == "condition":
+                    condition = keyword.value
+                    break
+        if condition is None:
+            return "", False
+
+        body = condition.body if isinstance(condition, ast.Lambda) else condition
+        literal = isinstance(body, ast.Constant)
+        try:
+            return ast.unparse(condition), literal
+        except Exception:  # noqa: BLE001 - unparse is a convenience, not a contract
+            return "", literal
+    return "", False
 
 
 def verify(
@@ -139,12 +210,18 @@ def verify(
     else:
         holds = bool(condition)
 
+    expression, literal = ("", False) if retract else _condition_evidence()
+
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "claim": str(claim),
         "holds": holds,
         "source": _caller_source(),
     }
+    if expression:
+        entry["expression"] = expression
+    if literal:
+        entry["literal"] = True
     if retract:
         entry["retracted"] = True
     if note:
@@ -165,6 +242,12 @@ def verify(
     if error:
         suffix += f"  [{error}]"
     print(f"[{label}] {claim}{suffix}")
+    if literal:
+        print(
+            "           ^ WARNING: that condition is a compile-time constant "
+            f"({expression or 'literal'}). Nothing was measured, so this records an "
+            "assertion, not a verification. Re-run it with a real check, or retract it."
+        )
     return holds
 
 

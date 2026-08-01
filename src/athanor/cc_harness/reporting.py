@@ -305,11 +305,26 @@ def format_status(
         lines.append("")
 
     if invariants:
+        suspect = [entry for entry in invariants if entry.get("literal")]
         lines.append(f"--- verified invariants ({len(invariants)}) ---")
         for entry in invariants:
             mark = "OK  " if entry.get("holds") else "FAIL"
             source = entry.get("source") or "?"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({source})")
+            # The expression is the evidence. A claim without one was recorded
+            # from a context the parser could not read; a literal one measured
+            # nothing at all.
+            if entry.get("expression"):
+                lines.append(f"         {entry['expression']}")
+            if entry.get("literal"):
+                lines.append("         ^ NOT MEASURED — constant condition; re-verify or retract")
+        if suspect:
+            lines.append("")
+            lines.append(
+                f"  {len(suspect)} invariant(s) rest on a constant condition. They are assertions, "
+                "not verifications — re-run them against the data or retract them before you rely "
+                "on them."
+            )
         lines.append("")
     else:
         lines.append(

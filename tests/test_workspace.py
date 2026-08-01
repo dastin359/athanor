@@ -223,6 +223,71 @@ class TestArcToolkit:
         assert [e["holds"] for e in entries] == [True, False]
         assert entries[0]["source"] == "explore/probe.py"
 
+    def test_verify_records_the_expression_as_evidence(self, workspace):
+        """The ledger records what was executed, not only what was claimed."""
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('all inputs are 2 rows tall', all(len(s['input']) == 2 for s in train_samples))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        entry = json.loads(
+            (workspace.root / ".athanor" / "invariants.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert "len(s['input']) == 2 for s in train_samples" in entry["expression"]
+        assert "literal" not in entry
+
+    def test_verify_flags_a_constant_condition(self, workspace):
+        """A tautology is an assertion wearing a verification's clothes.
+
+        An agent shipped exactly this — `verify(claim, True if ... else True)` —
+        into the ledger that survives compaction and is replayed as established
+        fact. The doctrine's own failure mode, occurring inside the tool built
+        to prevent it.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify\nverify('the noise colour is well separated', True)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "WARNING" in result.stdout
+        assert "compile-time constant" in result.stdout
+
+        entry = json.loads(
+            (workspace.root / ".athanor" / "invariants.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        assert entry["literal"] is True
+        assert entry["holds"] is True  # it did evaluate true — that is the trap
+
+    def test_verify_flags_a_constant_lambda_body(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify\nverify('always fine', lambda: True)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "WARNING" in result.stdout
+
+    def test_verify_does_not_flag_a_real_lambda(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples\n"
+            "verify('three pairs', lambda: len(train_samples) == 3)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "WARNING" not in result.stdout
+
+    def test_retraction_removes_a_claim(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify, invariants\n"
+            "verify('outputs are square', True)\n"
+            "verify('outputs are square', retract=True)\n"
+            "print('LIVE', len(invariants()))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[RETRACTED]" in result.stdout
+        assert "LIVE 0" in result.stdout
+
     def test_verify_records_a_raising_check_as_refuted(self, workspace):
         result = self._run(
             workspace,

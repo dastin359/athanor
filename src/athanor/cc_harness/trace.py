@@ -120,6 +120,9 @@ def collect_trace(workspace_root: Path | str) -> dict[str, Any]:
         "invariants": invariants,
         "invariants_held": sum(1 for entry in invariants if entry.get("holds")),
         "invariants_refuted": sum(1 for entry in invariants if not entry.get("holds")),
+        # Recorded from a constant condition: an assertion that measured nothing.
+        # A non-zero count means the ledger is partly self-poisoned.
+        "invariants_unmeasured": sum(1 for entry in invariants if entry.get("literal")),
         "explore_scripts": scripts,
         "events": events,
         "refusals": refusals,
@@ -186,6 +189,11 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
     lines.append(f"  recorded invariants     : {len(trace['invariants'])}"
                  f"  ({density['invariants_per_iteration']} per iteration)"
                  f"  [{trace['invariants_held']} held, {trace['invariants_refuted']} refuted]")
+    if trace.get("invariants_unmeasured"):
+        lines.append(
+            f"  UNMEASURED invariants   : {trace['invariants_unmeasured']}"
+            "  <- constant conditions; assertions, not verifications"
+        )
     lines.append(f"  verified before 1st sub.: {density['verified_before_first_submission']}")
     lines.append(f"  NOTES.md                : {trace['notes_chars']} chars")
 
@@ -233,6 +241,10 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
         for entry in trace["invariants"]:
             mark = "OK  " if entry.get("holds") else "FAIL"
             lines.append(f"  [{mark}] {entry.get('claim')}   ({entry.get('source')})")
+            if entry.get("expression"):
+                lines.append(f"         {entry['expression']}")
+            if entry.get("literal"):
+                lines.append("         ^ NOT MEASURED — constant condition")
 
     if verbose and trace.get("hypothesis_history"):
         lines.append("")
