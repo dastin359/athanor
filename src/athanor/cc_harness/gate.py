@@ -485,6 +485,21 @@ def cmd_accept(workspace: Path) -> tuple[str, int]:
     # following the harness's own advice.
     revalidated = _revalidate_current_solution(workspace, state, last)
     if revalidated is not None:
+        # The new code is what will be accepted, so the coupling `submit`
+        # enforces has to hold here too — otherwise acceptance quietly pairs new
+        # code with a stale hypothesis, the exact mismatch the submit rule
+        # exists to prevent, slipped in through the door that makes hedging free.
+        # Checked only now: when the re-run regressed or failed, the submitted
+        # artifact stands and there is nothing to describe.
+        if _sha(_read_text(workspace, HYPOTHESIS_PATH).strip()) == str(
+            last.get("hypothesis_sha") or ""
+        ):
+            raise GateError(
+                f"{CODE_PATH} has changed since iteration {last.get('iteration')} but "
+                f"{HYPOTHESIS_PATH} has not. Acceptance re-runs the current code, so the "
+                "hypothesis has to describe it — say what changed and accept again. This "
+                "costs no iteration."
+            )
         predictions = {"test": revalidated["test"]}
         last = {**last, **revalidated["record"]}
 

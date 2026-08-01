@@ -175,6 +175,10 @@ class TestAcceptRevalidation:
         assert len(_iterations(workspace)) == 1
 
         (workspace.root / "solution" / "solve.py").write_text(self.TWO_CANDIDATES, encoding="utf-8")
+        (workspace.root / "solution" / "hypothesis.md").write_text(
+            LONG_HYPOTHESIS + "\nA second candidate covers the unresolved reading.\n",
+            encoding="utf-8",
+        )
         (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
         gate.cmd_accept(workspace.root)
 
@@ -183,6 +187,38 @@ class TestAcceptRevalidation:
         assert final["revalidated_at_accept"] is True
         assert len(final["test"][0]["candidates"]) == 2
         assert final["code"] == self.TWO_CANDIDATES
+
+    def test_changed_code_still_requires_a_changed_hypothesis(self, workspace):
+        """Re-running at accept time must not smuggle past the artifact coupling.
+
+        `submit` refuses code that changed without a matching hypothesis update;
+        acceptance re-runs the current code, so without this it would quietly
+        pair new code with a stale hypothesis.
+        """
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "solve.py").write_text(self.TWO_CANDIDATES, encoding="utf-8")
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+
+        with pytest.raises(gate.GateError, match="has not"):
+            gate.cmd_accept(workspace.root)
+        assert not workspace.final_path.exists()
+
+    def test_updating_the_hypothesis_unblocks_acceptance_for_free(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "solve.py").write_text(self.TWO_CANDIDATES, encoding="utf-8")
+        (workspace.root / "solution" / "hypothesis.md").write_text(
+            LONG_HYPOTHESIS + "\nA second candidate covers the unresolved reading.\n",
+            encoding="utf-8",
+        )
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+
+        assert len(_iterations(workspace)) == 1, "still no iteration spent"
+        final = json.loads(workspace.final_path.read_text(encoding="utf-8"))
+        assert final["revalidated_at_accept"] is True
+        assert len(final["test"][0]["candidates"]) == 2
 
     def test_a_regression_falls_back_to_the_submitted_artifact(self, workspace):
         write_solution(workspace)
