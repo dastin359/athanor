@@ -64,7 +64,7 @@ NOTES.md              your durable research state — keep it current
 ## The invariant ledger
 
 `arc.verify(claim, condition)` appends to `.athanor/invariants.jsonl`, and the
-gate replays it. Four things worth knowing:
+gate replays it. What is worth knowing about it:
 
 - **The expression is recorded, not just the claim.** `verify()` reads the
   condition's source from your script, so the ledger says what was executed. A
