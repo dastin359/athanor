@@ -11,6 +11,7 @@ from athanor.data import list_tasks
 from .config import CCRunConfig
 from .runner import default_event_printer, rescore_run, run_batch, run_task
 from .scoring import aggregate, format_aggregate
+from .trace import collect_trace, format_trace
 
 DEFAULT_OUT_DIR = "cc_runs"
 
@@ -176,6 +177,25 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trace(args: argparse.Namespace) -> int:
+    targets = [Path(p) for p in args.paths]
+    if not targets:
+        out_dir = Path(DEFAULT_OUT_DIR).resolve()
+        targets = sorted(p for p in out_dir.iterdir() if (p / "workspace").is_dir()) if out_dir.is_dir() else []
+    if not targets:
+        print("No workspaces found. Pass one or more run directories.")
+        return 2
+
+    for index, target in enumerate(targets):
+        if index:
+            print("\n" + "=" * 72 + "\n")
+        try:
+            print(format_trace(collect_trace(target), verbose=args.verbose))
+        except Exception as exc:  # noqa: BLE001 - a bad directory should not stop the sweep
+            print(f"{target}: could not read a trace ({type(exc).__name__}: {exc})")
+    return 0
+
+
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     """Attach the `cc` sub-commands to an existing parser."""
     sub = parser.add_subparsers(dest="cc_command", required=True)
@@ -199,6 +219,14 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     batch.add_argument("--limit", type=int, default=None, help="Cap the number of tasks.")
     _add_common_arguments(batch)
     batch.set_defaults(func=cmd_batch)
+
+    trace = sub.add_parser(
+        "trace",
+        help="Reconstruct what a solver agent did: verification density, submissions, refusals.",
+    )
+    trace.add_argument("paths", nargs="*", help="Run or workspace directories (default: every run in cc_runs).")
+    trace.add_argument("-v", "--verbose", action="store_true", help="Include hypothesis evolution and the audit.")
+    trace.set_defaults(func=cmd_trace)
 
     score = sub.add_parser("score", help="Aggregate finished runs in a directory.")
     score.add_argument("out_dir", nargs="?", default=DEFAULT_OUT_DIR)
