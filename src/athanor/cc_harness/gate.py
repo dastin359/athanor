@@ -415,11 +415,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    workspace: Path | None = None
     try:
         workspace = find_workspace()
         handler = {"status": cmd_status, "submit": cmd_submit, "accept": cmd_accept}[args.command]
         report, code = handler(workspace)
     except GateError as exc:
+        # Refusals are the harness's most informative telemetry: they say which
+        # precondition the agent tripped and how often. Record them, or the
+        # improvement loop is blind to exactly the friction it exists to find.
+        if workspace is not None:
+            try:
+                append_event(
+                    workspace,
+                    {"command": "refused", "attempted": args.command, "reason": str(exc)},
+                )
+            except OSError:
+                pass
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:  # noqa: BLE001 - surface harness bugs to the agent, don't hide them

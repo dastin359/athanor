@@ -208,6 +208,44 @@ class TestStatus:
         assert entries[0]["holds"] is False
 
 
+class TestRefusalTelemetry:
+    """Refusals are the harness's most informative signal about its own friction."""
+
+    def _events(self, workspace) -> list[dict]:
+        path = workspace.root / ".athanor" / "events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def test_refusal_is_recorded(self, workspace, monkeypatch):
+        monkeypatch.chdir(workspace.root)
+        assert gate.main(["submit"]) == 1
+        refusals = [e for e in self._events(workspace) if e.get("command") == "refused"]
+        assert len(refusals) == 1
+        assert refusals[0]["attempted"] == "submit"
+        assert "hypothesis" in refusals[0]["reason"]
+
+    def test_successful_command_is_not_recorded_as_a_refusal(self, workspace, monkeypatch):
+        monkeypatch.chdir(workspace.root)
+        write_solution(workspace)
+        assert gate.main(["submit"]) == 0
+        assert [e for e in self._events(workspace) if e.get("command") == "refused"] == []
+
+    def test_refusal_outside_a_workspace_does_not_crash(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        assert gate.main(["status"]) == 1
+
+    def test_trace_surfaces_recorded_refusals(self, workspace, monkeypatch):
+        from athanor.cc_harness.trace import collect_trace, format_trace
+
+        monkeypatch.chdir(workspace.root)
+        gate.main(["submit"])
+        text = format_trace(collect_trace(workspace.root))
+        assert "GATE REFUSALS" in text
+        assert "submit" in text
+        assert len(collect_trace(workspace.root)["refusals"]) == 1
+
+
 class TestWorkspaceDiscovery:
     def test_gate_finds_the_workspace_from_a_subdirectory(self, workspace, monkeypatch):
         monkeypatch.chdir(workspace.root / "explore")
