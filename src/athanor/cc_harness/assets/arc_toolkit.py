@@ -310,7 +310,9 @@ def invariants() -> list[dict[str, Any]]:
 
 # ── free dry-run ─────────────────────────────────────────────────────────────
 
-def check(solve_fn: Callable[[Grid], Any], *, verbose: bool = True) -> dict[str, Any]:
+def check(
+    solve_fn: Callable[[Grid], Any], *, verbose: bool = True, show_diff: bool = False
+) -> dict[str, Any]:
     """Score a candidate ``solve`` against the training pairs. Costs nothing.
 
     Use this as many times as you like while iterating. It does **not** consume
@@ -370,12 +372,26 @@ def check(solve_fn: Callable[[Grid], Any], *, verbose: bool = True) -> dict[str,
             elif row["correct"]:
                 print(f"train {row['index']}  PASS   {shape(row.get('predicted'))}")
             else:
-                wrong = _count_wrong(row.get("predicted"), train_samples[row["index"]]["output"])
+                expected = train_samples[row["index"]]["output"]
+                wrong = _count_wrong(row.get("predicted"), expected)
                 print(
                     f"train {row['index']}  FAIL   got {shape(row.get('predicted'))} "
-                    f"want {shape(train_samples[row['index']]['output'])}  "
+                    f"want {shape(expected)}  "
                     f"wrong={wrong}  pixel={row['pixel_accuracy']:.3f}"
                 )
+                if show_diff:
+                    predicted = row.get("predicted")
+                    if isinstance(predicted, list) and shape(predicted) == shape(expected):
+                        cells = [
+                            (r, c, expected[r][c], predicted[r][c])
+                            for r in range(len(expected))
+                            for c in range(len(expected[0]))
+                            if expected[r][c] != predicted[r][c]
+                        ]
+                        listing = " ".join(f"({r},{c}) want {w} got {g}" for r, c, w, g in cells[:30])
+                        print(f"           {listing}")
+                        if len(cells) > 30:
+                            print(f"           … {len(cells) - 30} more")
         for row in test_rows:
             if row.get("error"):
                 print(f"test  {row['index']}  ERROR  {row['error']}")
@@ -393,6 +409,84 @@ def check(solve_fn: Callable[[Grid], Any], *, verbose: bool = True) -> dict[str,
             else:
                 print("== write solution/hypothesis.md, then `python gate.py submit`")
     return summary
+
+
+def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
+    """Register an alternative reading of the puzzle, scored against training.
+
+    Use this the moment you implement a rival interpretation in order to
+    *compare* it — which is usually the moment you are about to discard it::
+
+        def strict(grid): ...        # the reading you suspect is wrong
+        arc.rival("diagonals may not brush a wall corner", strict)
+
+    If the rival reproduces every training pair and predicts something different
+    from your own solution on a test input, the gate will say so at submission
+    time. ARC-AGI-2 scores two attempts per test example, and a rival that fits
+    all the evidence you have is the single best use of the second one.
+
+    This exists because of a measured loss: a solver ruled out exactly such a
+    rival by extending a regularity from the training outputs to the test input,
+    discarded the free second attempt, and missed by two cells out of four
+    hundred. It had the rival implemented at the time.
+    """
+    summary = check(solve_fn, verbose=False)
+    predictions: list[Any] = []
+    for sample in test_samples:
+        try:
+            raw = solve_fn([row[:] for row in sample["input"]])
+            predictions.append(_first_candidate(raw))
+        except Exception:  # noqa: BLE001 - a rival that crashes on test is still a record
+            predictions.append(None)
+
+    entry = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "name": str(name),
+        "fits_training": bool(summary["all_train_correct"]),
+        "train_correct": summary["train_correct"],
+        "train_total": summary["train_total"],
+        "predictions": predictions,
+        "source": _caller_source(),
+    }
+    ledger = WORKSPACE / ".athanor" / "rivals.jsonl"
+    try:
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+    if entry["fits_training"]:
+        print(
+            f"[RIVAL   ] {name} — reproduces all "
+            f"{entry['train_total']} training pairs. Training cannot separate it from your "
+            "reading; consider it for your second candidate."
+        )
+    else:
+        print(
+            f"[RIVAL   ] {name} — fails training "
+            f"({entry['train_correct']}/{entry['train_total']}). Ruled out by evidence, not by "
+            "assumption."
+        )
+    return entry
+
+
+def rivals() -> list[dict[str, Any]]:
+    """Alternative readings registered so far, most recent per name."""
+    ledger = WORKSPACE / ".athanor" / "rivals.jsonl"
+    if not ledger.is_file():
+        return []
+    latest: dict[str, dict[str, Any]] = {}
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        latest[str(entry.get("name"))] = entry
+    return list(latest.values())
 
 
 def load_solution(path: str | os.PathLike[str] | None = None) -> Callable[[Grid], Any]:

@@ -277,6 +277,71 @@ class TestGeneralizationSignals:
         assert _iterations(workspace)[-1]["generalization_signals"] == []
 
 
+class TestUnhedgedRival:
+    """The strongest form of the second-attempt prompt: an executed fact.
+
+    A rival that reproduces every training pair and disagrees on a test input is
+    measured, not inferred — nothing rests on the solver's judgement about its
+    own reasoning.
+    """
+
+    def _register(self, workspace, name, fits, predictions):
+        ledger = workspace.root / ".athanor" / "rivals.jsonl"
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"name": name, "fits_training": fits, "train_correct": 3 if fits else 1,
+                     "train_total": 3, "predictions": predictions}
+                )
+                + "\n"
+            )
+
+    def test_flags_a_training_fitting_rival_that_disagrees(self, workspace):
+        self._register(workspace, "diagonals may not brush a corner", True, [[[9, 9, 9]]])
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNHEDGED RIVAL" in report
+        assert "diagonals may not brush a corner" in report
+        assert "differs on test 0" in report
+        assert gate.load_state(workspace.root)["iterations"][-1]["unhedged_rivals"]
+
+    def test_ignores_a_rival_that_fails_training(self, workspace):
+        self._register(workspace, "a reading the data contradicts", False, [[[9, 9, 9]]])
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNHEDGED RIVAL" not in report
+
+    def test_ignores_a_rival_that_agrees_with_the_submission(self, workspace):
+        # The mirror solution predicts [[3,0,6],[0,4,0]] for the test input.
+        self._register(workspace, "a differently-argued but identical rule", True,
+                       [[[3, 0, 6], [0, 4, 0]]])
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNHEDGED RIVAL" not in report
+
+    def test_ignores_a_rival_once_the_slot_is_spent(self, workspace):
+        self._register(workspace, "some rival", True, [[[9, 9, 9]]])
+        write_solution(
+            workspace,
+            code="def solve(grid):\n    return [[row[::-1] for row in grid], [[1, 1, 1]]]\n",
+        )
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNHEDGED RIVAL" not in report
+
+    def test_the_measured_prompt_supersedes_the_judgement_one(self, workspace):
+        """Both can apply; the executed fact is the stronger thing to say."""
+        ledger = workspace.root / ".athanor" / "invariants.jsonl"
+        ledger.write_text(
+            json.dumps({"claim": "some dead end", "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        self._register(workspace, "a live rival", True, [[[9, 9, 9]]])
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNHEDGED RIVAL" in report
+        assert "UNSPENT SECOND ATTEMPT" not in report
+
+
 class TestUnspentCandidatePrompt:
     """Derived from a measured loss on 88e364bc: a rival reading that reproduced
     every training pair was killed by an inductive leap, and the free second

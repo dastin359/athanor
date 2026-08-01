@@ -81,6 +81,29 @@ gate replays it. Four things worth knowing:
   because everything in it has been executed, and one claim that merely looks
   verified devalues all of them.
 
+## Rival readings
+
+When you implement an alternative interpretation in order to compare it —
+usually right before discarding it — register it:
+
+```python
+from arc import rival
+def strict(grid): ...          # the reading you suspect is wrong
+rival("diagonals may not brush a wall corner", strict)
+```
+
+`rival()` scores it against every training pair and keeps its test predictions.
+If it reproduces all of them and predicts something different from your own
+solution, the gate says so at submission time — because training cannot then
+separate the two, and ARC-AGI-2 gives you two attempts per test example.
+
+This exists because of a measured loss. A solver ruled out exactly such a rival
+by taking a regularity that held across the training *outputs* and applying it
+to the test *input*, concluded the ambiguity was resolved, left the second slot
+empty, and missed by two cells out of four hundred. It had the rival
+implemented at the time. Killing an alternative with a training pair it fails is
+a proof; killing it with an out-of-sample extrapolation is not.
+
 ## Rules the gate enforces
 
 - `solution/hypothesis.md` must exist and be at least __MIN_HYPOTHESIS_CHARS__

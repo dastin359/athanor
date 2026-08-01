@@ -141,6 +141,32 @@ throwaway variant.
 
 # ── submission report ────────────────────────────────────────────────────────
 
+def _unhedged_rival_prompt(rivals: list[dict[str, Any]]) -> str:
+    """The strongest form of the second-attempt prompt: a measured fact.
+
+    Where :func:`_unspent_candidate_prompt` asks the solver to re-examine its own
+    reasoning, this states an executed result — the rival was run, it reproduces
+    every training pair, and it disagrees with the submission on a specific test
+    input. Nothing here rests on the solver's judgement about its own inference.
+    """
+    lines = [
+        "UNHEDGED RIVAL — you registered an alternative reading that reproduces every "
+        "training pair and predicts something different:",
+    ]
+    for entry in rivals[:5]:
+        where = ", ".join(f"test {index}" for index in entry.get("test_indices") or [])
+        lines.append(f"  - {entry.get('name')}  (differs on {where})")
+    if len(rivals) > 5:
+        lines.append(f"  … and {len(rivals) - 5} more")
+    lines.append(
+        "Training cannot separate these from your reading — that is measured, not inferred. "
+        "ARC-AGI-2 scores two attempts per test example, so unless you can point at evidence "
+        "that rules a rival out, make it your second candidate. Leaving the slot empty "
+        "discards a free attempt on a reading the data does not contradict."
+    )
+    return "\n".join(lines)
+
+
 def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
     """Confront the solver with the alternatives it killed and did not hedge on.
 
@@ -196,6 +222,7 @@ def format_submission_report(
     generalization_signals: list[str] | None = None,
     unspent_candidates: list[int] | None = None,
     ruled_out_claims: list[str] | None = None,
+    unhedged_rivals: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render one formal iteration's outcome plus the directive that follows."""
     lines: list[str] = []
@@ -329,7 +356,10 @@ def format_submission_report(
     if passed:
         lines.append("TRAINING PASSED (100%).")
         lines.append("")
-        if unspent_candidates and ruled_out_claims:
+        if unhedged_rivals:
+            lines.append(_unhedged_rival_prompt(unhedged_rivals))
+            lines.append("")
+        elif unspent_candidates and ruled_out_claims:
             lines.append(_unspent_candidate_prompt(unspent_candidates, ruled_out_claims))
             lines.append("")
         lines.append(GENERALIZATION_AUDIT_DIRECTIVE.rstrip())

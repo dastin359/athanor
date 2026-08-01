@@ -48,6 +48,7 @@ from .signals import output_space_signals
 STATE_DIR = ".athanor"
 STATE_FILE = "state.json"
 INVARIANTS_FILE = "invariants.jsonl"
+RIVALS_FILE = "rivals.jsonl"
 EVENTS_FILE = "events.jsonl"
 FINAL_FILE = "final.json"
 
@@ -121,6 +122,52 @@ def load_invariants(workspace: Path) -> list[dict[str, Any]]:
     for entry in entries:
         deduped[str(entry.get("key") or entry.get("claim"))] = entry
     return [entry for entry in deduped.values() if not entry.get("retracted")]
+
+
+def load_rivals(workspace: Path) -> list[dict[str, Any]]:
+    """Alternative readings the solver registered with arc.rival()."""
+    path = workspace / STATE_DIR / RIVALS_FILE
+    if not path.is_file():
+        return []
+    latest: dict[str, dict[str, Any]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        latest[str(entry.get("name"))] = entry
+    return list(latest.values())
+
+
+def unhedged_rivals(
+    workspace: Path, evaluation: dict[str, Any], allowed_candidates: int
+) -> list[dict[str, Any]]:
+    """Registered rivals that fit training and are missing from the candidates.
+
+    The precise form of a forfeited second attempt: an alternative reading the
+    solver implemented, which reproduces every training pair, which predicts
+    something different on a test input, and which is not among the grids being
+    submitted for it.
+    """
+    rows = {int(r.get("index", i)): r for i, r in enumerate(evaluation.get("test", []))}
+    findings: list[dict[str, Any]] = []
+    for entry in load_rivals(workspace):
+        if not entry.get("fits_training"):
+            continue
+        differing: list[int] = []
+        for index, prediction in enumerate(entry.get("predictions") or []):
+            row = rows.get(index)
+            if row is None or row.get("error") or prediction is None:
+                continue
+            candidates = row.get("candidates") or []
+            if len(candidates) < allowed_candidates and prediction not in candidates:
+                differing.append(index)
+        if differing:
+            findings.append({"name": entry.get("name"), "test_indices": differing})
+    return findings
 
 
 def append_event(workspace: Path, event: dict[str, Any]) -> None:
@@ -247,6 +294,8 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         [sample.get("input") for sample in test_samples],
         [row.get("candidates") or [] for row in evaluation.get("test", [])],
     )
+    allowed_candidates = int(state.get("max_test_predictions") or 2)
+    rivals = unhedged_rivals(workspace, evaluation, allowed_candidates)
     iteration = used + 1
 
     record = {
@@ -267,6 +316,7 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         "num_test_candidates": int(evaluation.get("num_test_candidates") or 0),
         "hardcoding_findings": findings,
         "generalization_signals": signals,
+        "unhedged_rivals": rivals,
         "elapsed_s": round(elapsed, 3),
     }
 
@@ -295,7 +345,6 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         for entry in load_invariants(workspace)
         if entry.get("mode") == "ruled_out" and entry.get("holds")
     ]
-    allowed_candidates = int(state.get("max_test_predictions") or 2)
     unspent_candidates = [
         int(row.get("index"))
         for row in evaluation.get("test", [])
@@ -312,6 +361,7 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         generalization_signals=signals,
         unspent_candidates=unspent_candidates,
         ruled_out_claims=ruled_out_claims,
+        unhedged_rivals=rivals,
     )
     (iteration_dir / "report.txt").write_text(report, encoding="utf-8")
 
