@@ -507,6 +507,56 @@ class TestUnspentCandidatePrompt:
         assert "a very distinctive notes marker" not in brief.stdout
         assert len(brief.stdout.splitlines()) < len(full.stdout.splitlines())
 
+    def test_status_replays_the_rival_ledger_too(self, workspace):
+        """status replayed invariants but not rivals.
+
+        A solver noticed the asymmetry only because it still had its rivals in
+        context — after a compaction it would not have.
+        """
+        import json
+        import subprocess
+        import sys as _sys
+
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "outputs keep the shape", "holds": True,
+                        "source": "explore/a.py"}) + "\n",
+            encoding="utf-8",
+        )
+        (workspace.root / ".athanor" / "rivals.jsonl").write_text(
+            json.dumps({"name": "diagonals may not brush a corner", "fits_training": True,
+                        "train_correct": 3, "train_total": 3, "predictions": []}) + "\n"
+            + json.dumps({"name": "a reading training kills", "fits_training": False,
+                          "train_correct": 1, "train_total": 3, "predictions": []}) + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "gate.py", "status"],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "registered rivals (2)" in result.stdout
+        assert "[fits training] diagonals may not brush a corner" in result.stdout
+        assert "1/3 — ruled out] a reading training kills" in result.stdout
+
+    def test_status_truncates_an_unreadable_expression(self, workspace):
+        import json
+        import subprocess
+        import sys as _sys
+
+        long_expression = "all((" + " and ".join(f"s[{i}] == {i}" for i in range(60)) + "))"
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "a claim", "holds": True, "source": "explore/a.py",
+                        "expression": long_expression}) + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [_sys.executable, "gate.py", "status"],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert long_expression not in result.stdout
+        assert "…" in result.stdout
+
     def test_status_marks_a_dead_end_dead_not_ok(self, workspace):
         """Reported live: the status replay inverted every refute() entry.
 

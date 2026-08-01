@@ -24,6 +24,18 @@ from typing import Any
 from .gate import EVENTS_FILE, INVARIANTS_FILE, STATE_DIR, load_invariants
 
 
+#: A recovered condition expression is evidence, but a 400-character
+#: comprehension is evidence nobody reads. A solver called the long
+#: `all((... for s in train_samples ...))` unparses "close to unreadable" and
+#: said truncating would lose nothing.
+EXPRESSION_CHARS = 160
+
+
+def _short_expression(text: str) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= EXPRESSION_CHARS else text[: EXPRESSION_CHARS - 1] + "…"
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -280,7 +292,7 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
                     f"{', '.join(survivors) or 'none'}"
                 )
             if entry.get("expression"):
-                lines.append(f"         {entry['expression']}")
+                lines.append(f"         {_short_expression(entry['expression'])}")
             if entry.get("measured"):
                 lines.append(f"         measured: {entry['measured']}")
             if entry.get("literal"):

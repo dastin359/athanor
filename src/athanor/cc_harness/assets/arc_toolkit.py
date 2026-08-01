@@ -229,7 +229,14 @@ def sweep(
     out." A sweep is a single finding and belongs in a single entry.
     """
     resolved: dict[str, bool] = {}
+    details: dict[str, str] = {}
     for name, outcome in outcomes.items():
+        # A bare bool loses the score that produced it. The first solver to use
+        # sweep() printed "0/3 vs 3/3" separately and noted the ledger entry was
+        # not self-explaining after a compaction without it.
+        detail: Any = None
+        if isinstance(outcome, tuple) and len(outcome) == 2:
+            outcome, detail = outcome
         if callable(outcome):
             try:
                 resolved[str(name)] = bool(outcome())
@@ -237,6 +244,8 @@ def sweep(
                 resolved[str(name)] = False
         else:
             resolved[str(name)] = bool(outcome)
+        if detail is not None:
+            details[str(name)] = _render_evidence(detail, limit=80)
 
     survivors = [name for name, alive in resolved.items() if alive]
     killed = [name for name, alive in resolved.items() if not alive]
@@ -249,6 +258,7 @@ def sweep(
         "mode": "sweep",
         "survivors": survivors,
         "killed": killed,
+        "details": details,
         "source": _caller_source(),
         "key": str(key) if key else str(question),
     }
@@ -264,12 +274,15 @@ def sweep(
         pass
 
     print(f"[SWEEP   ] {question}  — {len(resolved)} readings tested, {len(survivors)} survive")
+    def _label(name: str) -> str:
+        return f"{name}  [{details[name]}]" if name in details else name
+
     for name in survivors:
-        print(f"           alive: {name}")
+        print(f"           alive: {_label(name)}")
     if killed:
         shown = killed[:6]
         for name in shown:
-            print(f"           dead : {name}")
+            print(f"           dead : {_label(name)}")
         if len(killed) > len(shown):
             print(f"           dead : ... and {len(killed) - len(shown)} more")
     if len(survivors) > 1:
@@ -344,6 +357,7 @@ def verify(
     condition: bool | Callable[[], Any] = False,
     note: str | None = None,
     *,
+    over: Iterable[Any] | None = None,
     evidence: Any = None,
     retract: bool = False,
     key: str | None = None,
@@ -379,6 +393,24 @@ def verify(
     unreadable-call-site warnings, because it supplies exactly what they ask
     for. ``note=`` is prose about the finding; ``evidence=`` is the value.
 
+    ``over=`` applies a predicate to each item of a collection, so the *same*
+    predicate can be checked against training and later against your own
+    predictions::
+
+        def width_is_20(grid): return len(grid[0]) == 20
+
+        verify("every training output is 20 wide", width_is_20,
+               over=[s["output"] for s in train_samples])
+        ...
+        verify("my test prediction is 20 wide", width_is_20, over=[prediction])
+
+    The doctrine asks you to run your verified invariants against your own test
+    predictions, and the ledger stores claim text rather than a callable — so
+    without this a solver had to hand-copy invariants into a fresh audit script,
+    a copy that can silently drift from what the ledger says was checked. Write
+    the predicate once and point it at different grids. The entry records how
+    many items it ran over.
+
     The ledger is append-only and **the most recent entry for a claim wins**, so
     re-verifying a claim supersedes the earlier record. If a check was wrong —
     a condition that was accidentally a tautology, say — withdraw it::
@@ -409,7 +441,29 @@ def verify(
     hypothesis is dead.
     """
     error = ""
-    if retract:
+    checked = None
+    if over is not None and not retract:
+        # The doctrine asks the solver to run its verified invariants against its
+        # own test predictions, and the ledger stores claim text rather than a
+        # callable — so a solver had to hand-copy two invariants into a fresh
+        # audit script, a copy that "could silently drift from what the ledger
+        # says was checked". Writing the predicate once and applying it to a
+        # different set of grids closes that loop without persisting callables.
+        subjects = list(over)
+        checked = len(subjects)
+        if not callable(condition):
+            holds, error = False, "over= requires condition to be callable: f(item) -> bool"
+        else:
+            holds = True
+            for index, subject in enumerate(subjects):
+                try:
+                    if not condition(subject):
+                        holds, error = False, f"fails on item {index}"
+                        break
+                except Exception as exc:  # noqa: BLE001
+                    holds, error = False, f"item {index}: {type(exc).__name__}: {exc}"
+                    break
+    elif retract:
         holds = False
     elif callable(condition):
         try:
@@ -453,6 +507,8 @@ def verify(
         entry["unsourced"] = True
     if evidence is not None:
         entry["measured"] = _render_evidence(evidence)
+    if checked is not None:
+        entry["checked_over"] = checked
     if retract:
         entry["retracted"] = True
     if note:
@@ -503,7 +559,7 @@ def verify(
     # for, so firing it anyway tells a solver to do what it already did. One
     # passed both a variable and a full per-candidate note and was told to
     # "pass note= with the measured value".
-    if opaque and not literal and not note and evidence is None:
+    if opaque and not literal and not note and evidence is None and checked is None:
         print(
             f"           ^ the recorded evidence is just the name `{expression}`. After a "
             "compaction that says nothing about what ran — inline the check, or pass "
@@ -515,7 +571,7 @@ def verify(
             f"({expression or 'literal'}). Nothing was measured, so this records an "
             "assertion, not a verification. Re-run it with a real check, or retract it."
         )
-    if unsourced and evidence is None:
+    if unsourced and evidence is None and checked is None:
         print(
             "           ^ NO EVIDENCE CAPTURED: this ran from a -c one-liner, a heredoc "
             "or a REPL, so the condition's source could not be read. The ledger entry "

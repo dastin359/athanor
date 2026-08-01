@@ -607,6 +607,68 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "LEN 400" in result.stdout
 
+    def test_sweep_records_a_per_reading_detail(self, workspace):
+        """The first solver to use sweep() lost its 0/3-vs-3/3 scores.
+
+        It printed them separately and noted the ledger entry was not
+        self-explaining after a compaction without them.
+        """
+        result = self._run(
+            workspace,
+            "from arc import sweep, invariants\n"
+            "n = 3\n"
+            "sweep('which legend slot is the key?', {\n"
+            "    'outer slot': (n == 3, '3/3'),\n"
+            "    'inner slot': (n == 9, '0/3'),\n"
+            "})\n"
+            "print('DETAILS', invariants()[-1]['details'])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "alive: outer slot  [3/3]" in result.stdout
+        assert "dead : inner slot  [0/3]" in result.stdout
+        assert "'outer slot': '3/3'" in result.stdout
+
+    def test_verify_over_applies_one_predicate_to_many_grids(self, workspace):
+        """The doctrine asks for invariants to be re-run against predictions.
+
+        The ledger stores claim text, not a callable, so a solver hand-copied
+        two invariants into an audit script — a copy that "could silently drift
+        from what the ledger says was checked".
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify, train_samples, invariants\n"
+            "def three_wide(grid):\n"
+            "    return len(grid[0]) == 3\n"
+            "verify('every training output is three wide', three_wide,\n"
+            "       over=[s['output'] for s in train_samples])\n"
+            "verify('my prediction is three wide', three_wide, over=[[[1, 2, 3]]])\n"
+            "print('OVER', [e.get('checked_over') for e in invariants()])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.count("[VERIFIED ]") == 2
+        assert "OVER [3, 1]" in result.stdout
+        assert "recorded evidence is just the name" not in result.stdout
+
+    def test_verify_over_reports_which_item_failed(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify\n"
+            "verify('all grids are three wide', lambda g: len(g[0]) == 3,\n"
+            "       over=[[[1, 2, 3]], [[1, 2]]])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "[REFUTED" in result.stdout
+        assert "fails on item 1" in result.stdout
+
+    def test_verify_over_requires_a_callable(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify\nverify('a claim', True, over=[1, 2])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "requires condition to be callable" in result.stdout
+
     def test_sweep_treats_a_raising_candidate_as_dead(self, workspace):
         result = self._run(
             workspace,

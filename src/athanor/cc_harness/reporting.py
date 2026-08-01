@@ -40,6 +40,18 @@ DIFF_CELL_LIMIT = 40
 TEST_CANDIDATE_CELL_LIMIT = 400
 
 
+#: A recovered condition expression is evidence, but a 400-character
+#: comprehension is evidence nobody reads. A solver called the long
+#: `all((... for s in train_samples ...))` unparses "close to unreadable" and
+#: said truncating would lose nothing.
+EXPRESSION_CHARS = 160
+
+
+def _short_expression(text: str) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= EXPRESSION_CHARS else text[: EXPRESSION_CHARS - 1] + "…"
+
+
 # ── grid rendering ───────────────────────────────────────────────────────────
 
 def render_grid(grid: Grid | None) -> str:
@@ -448,6 +460,7 @@ def format_status(
     invariants: list[dict[str, Any]],
     hypothesis: str,
     notes_excerpt: str,
+    rivals: list[dict[str, Any]] | None = None,
 ) -> str:
     """The distilled research state, printed on demand.
 
@@ -522,7 +535,7 @@ def format_status(
             # from a context the parser could not read; a literal one measured
             # nothing at all.
             if entry.get("expression"):
-                lines.append(f"         {entry['expression']}")
+                lines.append(f"         {_short_expression(entry['expression'])}")
             if entry.get("measured"):
                 lines.append(f"         measured: {entry['measured']}")
             if entry.get("literal"):
@@ -554,6 +567,19 @@ def format_status(
                 "on them."
             )
         lines.append("")
+        if rivals:
+            # status replayed the invariant ledger and not the rival ledger — an
+            # asymmetry a solver noticed only because it still had its rivals in
+            # context. After a compaction it would not have.
+            lines.append(f"--- registered rivals ({len(rivals)}) ---")
+            for entry in rivals:
+                fit = (
+                    "fits training"
+                    if entry.get("fits_training")
+                    else f"{entry.get('train_correct')}/{entry.get('train_total')} — ruled out"
+                )
+                lines.append(f"  [{fit}] {entry.get('name')}")
+            lines.append("")
     else:
         lines.append(
             "--- verified invariants: none ---\n"

@@ -103,6 +103,18 @@ gate replays it. What is worth knowing about it:
   ```
 
   `note=` is prose about the finding; `evidence=` is the value you measured.
+- **Re-run an invariant against your own predictions with `over=`.** Write the
+  predicate once and point it at different grids, rather than copying the check
+  into an audit script where it can drift from what the ledger says:
+
+  ```python
+  def width_is_20(grid): return len(grid[0]) == 20
+
+  arc.verify("every training output is 20 wide", width_is_20,
+             over=[s["output"] for s in train_samples])
+  ...
+  arc.verify("my test prediction is 20 wide", width_is_20, over=[prediction])
+  ```
 - **Record from a script, not from `python -c`.** `verify()` recovers evidence
   by reading your script's source; from a `-c` one-liner or a heredoc there is
   no source to read, so the entry carries the claim and nothing about what ran,
@@ -120,6 +132,10 @@ gate replays it. What is worth knowing about it:
       "most branch cells": fits(most_branch_cells),
   })
   ```
+
+  Pass `(survives, detail)` instead of a bare bool to keep the score that
+  produced the verdict — `{"outer slot": (True, "3/3"), "inner slot": (False,
+  "0/3")}` — so the entry still explains itself after a compaction.
 
   If more than one reading survives, that is a **hedging obligation** you have
   found before spending any budget: run the survivors through `arc.rival()` and

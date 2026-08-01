@@ -225,6 +225,7 @@ def cmd_status(workspace: Path, *, brief: bool = False) -> tuple[str, int]:
     report = format_status(
         state=state,
         invariants=load_invariants(workspace),
+        rivals=load_rivals(workspace),
         hypothesis=hypothesis,
         notes_excerpt=notes,
     )
