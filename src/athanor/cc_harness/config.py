@@ -52,7 +52,18 @@ class CCRunConfig:
     """Floor enforced by the gate, standing in for 'be exhaustive'."""
 
     # ── harness isolation ────────────────────────────────────────────────
-    permission_mode: str = "bypassPermissions"
+    permission_mode: str = "acceptEdits"
+    """Claude Code permission mode.
+
+    `acceptEdits` auto-approves file writes and common filesystem commands;
+    everything else the solver needs is covered by `tools` via `--allowedTools`.
+
+    Not `bypassPermissions`: Claude Code maps it to
+    `--dangerously-skip-permissions`, which the CLI refuses outright when the
+    process is running as root — the normal case for a containerised research
+    harness. `dontAsk` is the stricter alternative for locked-down runs: it
+    denies anything not explicitly allowed rather than prompting.
+    """
     tools: tuple[str, ...] = DEFAULT_TOOLS
     disallowed_tools: tuple[str, ...] = DEFAULT_DISALLOWED_TOOLS
     setting_sources: str = "project"

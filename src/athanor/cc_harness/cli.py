@@ -35,7 +35,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--solve-timeout", type=float, default=60.0, help="Per-submission solve() limit.")
     parser.add_argument("--no-visual", action="store_true", help="Skip PNG rendering of the grids.")
     parser.add_argument("--no-inline-grids", action="store_true", help="Keep the grids out of the opening prompt.")
-    parser.add_argument("--permission-mode", default="bypassPermissions")
+    parser.add_argument(
+        "--permission-mode",
+        default="acceptEdits",
+        choices=["acceptEdits", "dontAsk", "bypassPermissions", "auto", "manual", "plan"],
+        help="Claude Code permission mode. bypassPermissions is refused when running as root.",
+    )
     parser.add_argument(
         "--bare",
         action="store_true",
@@ -115,8 +120,9 @@ def cmd_workspace(args: argparse.Namespace) -> int:
     print("Point any Claude Code agent at that directory. From inside it:")
     print("  python gate.py status | submit | accept")
     print()
-    print("Score it afterwards with:")
-    print(f"  athanor cc score {args.out_dir} --rescore")
+    print("Then inspect and score it with:")
+    print(f"  athanor cc trace {run_dir}")
+    print(f"  athanor cc score {args.out_dir}")
     return 0
 
 

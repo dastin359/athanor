@@ -62,6 +62,35 @@ class TestCliArgs:
         for flag in ("--effort", "--tools", "--setting-sources", "--strict-mcp-config"):
             assert flag not in args
 
+    def test_bypass_permissions_is_swapped_out_when_running_as_root(
+        self, workspace, tmp_path, full_featured_cli, monkeypatch
+    ):
+        """`bypassPermissions` maps to --dangerously-skip-permissions, which the
+        CLI refuses as root — the normal case for a containerised harness. The
+        refusal arrives as an empty stream and one line of stderr."""
+        monkeypatch.setattr(runner, "running_as_root", lambda: True)
+        workspace.config = CCRunConfig(permission_mode="bypassPermissions", visual=False)
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+
+    def test_bypass_permissions_is_kept_for_a_non_root_user(
+        self, workspace, tmp_path, full_featured_cli, monkeypatch
+    ):
+        monkeypatch.setattr(runner, "running_as_root", lambda: False)
+        workspace.config = CCRunConfig(permission_mode="bypassPermissions", visual=False)
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert args[args.index("--permission-mode") + 1] == "bypassPermissions"
+
+    def test_other_modes_are_never_rewritten(self, workspace, tmp_path, full_featured_cli, monkeypatch):
+        monkeypatch.setattr(runner, "running_as_root", lambda: True)
+        for mode in ("acceptEdits", "dontAsk", "plan"):
+            workspace.config = CCRunConfig(permission_mode=mode, visual=False)
+            args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+            assert args[args.index("--permission-mode") + 1] == mode
+
+    def test_default_permission_mode_works_as_root(self):
+        assert CCRunConfig().permission_mode == "acceptEdits"
+
     def test_budget_and_bare_are_opt_in(self, workspace, tmp_path, full_featured_cli):
         args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
         assert "--max-budget-usd" not in args

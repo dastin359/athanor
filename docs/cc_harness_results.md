@@ -26,6 +26,13 @@ variety rather than difficulty.
 
 **3/3 solved.** All integrity-clean. No gate refusals. Budget never approached.
 
+Token cost, measured as sub-agent tokens per task: 81k, 100k, 107k — mean ~96k.
+Treat that as an order-of-magnitude figure, not a comparable one: these runs were
+driven as sub-agents inside an existing session rather than through
+`athanor cc run`, so they carry that session's prompt-cache behaviour and none
+of the batch amortisation the flagship's $3.12/task figure assumes. The
+comparable number has to come from the subprocess launcher over a real batch.
+
 ### What the traces showed
 
 The doctrine was followed rather than merely satisfied. Every agent front-loaded

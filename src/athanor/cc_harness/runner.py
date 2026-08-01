@@ -54,6 +54,25 @@ def _help_text() -> str:
         return ""
 
 
+def running_as_root() -> bool:
+    getuid = getattr(os, "geteuid", None)
+    return bool(getuid and getuid() == 0)
+
+
+def resolve_permission_mode(mode: str) -> str:
+    """Substitute a permission mode the CLI will actually accept.
+
+    `bypassPermissions` maps to `--dangerously-skip-permissions`, which Claude
+    Code refuses when running as root. A containerised benchmark harness is
+    usually root, and the refusal arrives as an empty stream and a one-line
+    stderr — so trade it for `acceptEdits`, which does the same job here because
+    every tool the solver needs is already allow-listed.
+    """
+    if mode == "bypassPermissions" and running_as_root():
+        return "acceptEdits"
+    return mode
+
+
 def supports_flag(flag: str) -> bool:
     """Whether the installed Claude Code advertises ``flag``.
 
@@ -83,7 +102,7 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path) -> list[st
     if config.effort and supports_flag("--effort"):
         args += ["--effort", config.effort]
     if config.permission_mode:
-        args += ["--permission-mode", config.permission_mode]
+        args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
     if config.tools and supports_flag("--tools"):
         args += ["--tools", ",".join(config.tools)]
     if config.tools:
@@ -344,6 +363,18 @@ def run_task(
             record["error"] = f"wall-clock timeout after {config.wall_clock_timeout_s:.0f}s"
         elif result_message.get("is_error"):
             record["error"] = f"claude reported {result_message.get('subtype')}"
+        elif not result_message and not record.get("error"):
+            # No result message means the CLI died before producing one — a
+            # rejected flag, a failed launch. Without the stderr this surfaces
+            # as an empty stream and no explanation at all.
+            stderr_tail = ""
+            log_path = run_dir / "run.log"
+            if log_path.is_file():
+                stderr_tail = log_path.read_text(encoding="utf-8", errors="replace").strip()[-500:]
+            record["error"] = (
+                f"claude exited with code {outcome.get('returncode')} without a result message"
+                + (f": {stderr_tail}" if stderr_tail else "")
+            )
 
     record.update(collect_outcome(workspace, puzzle_data))
     record["integrity"] = contamination_scan(
