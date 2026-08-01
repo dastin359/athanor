@@ -1495,3 +1495,56 @@ but not a figure to generalise from.
 And the honest shape of the win: the agent did not find the right rule. It found
 that *two* rules survived all available evidence, declined to choose between
 them, and spent the free attempt it was owed.
+
+---
+
+## What the second candidate was worth
+
+The rival/sweep/hedging chain is the machinery this harness built over five
+rounds, starting from a two-cell loss on `88e364bc`. Now that every run is in,
+it can be measured directly: for each scored test example, which candidate
+matched?
+
+| | count |
+|---|---:|
+| test examples scored | 39 |
+| solved | 35 |
+| — by candidate 1 | 29 |
+| — **by candidate 2** | **6** |
+| examples shipped with two candidates | 21 (54%) |
+| hedges that decided the outcome | 6 of 21 (29%) |
+
+**Without the second candidate this experiment scores 29 of 39 instead of 35.**
+
+The six that the hedge won:
+
+| example | what it is |
+|---|---|
+| `faa9f03d / 0` | never solved by any logged submission, 127 attempts |
+| `abc82100 / 0` | zero-solve frontier pair |
+| `88e364bc / 0` | flagship fails it |
+| `800d221b / 0` | flagship fails it |
+| `d35bdbdc / 0` | flagship fails it |
+| `d35bdbdc / 1` | flagship fails it |
+
+**Every one is a hard puzzle, and all six are either frontier pairs or pairs the
+flagship fails.** The hedging mechanism is not spread evenly across the
+benchmark — it is disproportionately what takes the tasks that defeat other
+systems. On the easy tasks candidate 1 was simply right.
+
+### Reading this honestly
+
+The 29-vs-35 comparison is against a hypothetical single-candidate policy that
+nobody would adopt: ARC-AGI-2 *allows* two attempts, and using both is following
+the rules rather than exploiting them. The number does not show the harness
+beating the benchmark; it shows how much of this variant's result depends on
+machinery that exists to make the second attempt land somewhere useful rather
+than on a throwaway variant.
+
+The better framing is the hit rate: **6 of 21 hedges paid off, 29%.** The other
+fifteen were insurance that turned out not to be needed. Because the slot is
+free, a 29% hit rate is pure gain — but it also means most hedging is wasted
+effort in hindsight, and a solver cannot tell in advance which kind it is doing.
+That is exactly the situation the harness's advice exists for, and it is why the
+advice is framed as *"you cannot separate these on the evidence you have"*
+rather than *"this one is probably right"*.
