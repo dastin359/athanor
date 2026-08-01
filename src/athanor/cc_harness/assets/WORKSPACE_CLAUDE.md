@@ -133,9 +133,13 @@ gate replays it. What is worth knowing about it:
   })
   ```
 
-  Pass `(survives, detail)` instead of a bare bool to keep the score that
-  produced the verdict — `{"outer slot": (True, "3/3"), "inner slot": (False,
-  "0/3")}` — so the entry still explains itself after a compaction.
+  Pass `(survives, detail)` instead of a bare bool to keep whatever makes the
+  entry self-explaining after a compaction — the score that produced the verdict
+  (`{"outer slot": (True, "3/3")}`), or, when several readings survive, what
+  each one predicts out of sample (`(True, "12 vs 31 -> test top = 6")`). The
+  second is usually the more useful, because a sweep with more than one survivor
+  is by definition a hedging obligation and the next question is always whether
+  they diverge.
 
   If more than one reading survives, that is a **hedging obligation** you have
   found before spending any budget: run the survivors through `arc.rival()` and
@@ -201,7 +205,9 @@ a proof; killing it with an out-of-sample extrapolation is not.
 - One question per exploration script, named for the question it answers.
 - Shared helpers go in `explore/lib.py`; another script imports them with
   `from lib import ...` (scripts under `explore/` can import each other by bare
-  module name). Guard any report in an imported script behind
+  module name — except when the name starts with a digit, which is not a legal
+  identifier. `arc.explore_module("04_yellow_flip")` reaches those, so you never
+  need `importlib` boilerplate). Guard any report in an imported script behind
   `if __name__ == "__main__":` — otherwise its output re-prints into every
   downstream run and pollutes your context.
 - **`solution/solve.py` must stand alone**, so helpers you developed in

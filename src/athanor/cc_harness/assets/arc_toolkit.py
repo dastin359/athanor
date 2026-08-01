@@ -40,6 +40,7 @@ __all__ = [
     "check",
     "load_solution",
     "solution_module",
+    "explore_module",
     "show",
     "diff",
     "shape",
@@ -458,15 +459,25 @@ def verify(
         if not callable(condition):
             holds, error = False, "over= requires condition to be callable: f(item) -> bool"
         else:
-            holds = True
+            failures: list[int] = []
+            raised = ""
             for index, subject in enumerate(subjects):
                 try:
                     if not condition(subject):
-                        holds, error = False, f"fails on item {index}"
-                        break
+                        failures.append(index)
                 except Exception as exc:  # noqa: BLE001
-                    holds, error = False, f"item {index}: {type(exc).__name__}: {exc}"
-                    break
+                    failures.append(index)
+                    if not raised:
+                        raised = f"{type(exc).__name__}: {exc}"
+            holds = not failures
+            if failures:
+                # "fails on item N" is fine for four grids and thin for forty:
+                # one failure and half of them failing are different findings.
+                shown = ", ".join(str(i) for i in failures[:5])
+                more = f" (+{len(failures) - 5} more)" if len(failures) > 5 else ""
+                error = f"fails on {len(failures)}/{checked}: item {shown}{more}"
+                if raised:
+                    error += f" [{raised}]"
     elif retract:
         holds = False
     elif callable(condition):
@@ -1127,6 +1138,38 @@ def solution_module(path: str | os.PathLike[str] | None = None) -> Any:
         raise FileNotFoundError(f"No solution at {target}")
 
     spec = importlib.util.spec_from_file_location("athanor_candidate_solution", target)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def explore_module(name: str) -> Any:
+    """Import an exploration script by name, whatever it is called.
+
+    ``explore/`` is on ``sys.path`` for scripts run from it, so
+    ``from lib import ...`` works — until the script's name starts with a digit,
+    which is not a legal Python identifier. That collides directly with the
+    documented habit of naming scripts for the question they answer plus a
+    numeric prefix, and two solvers independently hand-rolled ``SourceFileLoader``
+    to get around it — one in three separate scripts. That is exactly the
+    ``importlib`` boilerplate this toolkit promises you never need::
+
+        from arc import explore_module
+        yellow = explore_module("04_yellow_flip")
+        yellow.reroute(grid)
+
+    The ``.py`` suffix is optional.
+    """
+    import importlib.util
+
+    stem = str(name)
+    if stem.endswith(".py"):
+        stem = stem[:-3]
+    target = WORKSPACE / "explore" / f"{stem}.py"
+    if not target.is_file():
+        raise FileNotFoundError(f"No exploration script at {target}")
+
+    spec = importlib.util.spec_from_file_location(f"athanor_explore_{abs(hash(stem))}", target)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

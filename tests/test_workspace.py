@@ -760,7 +760,35 @@ class TestArcToolkit:
         )
         assert result.returncode == 0, result.stderr
         assert "[REFUTED" in result.stdout
-        assert "fails on item 1" in result.stdout
+        assert "fails on 1/2: item 1" in result.stdout
+
+    def test_verify_over_counts_every_failure_not_just_the_first(self, workspace):
+        """One failure and half of them failing are different findings.
+
+        Reporting only the first failing index is fine for four grids and thin
+        for forty.
+        """
+        result = self._run(
+            workspace,
+            "from arc import verify\n"
+            "verify('every grid is three wide', lambda g: len(g[0]) == 3,\n"
+            "       over=[[[1, 2, 3]], [[1]], [[2]], [[3]], [[4]], [[5]], [[6]]])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "fails on 6/7" in result.stdout
+        assert "+1 more" in result.stdout
+
+    def test_verify_over_reports_a_raising_predicate(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import verify\n"
+            "def boom(g):\n"
+            "    raise ValueError('bad grid')\n"
+            "verify('a claim', boom, over=[[[1]], [[2]]])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "fails on 2/2" in result.stdout
+        assert "ValueError: bad grid" in result.stdout
 
     def test_verify_over_requires_a_callable(self, workspace):
         result = self._run(
@@ -1425,3 +1453,61 @@ class TestArcToolkit:
         spec.loader.exec_module(module)
         for banned in ("rotate", "flip", "mirror", "objects", "components", "flood_fill", "crop", "tile"):
             assert not hasattr(module, banned), f"arc.py exposes a transformation primitive: {banned}"
+
+
+class TestExploreModule:
+    """Two solvers hand-rolled SourceFileLoader for the same reason."""
+
+    def _run(self, workspace, script: str, name: str = "probe.py"):
+        import subprocess
+        import sys as _sys
+
+        path = workspace.root / "explore" / name
+        path.write_text(script, encoding="utf-8")
+        return subprocess.run(
+            [_sys.executable, str(path)],
+            cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+        )
+
+    def test_a_script_named_with_a_leading_digit_is_importable(self, workspace):
+        """`04_yellow_flip.py` is not a legal identifier, so bare import fails.
+
+        That collides with the documented habit of naming scripts for the
+        question they answer plus a numeric prefix. One solver worked around it
+        in three separate scripts.
+        """
+        (workspace.root / "explore" / "04_yellow_flip.py").write_text(
+            "def reroute(n):\n    return n * 2\n", encoding="utf-8"
+        )
+        result = self._run(
+            workspace,
+            "from arc import explore_module\n"
+            "m = explore_module('04_yellow_flip')\n"
+            "print('GOT', m.reroute(21))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "GOT 42" in result.stdout
+
+    def test_the_py_suffix_is_optional(self, workspace):
+        (workspace.root / "explore" / "07_probe.py").write_text(
+            "VALUE = 'here'\n", encoding="utf-8"
+        )
+        result = self._run(
+            workspace,
+            "from arc import explore_module\n"
+            "print('GOT', explore_module('07_probe.py').VALUE)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "GOT here" in result.stdout
+
+    def test_a_missing_script_says_so(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import explore_module\n"
+            "try:\n"
+            "    explore_module('nope')\n"
+            "except FileNotFoundError as exc:\n"
+            "    print('RAISED', 'nope.py' in str(exc))\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "RAISED True" in result.stdout
