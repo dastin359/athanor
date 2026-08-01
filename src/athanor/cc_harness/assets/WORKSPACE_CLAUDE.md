@@ -76,6 +76,23 @@ gate replays it. Four things worth knowing:
 - **Most recent entry per key wins**, and the key defaults to the claim string —
   so rewording a claim while correcting it silently creates a duplicate instead
   of superseding. Pass `key="height-relation"` when you expect to revise.
+- **State only what is currently true.** A replacement prints the claim it
+  displaced, so you never need to write a correction into the claim text. "The
+  jog is 1 wide; it is instead always a-2 wide" leaves a live *verified*
+  invariant whose own first clause is false — and after a compaction that
+  sentence is what gets read back. Say `verify("the jog is always a-2 wide",
+  ..., key="jog-width")` and let the ledger carry the history.
+- **A changed verdict is loud, and worth stopping for.** If a claim held
+  earlier and fails now, `CHANGED VERDICT` prints: whatever you built while it
+  held is now suspect.
+- **`gate.py status` marks dead ends `[DEAD]`, not `[OK]`.** A `refute()` entry
+  that "holds" means the hypothesis is dead, so the claim beside `[DEAD]` is
+  something you ruled *out*. Read the marker, not just the sentence.
+- **Record from a script, not from `python -c`.** `verify()` recovers evidence
+  by reading your script's source; from a `-c` one-liner or a heredoc there is
+  no source to read, so the entry carries the claim and nothing about what ran,
+  and the constant-condition check cannot fire at all. Such entries are marked
+  `NO EVIDENCE`.
 - **Retraction.** If a check was wrong — a tautology, say — withdraw it with
   `arc.verify("the claim", retract=True)`, or `arc.refute("the claim",
   retract=True)` for a dead end. It then disappears from `gate.py status`. Do this rather than leaving it: the ledger is only worth reading
