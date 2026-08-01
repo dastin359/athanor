@@ -403,12 +403,47 @@ def check(
             f"(mean pixel {summary['train_pixel_accuracy']:.3f})"
         )
         if summary["all_train_correct"]:
+            _hedging_advice(test_rows)
             hypothesis = WORKSPACE / "solution" / "hypothesis.md"
             if hypothesis.is_file() and hypothesis.read_text(encoding="utf-8").strip():
                 print("== ready for `python gate.py submit`")
             else:
                 print("== write solution/hypothesis.md, then `python gate.py submit`")
     return summary
+
+
+def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
+    """Raise the second-attempt question here, where acting on it is free.
+
+    The gate asks it too, but a candidate comes out of ``solve()``, so acting on
+    the gate's version costs a whole iteration to resubmit. One solver on a
+    3-iteration budget spent a third of it doing exactly that. Asking at dry-run
+    time means the hedge lands in the submission that was going to happen anyway.
+    """
+    unspent = [
+        row["index"]
+        for row in test_rows
+        if not row.get("error") and 0 < len(row.get("candidates") or []) < 2
+    ]
+    if not unspent:
+        return
+
+    live_rivals = [r for r in rivals() if r.get("fits_training")]
+    dead_ends = [e for e in invariants() if e.get("mode") == "ruled_out" and e.get("holds")]
+    if not live_rivals and not dead_ends:
+        return
+
+    where = ", ".join(f"test {index}" for index in unspent)
+    print(f"\n== {where} carries one candidate, and ARC-AGI-2 scores two.")
+    if live_rivals:
+        for entry in live_rivals[:3]:
+            print(f"   rival that also fits every training pair: {entry['name']}")
+        print("   Training cannot separate it from your reading. Unless you can point at")
+        print("   evidence that rules it out, return it as the second candidate.")
+    else:
+        print(f"   You ruled out {len(dead_ends)} rival reading(s). Check how each died:")
+        print("   a training pair it fails is a proof; extending a training-output regularity")
+        print("   to the test input is not. Hedge here — after submitting it costs an iteration.")
 
 
 def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:

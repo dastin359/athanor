@@ -158,6 +158,67 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "3/3 training examples reproduced" in result.stdout
 
+    def test_hedging_advice_arrives_where_acting_on_it_is_free(self, workspace):
+        """A candidate comes out of solve(), so acting on the gate's version of
+        this costs a whole iteration to resubmit. One solver on a 3-iteration
+        budget spent a third of it doing exactly that."""
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "the strict reading", "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "carries one candidate" in result.stdout
+        assert "costs an iteration" in result.stdout
+
+    def test_hedging_advice_prefers_a_measured_rival(self, workspace):
+        (workspace.root / ".athanor" / "rivals.jsonl").write_text(
+            json.dumps({"name": "the strict reading", "fits_training": True,
+                        "predictions": [[[9]]]}) + "\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "rival that also fits every training pair: the strict reading" in result.stdout
+        assert "Training cannot separate it" in result.stdout
+
+    def test_no_hedging_advice_without_a_rival_or_dead_end(self, workspace):
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[::-1] for row in g])\n",
+        )
+        assert "carries one candidate" not in result.stdout
+
+    def test_no_hedging_advice_once_the_slot_is_spent(self, workspace):
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "the strict reading", "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import check\n"
+            "check(lambda g: [[row[::-1] for row in g], [[1, 1, 1]]])\n",
+        )
+        assert "carries one candidate" not in result.stdout
+
+    def test_no_hedging_advice_while_training_still_fails(self, workspace):
+        """Hedging is a question for a rule that works, not one being debugged."""
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "the strict reading", "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import check\ncheck(lambda g: [row[:] for row in g])\n",
+        )
+        assert "carries one candidate" not in result.stdout
+
     def test_dryrun_nudges_when_the_ledger_is_empty(self, workspace):
         """Running experiments and recording them are different acts.
 
