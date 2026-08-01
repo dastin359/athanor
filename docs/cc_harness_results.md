@@ -483,3 +483,73 @@ as the flagship on its first measured task, and that a comparable number
 requires `athanor cc batch` over a real task set with a warm cache. The harness
 can now produce that figure; this run is the evidence the machinery works, not
 the answer.
+
+---
+
+## Round 4 — zero-solve frontier sweep, and the candidate measurement
+
+Three of the remaining frontier pairs, all carrying the mechanisms built from
+`88e364bc`.
+
+| task | result | iterations | confidence | candidates | rivals registered |
+|---|---|---|---|---|---|
+| `269e22fb` | **2/2** | 1 | 5 | 1, 1 | 2 |
+| `a32d8b75` | **2/2** | 2 | 4 | 2, 2 | 2 |
+| `abc82100` | **1/1** | 1 | 4 | 2 | 1 |
+| `2b83f449` | **1/1** | 2 | 4 | 1 | 0 |
+
+`2b83f449` is the one to note alongside the frontier results: `RESULTS.md`
+records the flagship failing it 0/1, and no CoT-only Opus 4.6 configuration
+solved it in 8 attempts. This variant solved it.
+
+### Full standings
+
+**13 accepted tasks, 16 of 18 test examples, 1.31 iterations mean**, every run
+integrity-clean, zero gate refusals across the entire experiment.
+
+Four zero-solve frontier pairs solved — `13e47133`, `269e22fb`, `a32d8b75`,
+`abc82100` — each one a pair no submission in the frozen public corpus had ever
+solved. Two tasks solved that the flagship fails. The two misses are `faa9f03d`
+(flagship also 0/1; unsolved by all 127 logged attempts) and `9bbf930d`, plus
+`88e364bc` partial at 1/2, matching the flagship exactly.
+
+### Did the candidate mechanisms work?
+
+| | test examples | used the second attempt | rivals registered |
+|---|---|---|---|
+| before the changes | 11 | 2 (18%) | 0 |
+| after | 8 | 5 (63%) | 5 |
+
+The mechanism is used, and the qualitative evidence is stronger than the counts.
+Three agents independently described the *concept* — not the function — as what
+changed their behaviour:
+
+- `faa9f03d`: "reading it is why candidate 2 shipped instead of being argued
+  away."
+- `abc82100`: an invariant "*looks* like it refutes the rival but holds only
+  vacuously in training. Without the rival concept I think I'd have talked
+  myself into that refutation." Its rival was the correct answer.
+- `a32d8b75`: it "made me stop asking 'is my rule right?' and start asking
+  'which situations does the test need that training never witnesses?'" — which
+  surfaced an 8-cell case it had missed in three passes.
+
+That last reframing is the real product. Eight readings on `a32d8b75` died to a
+training pair and became proofs; two survived and shipped as second candidates.
+
+### What the round cost
+
+Four more harness bugs, all mine, all found by agents rather than by tests:
+
+- `rival()` advised spending a slot on a reading that predicted identically — it
+  stored the predictions and never compared them.
+- The dry-run hedging advice named rivals diverging on a *different* test
+  example than the one with the free slot: "trains you to skim it."
+- An agent spent an iteration submitting purely to *read* the gate's
+  candidate-spread line — information I had put only on the budgeted path two
+  commits earlier.
+- Making `accept` re-run `solve.py` opened a second door into acceptance that
+  skipped the hypothesis/code coupling `submit` enforces.
+
+The pattern across all four: **every convenience added to the budgeted path
+creates an incentive to spend budget, and every door added to acceptance needs
+the same locks as the front one.**
