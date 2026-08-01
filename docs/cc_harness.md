@@ -198,7 +198,7 @@ that only existed in an exploration session. Both report the same
 `NameError`.
 
 The consequence: **a solver that follows the contract essentially never submits
-a failing solution.** Across four rounds and thirteen test examples, every
+a failing solution.** Across eight rounds and twenty-eight test examples, every
 accepted run passed training on iteration 1 or 2, no submission has ever failed,
 and no gate refusal has ever fired. The elaborate failure report — diff
 listings, bounding boxes, expected-vs-predicted grids, the reflection directive
@@ -218,6 +218,30 @@ So the harness's real surface is not "what to say when the solver is wrong" but
 "what to say when the solver believes it is right". Effort spent on the failure
 path is effort spent on a branch the doctrine is designed to avoid.
 
+### The correction: even the acceptance path is too late
+
+That conclusion was half right, and the half it got wrong cost the most.
+
+The acceptance path is where the *words* are, but it sits **behind a spent
+iteration**. Three separate times, a paragraph that changed what a solver
+shipped was found to exist only there — the candidate-spread line, the hedging
+prompt, and finally the "enumerate the situation types your rule has to handle
+on the test input, and check that each one is actually witnessed in a training
+pair" paragraph, which one solver called "the single highest-value string the
+harness printed" and then noted had arrived only after the iteration was gone.
+
+Each time the fix was the same: move it to `dryrun.py`, where acting on it is
+free. The round after that last move, another solver reported it firing on its
+very first dry run and changing what it shipped — "without it I would have
+submitted the over-inclusive launch rule as candidate 1."
+
+The rule, stated so it does not have to be relearned a fourth time: **anything
+that changes what a solver ships must be reachable without spending budget.**
+The corollary is sharper and was learned the same way — *every convenience added
+to the budgeted path creates an incentive to spend budget.* One solver spent an
+iteration submitting purely to read a line the gate printed and the dry run did
+not.
+
 ## The toolkit
 
 `arc.py` deliberately contains **no transformation primitives** — no rotate, no
@@ -230,9 +254,43 @@ What it does contain:
 - `verify(claim, condition)` — the core. Prints `[VERIFIED]`/`[REFUTED]`,
   appends to the invariant ledger, returns the boolean. A `condition` that
   raises is recorded as a refutation rather than crashing the script.
+
+  The ledger's value is that it is read by someone with no memory of writing it,
+  so most of what has been added since is about not lying to that reader. The
+  condition's **source expression** is recovered from the caller's AST and
+  stored, so the entry says what ran. Compile-time constants are flagged: a
+  tautology is an assertion in a verification's clothes. A call site that cannot
+  be read at all — a `-c` one-liner, a heredoc — is marked `unsourced`, because
+  "no evidence" and "good evidence" used to look identical. A record that
+  **supersedes** an earlier one under the same key prints what it displaced, so
+  a correction never has to be smuggled into the claim text; a claim whose
+  verdict flips says so loudly.
+
+  Two escape hatches exist because the AST capture only reaches one expression:
+  `evidence=` records the measured value directly, for checks that are really
+  multi-line functions; `over=` applies one predicate to a collection, so the
+  same function can check training and then check your own predictions without
+  a copy that can drift.
+- `refute(claim, condition)` — ruling something out is a result, not a defect in
+  your own work. Replayed as `[KILLED]`, never `[OK]`.
+- `sweep(question, {name: survives})` — a tie-break sweep is one finding, not a
+  dozen. Records the whole thing as a single entry and returns the survivors.
+  When more than one survives, that is a hedging obligation discovered before
+  any budget is spent, and it names the readings to put through `rival()`.
+- `rival(name, solve_fn)` — register an alternative reading. Scored against
+  training, then compared against the shipped candidates, and the comparison
+  distinguishes four situations that are easy to conflate: redundant with
+  candidate 1; already *is* candidate 2; diverges into a free slot; diverges but
+  both slots are spent on other readings. Each needs different advice, and
+  giving them all the same sentence produced actively inverted guidance.
 - `check(solve_fn)` — free dry-run against every training pair. This exists so
   an iteration is never spent on a bug that a dry run would have caught. The
   gate is not a debugger.
+- `solution_module()` / `load_solution()` — reach into the *shipped* solution
+  rather than a copy of it. Solvers consistently report this as what makes a
+  rival honest: it changes one decision instead of re-deriving the parse, so a
+  divergence is attributable. Note `solution/` is not a package; this is the way
+  in.
 - `show`, `diff`, `shape`, `colors`, `histogram` — observation.
 - `png(grid, path)` — render a prediction so it can be looked at as a picture.
 
@@ -369,12 +427,21 @@ partial answers so far are noted inline below.
   refusal after the fact. Does the agent internalise the discipline, or does it
   learn to satisfy the check?
 
-  *Early evidence: internalised.* Across six tasks, agents established 7–29
-  invariants before their first submission and never once tripped the ordering
-  refusal. Each independently named an experiment that changed its answer and
-  that it would not have run unprompted. But the sample is small, the tasks were
-  not randomly chosen, and every run was driven as a sub-agent rather than
-  through the subprocess launcher.
+  *Answered, and then sharpened by an ablation.* Across nineteen tasks, agents
+  established 5–29 invariants before their first submission and never once
+  tripped the ordering refusal — not one gate refusal has fired in the entire
+  experiment. Each independently named an experiment that changed its answer and
+  that it would not have run unprompted.
+
+  The sharper version of the question is *which component* does that. So one
+  puzzle was re-run with the doctrine stripped from `CLAUDE.md` and the system
+  prompt withheld entirely, toolkit untouched. The ablated agent read `arc.py`
+  and used the whole toolkit unprompted — `verify`, `sweep`, `rival` (eight of
+  them), `solution_module` — and swept a genuine tie. **The practice transfers
+  without the doctrine**, which points at the toolkit rather than the system
+  prompt as the active ingredient. It scored 1/2 where the doctrine arm scored
+  2/2, but at n=1 per arm on a puzzle whose attempts have gone 1/2, 1/2, 2/2,
+  that difference is inside the noise and should not be read as an effect.
 
 - **What does losing the reviewer cost?** `docs/design.md` claims artifact-only
   review is the only mechanism that can reject a train-perfect but overfit
@@ -410,6 +477,22 @@ partial answers so far are noted inline below.
   pressure with a purpose-built schema; Claude Code compacts on its own schedule
   with a general summarizer. The disk-backed state is meant to cover the
   difference. Whether it does is an empirical question.
+
+  *Still unanswered, and the reason is itself a finding.* No run in the entire
+  experiment has compacted. Solvers accept at a mean of ~1.2 iterations, well
+  inside a single context. So every piece of machinery built for compaction —
+  the ledger's durability, the `status` replay, the `SessionStart` hook — is
+  insurance whose payout has never been claimed. Two solvers said as much
+  unprompted: the ledger "cost tokens and bought insurance against a compaction
+  that never came". It is still the right trade, because the downside is losing
+  a run's entire state, but the honest position is that the compaction defences
+  are untested in situ rather than validated.
+
+- **Where does the harness actually add value?** Not where the design assumed.
+  See "Where the harness actually speaks" above: the failure path is unreachable
+  in practice, and even the acceptance path is one iteration too late. Three
+  separate paragraphs that changed what a solver shipped had to be moved onto
+  the free dry-run path before they could do it without costing budget.
 
   *Untested directly — no run has been compacted — but the state that would
   survive one has been inspected, and it degrades in ways worth knowing.* Three
