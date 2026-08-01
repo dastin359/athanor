@@ -53,6 +53,27 @@ def task_json(tmp_path: Path) -> Path:
     return path
 
 
+#: Same rule, two test inputs. Needed for anything that reasons about hedging
+#: *per test example* — a partial hedge is invisible on a single-test task.
+MIRROR_TASK_TWO_TESTS = {
+    "train": MIRROR_TASK["train"],
+    "test": [
+        {"input": [[6, 0, 3], [0, 4, 0]], "output": [[3, 0, 6], [0, 4, 0]]},
+        {"input": [[2, 2, 8], [0, 1, 0]], "output": [[8, 2, 2], [0, 1, 0]]},
+    ],
+}
+
+
+@pytest.fixture
+def workspace_two_tests(tmp_path: Path, config: CCRunConfig):
+    return build_workspace(
+        task_id="mirror02",
+        puzzle_data=MIRROR_TASK_TWO_TESTS,
+        root=tmp_path / "run2" / "workspace",
+        config=config,
+    )
+
+
 @pytest.fixture
 def config() -> CCRunConfig:
     return CCRunConfig(max_iterations=4, best_effort_iterations=1, visual=False)

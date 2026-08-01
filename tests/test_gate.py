@@ -690,3 +690,81 @@ class TestWorkspaceDiscovery:
         monkeypatch.chdir(tmp_path)
         with pytest.raises(gate.GateError, match="workspace"):
             gate.find_workspace()
+
+
+class TestHedgeDiagnostics:
+    """Signals added after solvers reported the gate reading their state wrong.
+
+    All three shipped in one round without tests; these are the tests. Each one
+    corresponds to a specific sentence a solver was shown and reported as
+    unhelpful or actively misleading.
+    """
+
+    HEDGE_FIRST_ONLY = (
+        "def solve(grid):\n"
+        "    mirrored = [row[::-1] for row in grid]\n"
+        "    if grid[0] == [6, 0, 3]:\n"          # test 0 only
+        "        return [mirrored, [[9, 9, 9], [9, 9, 9]]]\n"
+        "    return mirrored\n"
+    )
+
+    def test_partial_hedge_is_called_out(self, workspace_two_tests):
+        """Two candidates on one test input and one on another is usually a bug.
+
+        A solver's alternative path returned early on one input; the harness
+        said "you registered no rivals", which was true and pointed the wrong
+        way. It could not distinguish "you chose not to hedge" from "your hedge
+        silently failed".
+        """
+        write_solution(workspace_two_tests, code=self.HEDGE_FIRST_ONLY)
+        report, _ = gate.cmd_submit(workspace_two_tests.root)
+        assert "PARTIAL HEDGE" in report
+        assert "test 1" in report
+        assert "returning early" in report
+
+    def test_no_partial_hedge_warning_when_hedging_is_uniform(self, workspace_two_tests):
+        write_solution(workspace_two_tests)  # one candidate everywhere
+        report, _ = gate.cmd_submit(workspace_two_tests.root)
+        assert "PARTIAL HEDGE" not in report
+
+    def test_agreeing_rivals_are_acknowledged_not_ignored(self, workspace):
+        """A solver's live rival agreed on the open slot and went unmentioned.
+
+        It was shown the dead-end list instead, with nothing saying the rival
+        had been considered and found irrelevant there. That reads as though
+        the harness ignored the work.
+        """
+        (workspace.root / ".athanor" / "rivals.jsonl").write_text(
+            json.dumps({
+                "name": "a reading that agrees here", "fits_training": True,
+                "train_correct": 3, "train_total": 3,
+                "predictions": [[[3, 0, 6], [0, 4, 0]]],   # identical to the submission
+            }) + "\n",
+            encoding="utf-8",
+        )
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "some dead end", "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" in report
+        assert "1 registered rival reading" in report
+        assert "a reading you have not named yet" in report
+
+    def test_a_refutation_may_be_about_evidence_not_a_reading(self, workspace):
+        """Not everything a solver refutes is an alternative reading.
+
+        One refuted "training can separate the snake reading from the depth
+        reading" — a claim about the evidence, whose death was the finding it
+        wanted — and the gate filed it under "rival readings you ruled out".
+        """
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "training separates reading A from reading B",
+                        "holds": True, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "claims about the evidence rather than alternative readings" in report
+        assert "rival reading(s) along the way" not in report
