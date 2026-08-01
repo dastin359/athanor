@@ -288,6 +288,20 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
     state["last_code_sha"] = code_sha
     save_state(workspace, state)
 
+    # Dead ends the solver recorded, paired with test examples that still carry a
+    # single candidate: the exact shape of a forfeited second attempt.
+    ruled_out_claims = [
+        str(entry.get("claim"))
+        for entry in load_invariants(workspace)
+        if entry.get("mode") == "ruled_out" and entry.get("holds")
+    ]
+    allowed_candidates = int(state.get("max_test_predictions") or 2)
+    unspent_candidates = [
+        int(row.get("index"))
+        for row in evaluation.get("test", [])
+        if not row.get("error") and 0 < len(row.get("candidates") or []) < allowed_candidates
+    ]
+
     report = format_submission_report(
         iteration=iteration,
         max_iterations=max_iterations,
@@ -296,6 +310,8 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
         hardcoding_findings=findings,
         best_effort_active=best_effort_active(state, used=iteration),
         generalization_signals=signals,
+        unspent_candidates=unspent_candidates,
+        ruled_out_claims=ruled_out_claims,
     )
     (iteration_dir / "report.txt").write_text(report, encoding="utf-8")
 

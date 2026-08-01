@@ -141,6 +141,38 @@ throwaway variant.
 
 # ── submission report ────────────────────────────────────────────────────────
 
+def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
+    """Confront the solver with the alternatives it killed and did not hedge on.
+
+    Derived from a measured loss. On `88e364bc` an agent ruled out a rival
+    reading that reproduced every training pair, killed it by extending a
+    training-only regularity to the test input, wrote "the ambiguity is gone and
+    the second candidate slot went unused, which is the right outcome" — and
+    missed by two cells out of four hundred.
+
+    This fires only when both halves of that situation are present: recorded
+    dead ends, and an unspent second attempt.
+    """
+    which = ", ".join(f"test {index}" for index in unspent)
+    lines = [
+        f"UNSPENT SECOND ATTEMPT — {which} carries one candidate, and you ruled out "
+        f"{len(ruled_out)} rival reading(s) along the way:",
+    ]
+    for claim in ruled_out[:6]:
+        lines.append(f"  - {claim}")
+    if len(ruled_out) > 6:
+        lines.append(f"  … and {len(ruled_out) - 6} more")
+    lines.append(
+        "Check how each one died. If a training pair it fails killed it, that is a proof and "
+        "the slot should stay empty. If it reproduced every training pair and died to a "
+        "regularity you observed on the training outputs and then applied to the test input, "
+        "that is an inductive leap — the invariant is real, but nothing established that it "
+        "holds out of sample. Emit that reading as the second candidate. ARC-AGI-2 scores two "
+        "attempts per test example; an unspent one is a free attempt discarded."
+    )
+    return "\n".join(lines)
+
+
 def _colour_histogram(grid: Grid | None) -> str:
     """`{colour: count}`, most frequent first — cheap plausibility evidence."""
     if not grid:
@@ -162,6 +194,8 @@ def format_submission_report(
     hardcoding_findings: list[str],
     best_effort_active: bool,
     generalization_signals: list[str] | None = None,
+    unspent_candidates: list[int] | None = None,
+    ruled_out_claims: list[str] | None = None,
 ) -> str:
     """Render one formal iteration's outcome plus the directive that follows."""
     lines: list[str] = []
@@ -295,6 +329,9 @@ def format_submission_report(
     if passed:
         lines.append("TRAINING PASSED (100%).")
         lines.append("")
+        if unspent_candidates and ruled_out_claims:
+            lines.append(_unspent_candidate_prompt(unspent_candidates, ruled_out_claims))
+            lines.append("")
         lines.append(GENERALIZATION_AUDIT_DIRECTIVE.rstrip())
     else:
         if best_effort_active:

@@ -277,6 +277,59 @@ class TestGeneralizationSignals:
         assert _iterations(workspace)[-1]["generalization_signals"] == []
 
 
+class TestUnspentCandidatePrompt:
+    """Derived from a measured loss on 88e364bc: a rival reading that reproduced
+    every training pair was killed by an inductive leap, and the free second
+    attempt was discarded. Missed by 2 cells out of 400."""
+
+    def _record_dead_end(self, workspace, claim="the strict diagonal reading"):
+        ledger = workspace.root / ".athanor" / "invariants.jsonl"
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps({"claim": claim, "holds": True, "mode": "ruled_out",
+                            "source": "explore/probe.py"}) + "\n"
+            )
+
+    def test_fires_when_a_dead_end_meets_an_unspent_slot(self, workspace):
+        self._record_dead_end(workspace)
+        write_solution(workspace)  # returns one candidate per test input
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" in report
+        assert "the strict diagonal reading" in report
+        assert "inductive leap" in report or "applied to the test input" in report
+
+    def test_silent_when_nothing_was_ruled_out(self, workspace):
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" not in report
+
+    def test_silent_when_the_second_slot_is_already_spent(self, workspace):
+        self._record_dead_end(workspace)
+        write_solution(
+            workspace,
+            code="def solve(grid):\n    return [[row[::-1] for row in grid], grid]\n",
+        )
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" not in report
+
+    def test_silent_on_a_training_failure(self, workspace):
+        """The prompt belongs at the decision point, not amid a failed run."""
+        self._record_dead_end(workspace)
+        write_solution(workspace, code=IDENTITY_SOLVE)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" not in report
+
+    def test_a_still_open_hypothesis_is_not_a_dead_end(self, workspace):
+        ledger = workspace.root / ".athanor" / "invariants.jsonl"
+        ledger.write_text(
+            json.dumps({"claim": "some rival", "holds": False, "mode": "ruled_out"}) + "\n",
+            encoding="utf-8",
+        )
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "UNSPENT SECOND ATTEMPT" not in report
+
+
 class TestRefusalTelemetry:
     """Refusals are the harness's most informative signal about its own friction."""
 
