@@ -883,3 +883,58 @@ Honesty about the case that prompted it: `d35bdbdc` spent about forty minutes
 and nine scripts before recording anything — and then recorded eight invariants
 unprompted. The window of unprotected work was real; the agent recovered from it
 without help. The fix is justified by the exposure, not by an observed loss.
+
+### Round 6 complete
+
+| task | result | iterations | candidates | flagship |
+|---|---|---|---|---|
+| `800d221b` | **1/1** | 1 | 2 | **0/1** |
+| `88e364bc` | **2/2** | 1 | 2, 2 | **1/2** |
+| `d35bdbdc` | **3/3** | 1 | 2, 2, 1 | **1/3** |
+
+**3/3 tasks, 6/6 test examples, 1.0 iterations mean.** Every one of the three is
+a puzzle `RESULTS.md` records the flagship failing or partly failing, and
+between them they take five pairs the flagship does not.
+
+`d35bdbdc` is the largest single gain: three test outputs, all three correct,
+against the flagship's 1/3. Two of its pairs are in the 22-pair set that no
+CoT-only Opus 4.6 configuration solved in 8 attempts.
+
+Its solver hedged on two of three test examples for a reason it could state
+exactly: two different selectors — nesting depth, and where the gray snake's
+ends dock — agree on every training pair and diverge on tests 0 and 1. It
+recorded the refutation that mattered most as a claim about the *evidence*
+rather than about the puzzle: "training can separate the snake reading from the
+depth reading" — refuted, meaning it cannot.
+
+### Four more defects, and one that argues with the doctrine
+
+The interesting one is (1), because it is the doctrine's own mechanism falling
+short of what the doctrine asks for.
+
+1. **`verify()` could only record one-liners.** The expression capture reads a
+   single expression at the call site. Every substantive check in this run was a
+   multi-line function — object detection, a BFS over the containment forest, a
+   graph walk — so the honest options were a bare name (correctly flagged as
+   opaque) or one unreadable comprehension, which is what the solver tried next
+   and then had to retract: "a genuinely bad ledger entry". The harness insists
+   the ledger records what executed, and for anything larger than an expression
+   it could not. `verify(..., evidence=<measured value>)` is now a first-class
+   field, and it answers both warnings because it supplies exactly what they ask
+   for.
+
+2. **Not every `refute()` is a rival reading.** The gate listed that
+   evidence-claim under "rival readings you ruled out — check how each died",
+   which inverts a refutation whose death was the finding.
+
+3. **When live rivals all agree on the open slot, say so.** This solver's rival
+   agreed on test 2, and it was shown the dead-end list for test 2 with nothing
+   acknowledging the rival had been considered and found irrelevant there. "The
+   slot needs a reading you have not named yet" is a different instruction from
+   "reconsider these dead ends".
+
+4. **A partial hedge is usually a bug.** This solver's alternative path returned
+   early on one input, so `solve()` emitted two candidates for some tests and one
+   for another. The nudge said "you registered no rivals" — true, and pointing
+   the wrong way. As the solver put it, the harness "did not distinguish 'you
+   chose not to hedge' from 'your hedge silently failed'."
