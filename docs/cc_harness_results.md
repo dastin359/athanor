@@ -116,15 +116,121 @@ most of its talking — is almost entirely unexercised. Round 2 targets that.
 
 ---
 
-## Round 2 — in progress
-
-Three agents on deliberately harder ground:
-
-- `13e47133` — on the zero-solve frontier: no submission in a 117-attempt public
-  corpus has ever solved it. Athanor solves it. Should stress the budget,
-  the reflection loop, and best-effort acceptance.
-- `dd6b8c4b` — two test outputs, moderate difficulty.
-- `67e490f4` — 30x30 grids, to exercise the gate's grid elision.
+## Round 2 — harder ground
 
 Round 2 agents were deliberately **not** told the `sys.path` workaround, so the
-import fix is under test.
+import fix was under test. All three confirmed it worked with zero boilerplate.
+
+| task | solved | test examples | iterations | confidence | explore scripts | invariants | elapsed |
+|---|---|---|---|---|---|---|---|
+| `13e47133` | yes | 2/2 | 1/8 | 5 | 7 | 7 | 480s |
+| `dd6b8c4b` | yes | 2/2 | 1/8 | 4 | 6 | 17 | 855s |
+| `67e490f4` | yes | 1/1 | 1/8 | 4 | 13 | 21 | 834s |
+
+**3/3 solved.** Running total: **6/6 tasks, 9/9 test examples**, mean 1.17
+iterations, all integrity-clean, zero gate refusals.
+
+`13e47133` is the notable one: it sits on the zero-solve frontier — in the
+frozen public corpus of 117 logged attempts, no submission had ever solved it,
+and `RESULTS.md` records it as solved exclusively by the flagship system. The CC
+variant solved both its test outputs on the first formal submission, with
+confidence 5.
+
+### What the traces showed
+
+The same pattern as round 1, sharper. Every agent named a specific experiment
+that changed its answer, and in each case it was an experiment whose *outcome it
+could not predict*:
+
+- `13e47133`: a two-line sweep over `(connectivity, metric)` settled Chebyshev
+  vs Manhattan erosion. The agent's own note: unprompted it would have written
+  the obvious bounding-box formula, "been right for the wrong reason" on convex
+  rooms, and lost the cells beside a concave corner.
+- `67e490f4`: a script asking "does any *other* simple selector also fit?"
+  returned 2/7, 4/7, 5/7 for the alternatives — converting a hypothesis that
+  merely fit into the only one of four that fits.
+- `dd6b8c4b`: BFS distances printed as a sorted list showed
+  `[2,3,7,9,11,11,12,15,19 | 20,20,21,22,22,23]` — a clean gap at the cut-off.
+  The agent had been hand-computing Manhattan distances and, in its own words,
+  "my prose had in fact been converging on the wrong answer".
+
+Two agents also reported the audit requirement doing real work: it is what
+prompted the ablation batteries and equivariance tests that turned arbitrary
+implementation choices into *verified non-choices*.
+
+### What broke
+
+| gap | severity | found by |
+|---|---|---|
+| `solution/` not importable — the doctrine's own step 5 needs it | high | all three agents |
+| Three documents said bare `python` while CLAUDE.md named the venv | medium | `dd6b8c4b` |
+| Gate dumped full test predictions unconditionally | medium | `b0039139`, `13e47133` |
+| `verify()` conflates "established X" with "X is false" | medium | `dd6b8c4b` |
+| Supersession keyed on the claim string breaks on rewording | medium | `67e490f4` |
+| Numeric script names (`05_x.py`) are not importable | low | `67e490f4` |
+| `NOTES.md` needs a Read before the first Write | low | `dd6b8c4b` |
+
+The first is the round's instructive failure, and it rhymes with round 1's. The
+doctrine tells the solver to run its verified invariants against its own test
+predictions before accepting — the last line of defence in a configuration with
+no reviewer. Doing that means importing `solution/solve.py`, and the toolkit
+offered no way. All three agents wrote `sys.path.insert(0, 'solution')`, a
+*relative* path that breaks if the script runs from anywhere but the workspace
+root — the exact boilerplate `arc.py` had gone to the trouble of eliminating
+everywhere else. **The harness put friction in the one place its own doctrine
+sends you**, twice in two rounds.
+
+The interpreter inconsistency is the cheapest lesson: bare `python` worked right
+up until `import numpy`, at which point it failed in a way that looks like a
+workspace bug rather than a documentation bug.
+
+### Shipped after round 2
+
+- `arc.load_solution()` returns the shipped `solve`, resolved against the
+  workspace.
+- All documents name the same interpreter.
+- Test predictions over 400 cells are replaced by a colour histogram and a
+  pointer to the archived `predictions.json`.
+- `arc.refute(claim, condition)` records a dead end as a finding rather than as
+  an apparent defect.
+- `verify(..., key=)` for explicit supersession across rewording.
+- Mechanical generalization signals wired into the gate (see below).
+- Guidance on importable script names and on `NOTES.md` needing a Read first.
+
+### The reviewer-shaped hole
+
+With no independent reflector, nothing rejects a train-perfect but wrong rule.
+`signals.py` recovers the cheap, model-free half of that job: regularities every
+training output obeys that a test prediction breaks — fixed output shape, shape
+relation to the input, squareness, a fixed output palette, colours absent from
+the prediction's own input, and duplicate candidates that waste ARC-AGI-2's
+second attempt.
+
+It only fires when the training set is unanimous and the prediction dissents. On
+round 1's three correct solutions it reported nothing; against deliberately
+corrupted predictions for the same three tasks it fired on all three.
+
+### Still untested after two rounds
+
+**No submission has ever failed.** Nine of nine tasks passed training on
+iteration 1 or 2, so the failure report, the reflection directive, the
+best-effort switch, and every gate refusal remain unexercised by a real agent.
+The harness does most of its talking on the failure path, and that path has been
+validated only by unit tests.
+
+---
+
+## Round 3 — in progress
+
+Three agents on tasks the **flagship system itself fails**, chosen specifically
+to produce failures:
+
+- `faa9f03d` — Athanor scores 0/1 even in an extended 120-turn attempt; never
+  solved by CoT-only Opus 4.6 at any thinking level.
+- `2b83f449` — Athanor scores 0/1; never solved by CoT-only Opus 4.6 in 8
+  attempts.
+- `88e364bc` — Athanor solves 1 of 2 test outputs; test 0 never solved by
+  CoT-only Opus 4.6.
+
+Agents were told the difficulty honestly and asked to prioritise evaluating the
+failure reports over solving.
