@@ -1631,3 +1631,88 @@ predicts. Self-review can be made to ask better questions — the anchors
 demonstrably do that — but a solver cannot audit its way out of a misreading it
 has no reason to suspect. The one thing that has repeatedly recovered that class
 of error here is not the audit at all: it is shipping the second candidate.
+
+---
+
+## The symmetric test: my variance claim is refuted, with a mechanism
+
+The prediction recorded above, before the run: *"If it also lands 1/3, variance
+is a poor explanation and the honest conclusion is that something in the doctrine
+matters on this task — most plausibly in rule discovery rather than hedging."*
+
+It landed 1/3.
+
+| `d35bdbdc` | score | iterations |
+|---|---|---|
+| doctrine, round 6 | **3/3** | 1 |
+| doctrine, replicate | **3/3** | 2 |
+| ablated, arm 2 | 1/3 | 1 |
+| ablated, arm 3 | 1/3 | 2 |
+
+**Two independent runs per arm, and each arm replicated itself exactly.** That is
+not what variance looks like. My earlier claim was wrong and the prediction I
+wrote down before the result is the one that holds.
+
+### Which candidate won, per test example
+
+| arm | test 0 | test 1 | test 2 |
+|---|---|---|---|
+| doctrine, round 6 | 2 cands — **won on #2** | 2 cands — **won on #2** | 1 cand — won on #1 |
+| doctrine, replicate | 2 cands — **won on #2** | 2 cands — **won on #2** | 2 cands — won on #1 |
+| ablated, arm 2 | 2 cands — **missed** | 2 cands — **missed** | 2 cands — won on #1 |
+| ablated, arm 3 | 2 cands — **missed** | 2 cands — **missed** | 2 cands — won on #1 |
+
+All four runs hedged tests 0 and 1. So the difference is **not hedging volume**
+— my "the ablated arm hedged more and still lost" observation was true and I drew
+the wrong conclusion from it. The difference is *which axis* they hedged.
+
+### The mechanism, in the agents' own words
+
+Both doctrine runs and both ablated runs found the same candidate rival: the grey
+snake's two endpoints sit against exactly the two surviving figures in all three
+training pairs.
+
+The **ablated** arm killed it:
+
+> "I killed it by execution rather than preference: train 1's snake has only one
+> degree-1 cell, and on test 1 the endpoints name rings {4} and {2,4} where ring
+> 4 points at ring 2 — so no legal survivor pair exists there. Recorded with
+> `arc.refute`."
+
+The **doctrine** arm doubted it just as hard, and shipped it anyway:
+
+> "I ranked the pointer graph first because the grey snake cannot be stated as a
+> complete rule … and because on test 0/test 1 its answers break three measured
+> training invariants. **But that ranking is an inductive leap, not a proof, so
+> it is candidate 2.**"
+
+The grey snake was right. It won tests 0 and 1 as candidate 2 in both doctrine
+runs, and its absence is exactly why both ablated runs scored 1/3.
+
+That phrase — *an inductive leap, not a proof* — is doctrine text. It is the
+lesson extracted from the two-cell loss on `88e364bc` five rounds earlier:
+killing a rival that reproduces every training pair, by extending a regularity
+you observed to a case you cannot check, is not a refutation. The ablated agents
+had the identical evidence, performed the identical analysis, reached the
+identical doubt, and had no framework telling them that doubt was not
+disqualifying. So they refuted it and shipped one reading.
+
+### What this does and does not establish
+
+It establishes, on this puzzle, with n=2 per arm and a replicated mechanism, that
+the doctrine changed the outcome — and that it did so through the *rival-killing
+standard*, not through rule discovery as I had guessed and not through hedging
+volume. Both arms hedged; only one hedged the axis it had talked itself out of.
+
+It does not establish a general effect size. This is one puzzle of three: on
+`dbff022c` the arms tied, and on `88e364bc` the gap was a missing hedge rather
+than a misaimed one. And the doctrine is not free — the ablated agents were
+faster and cheaper, and on tasks with no such ambiguity the extra candidate buys
+nothing.
+
+The transferable claim is narrower and sharper than "the doctrine helps": **a
+solver will refute a live rival with an argument that feels decisive, and the
+harness's job is to hold the standard that only a training pair can do the
+refuting.** Both ablated agents were rigorous, executed their check, and recorded
+it honestly with `refute()`. Rigour was not the missing ingredient. The standard
+was.
