@@ -1334,3 +1334,69 @@ mechanism you have verified in isolation will still not be visible in aggregate
 metrics if the thing it improves is a small term.** Verifying the mechanism and
 verifying the magnitude are separate jobs, and a plausible-looking number
 adjacent to a real fix will happily be misread as evidence for it.
+
+---
+
+## What this experiment taught about building the harness
+
+Separate from the ARC numbers. Each of these was paid for by a specific defect,
+and each was found by running agents rather than by reading code.
+
+**1. Anything that changes what a solver ships must be reachable for free.**
+Learned three times before it stuck. The candidate-spread line, the hedging
+prompt, and the "enumerate the situation types your rule has to handle on the
+test input" paragraph each existed only behind a spent iteration. The third one
+a solver called "the single highest-value string the harness printed", and then
+noted it had arrived after the budget was gone. The corollary, learned the same
+way: *every convenience on the budgeted path creates an incentive to spend
+budget* — one solver submitted purely to read a line the gate printed and the
+dry run did not.
+
+**2. The compaction-durable artifact is read by someone with no memory of
+writing it.** Nearly every ledger defect is a variant of this. `[OK]` beside a
+refuted hypothesis inverts its meaning to a reader without context. A claim
+amended in place — "the jog is 1 wide; it is instead always a-2 wide" — leaves a
+verified invariant whose own first clause is false. An entry recorded from a
+heredoc carries no evidence and looks identical to one that carries good
+evidence. None of these confused the agent that wrote them. All of them would
+confuse the agent that read them back.
+
+**3. Collapsing distinct situations into one boolean produces inverted advice.**
+`rival()` had one sentence for four states — redundant with candidate 1, *is*
+candidate 2 already, diverges into a free slot, diverges with both slots spent.
+It told a solver that had hedged correctly that its rival "needs no slot",
+because the rival was found inside the candidate list it had just been added
+to. Acting on that deletes a correct hedge. The fix each time was to name the
+states, not to reword the sentence.
+
+**4. Instrument the thing you can measure, then check whether it measures what
+you think.** Verification density was the harness's headline metric and its
+docstring called it "the metric that matters". It does not predict correctness
+at all — failures verify as much as successes. It is a fine compliance check and
+a bad quality signal, and nothing but measuring it would have shown that.
+
+**5. Verifying a mechanism and verifying its magnitude are separate jobs.** The
+prompt-cache defect was real, the fix was confirmed by a clean A/B, and the
+improvement is worth about five cents a task — invisible against within-task
+cache traffic. A plausible number sitting next to a real fix (a cost drop that
+was actually run length) was misread as evidence for it, in this very document,
+before being caught.
+
+**6. Ask the agent to critique the harness as seriously as it reports its
+solution.** This was the highest-yield part of the entire loop. A solver that
+has just spent twenty minutes inside the workspace knows things about it that no
+amount of reading the code reveals, and roughly two-thirds of the defects fixed
+here came from that section of the report rather than from tests, traces, or
+inspection.
+
+**7. Fast iteration produces untested branches; audit your own diffs.** Two
+findings came from reviewing recent commits rather than from any agent: three
+gate diagnostics shipped with no tests at all, and the rival-contention check
+re-ran `solve()` once per registered rival — quadratic work for an advisory
+print, on a solver that had registered eight.
+
+**8. A negative result is worth shipping.** Density does not predict
+correctness. The self-audit has never rejected anything in 26 runs. The cache
+fix is invisible at scale. Several rounds of improvements did not convert
+`9bbf930d`. None of these are flattering and all of them are load-bearing for
+anyone deciding what to build on.
