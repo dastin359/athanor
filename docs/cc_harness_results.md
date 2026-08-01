@@ -1599,3 +1599,35 @@ Solver friction reports have been the highest-yield source of defects in this
 experiment by a wide margin. They are still reports, not measurements, and two
 of the three claims in this one were wrong. Checking before fixing cost two
 minutes and avoided "repairing" working code.
+
+### Did the confidence anchors actually recalibrate anything?
+
+Eight runs have now completed under the anchored scale. Enough to check the
+claim rather than repeat it.
+
+| | n | values used | mean |
+|---|---:|---|---:|
+| before anchors | 27 | {4, 5} | 4.22 |
+| after anchors | 8 | {3, 4, 5} | 4.12 |
+
+**The honest reading is: one 3, on the hardest task in the corpus, and almost no
+movement otherwise.** The scale reached below 4 for the first time in the
+experiment — which is what it was changed to make possible — but the
+distribution is still overwhelmingly {4, 5} and the mean moved by 0.1. Two
+solvers reported the anchors changing the number they would have written, and
+one of those is the sole 3. That is a real effect and a small one.
+
+**`DECISION: RETRY` has still never fired.** 35 audited runs, zero self-rejections.
+
+**And the anchors cannot catch the failure that matters most.** The ablated
+`d35bdbdc` run claimed confidence 4 under the anchored scale and scored 1/3. It
+was not wrong about which situations the test needed — it hedged all three test
+inputs. It was wrong about the *rule*. The anchors are defined over "is this
+situation witnessed in training", which is checkable, and a solver whose primary
+reading is simply mistaken can satisfy every anchor honestly and still be wrong.
+
+That is the shape of the remaining gap, and it is the same one `design.md`
+predicts. Self-review can be made to ask better questions — the anchors
+demonstrably do that — but a solver cannot audit its way out of a misreading it
+has no reason to suspect. The one thing that has repeatedly recovered that class
+of error here is not the audit at all: it is shipping the second candidate.
