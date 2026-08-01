@@ -12,5 +12,14 @@ __pycache__/
 build/
 dist/
 
-# Claude Code harness run directories (workspaces, transcripts, results)
+# Claude Code harness run directories (workspaces, transcripts, results).
+# A relative --out-dir resolves against cwd, so a run launched from the repo
+# root leaks its output here; these patterns keep that out of git.
 cc_runs/
+arm_*/
+round*/
+ablation*/
+randombatch/
+batchrun/
+replicate/
+
