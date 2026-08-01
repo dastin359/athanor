@@ -748,8 +748,46 @@ def histogram(grid: Grid) -> dict[int, int]:
     return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
 
+#: Fired at most once per process, so a long exploration session gets the
+#: reminder without every call nagging.
+_DURABILITY_REMINDED = False
+
+#: Exploration scripts written before an empty ledger becomes worth mentioning.
+_UNRECORDED_SCRIPT_THRESHOLD = 4
+
+
+def _exploration_durability_check() -> None:
+    """Mention an empty ledger during exploration, not only at dry-run time.
+
+    The dry-run nudges only reach a solver that already has a candidate
+    solution. Two agents were observed forty minutes into a hard task with six
+    exploration scripts, no `solve.py`, and nothing recorded — the exact window
+    where a compaction costs the most and where nothing was saying so.
+    """
+    global _DURABILITY_REMINDED
+    if _DURABILITY_REMINDED:
+        return
+    try:
+        explore = WORKSPACE / "explore"
+        scripts = [
+            p for p in explore.glob("*.py") if p.name != "arc.py"
+        ] if explore.is_dir() else []
+        if len(scripts) < _UNRECORDED_SCRIPT_THRESHOLD or invariants():
+            return
+    except Exception:  # noqa: BLE001 - a reminder must never break exploration
+        return
+    _DURABILITY_REMINDED = True
+    print(
+        f"\n[note] {len(scripts)} exploration scripts, nothing recorded with arc.verify().\n"
+        "       A compaction now would discard everything you have worked out; the ledger\n"
+        "       and NOTES.md are what `gate.py status` replays. Record the facts you are\n"
+        "       already relying on.\n"
+    )
+
+
 def show(grid: Grid, title: str | None = None, ruler: bool = True) -> None:
     """Print a grid with row and column indices."""
+    _exploration_durability_check()
     if title:
         print(title)
     if not grid:

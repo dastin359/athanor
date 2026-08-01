@@ -259,6 +259,55 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "just the name" not in result.stdout
 
+    def test_exploration_reminder_fires_before_any_dry_run(self, workspace):
+        """The dry-run nudges only reach a solver that already has a solution.
+
+        Two agents were observed forty minutes into a hard task with six
+        exploration scripts, no solve.py, and an empty ledger — the window where
+        a compaction costs most, and nothing was saying so.
+        """
+        for name in ("a", "b", "c", "d", "e"):
+            (workspace.root / "explore" / f"{name}.py").write_text("pass\n", encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import show, train_samples\nshow(train_samples[0]['input'])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "nothing recorded with arc.verify()" in result.stdout
+
+    def test_exploration_reminder_fires_at_most_once(self, workspace):
+        for name in ("a", "b", "c", "d", "e"):
+            (workspace.root / "explore" / f"{name}.py").write_text("pass\n", encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import show, train_samples\n"
+            "show(train_samples[0]['input'])\n"
+            "show(train_samples[1]['input'])\n"
+            "show(train_samples[2]['input'])\n",
+        )
+        assert result.stdout.count("nothing recorded with arc.verify()") == 1
+
+    def test_exploration_reminder_is_quiet_once_something_is_recorded(self, workspace):
+        for name in ("a", "b", "c", "d", "e"):
+            (workspace.root / "explore" / f"{name}.py").write_text("pass\n", encoding="utf-8")
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "a recorded fact", "holds": True}) + "\n", encoding="utf-8"
+        )
+        result = self._run(
+            workspace,
+            "from arc import show, train_samples\nshow(train_samples[0]['input'])\n",
+        )
+        assert "nothing recorded" not in result.stdout
+
+    def test_exploration_reminder_is_quiet_early(self, workspace):
+        """Two scripts in is not the moment to lecture about durability."""
+        (workspace.root / "explore" / "a.py").write_text("pass\n", encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import show, train_samples\nshow(train_samples[0]['input'])\n",
+        )
+        assert "nothing recorded" not in result.stdout
+
     def test_notes_nudge_fires_when_facts_outpace_direction(self, workspace):
         """Observed live: seven scripts and six invariants, NOTES.md pristine."""
         import subprocess
