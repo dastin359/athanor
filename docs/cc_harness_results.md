@@ -290,3 +290,61 @@ reproduced every training pair and died only to a leap.
 That is guidance, not a mechanism, and it is weaker than what it replaces. The
 honest conclusion is that this is the first measured cost of dropping the
 reviewer.
+
+---
+
+## Round 3 — the failure path, and a fix validated in flight
+
+Three agents on tasks the flagship system itself fails, plus one run with a
+deliberately starved 3-iteration budget to force the budget-exhaustion machinery
+that three rounds of natural running never reached.
+
+| task | result | test examples | iterations | confidence | candidates | flagship reference |
+|---|---|---|---|---|---|---|
+| `88e364bc` | partial | 1/2 | 1/8 | 4 | 1, 1 | flagship also 1/2, same example missed |
+| `faa9f03d` | failed | 0/1 | 1/8 | 4 | 2 | flagship 0/1 at 120 turns; 0/127 in the public corpus |
+
+Running total: **9 tasks, 10/13 test examples.**
+
+### The fix that validated itself in flight
+
+`88e364bc` (analysed above) produced the candidate-budget paragraph. `faa9f03d`
+ran after it shipped, and its agent volunteered this without being asked:
+
+> the "candidate budget" paragraph in particular is well-written — the
+> distinction between *killing an alternative with a training pair* (proof) and
+> *killing it by extending a training-output regularity to the test* (an
+> inductive leap) is exactly the distinction I was fudging in my own head, and
+> reading it is why candidate 2 shipped instead of being argued away.
+
+Direct causal evidence that the fix changed behaviour on the next run. It did
+not rescue the task — both candidates were wrong, and `faa9f03d` remains
+unsolved by anything in the public record — but the mechanism did what it was
+built to do.
+
+The `UNSPENT SECOND ATTEMPT` check also validated itself live: it was active
+during `faa9f03d`'s submission and correctly stayed silent, because that agent
+had already spent its second slot.
+
+### Still not exercised
+
+**Four rounds, thirteen test examples, and no submission has ever failed.** Every
+accepted run passed training on iteration 1 or 2. The failure report, the
+reflection directive, the best-effort switch and every gate refusal remain
+validated only by unit tests. The starved-budget run exists to break that; the
+honest reading so far is that with a competent solver and free unlimited
+exploration, the gate is simply never used as a debugger — which is exactly what
+the doctrine asks for, and which makes its failure path structurally hard to
+reach.
+
+### Shipped during round 3
+
+- `arc.rival(name, solve_fn)` — register an alternative reading; it is scored
+  against training and its test predictions kept. The gate reports a rival that
+  fits all training pairs and disagrees with the submission, which converts the
+  second-attempt question from a judgement into a measurement.
+- `UNSPENT SECOND ATTEMPT` — the gate pairs recorded dead ends with test
+  examples still carrying one candidate.
+- `arc.check(..., show_diff=True)` — which cells a prediction got wrong.
+- A durability nudge in `dryrun.py` when the invariant ledger is empty, after
+  two hard-task agents were observed running many scripts and recording nothing.
