@@ -377,6 +377,54 @@ def cmd_submit(workspace: Path) -> tuple[str, int]:
     return report, 0
 
 
+def _revalidate_current_solution(
+    workspace: Path, state: dict[str, Any], last: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Score ``solution/solve.py`` as it stands, for acceptance.
+
+    Returns None when the file is unchanged since the last submission (nothing
+    to do) or when re-running it would weaken the result — a regression, an
+    error, or a rule that no longer reproduces training. In those cases
+    acceptance falls back to the recorded submission, which is the artifact the
+    solver actually stood behind.
+    """
+    code = _read_text(workspace, CODE_PATH)
+    if not code.strip() or _sha(code) == str(last.get("code_sha") or ""):
+        return None
+
+    task = load_task(workspace)
+    train_samples = task.get("train") or []
+    evaluation = run_solution_isolated(
+        code,
+        train_samples,
+        task.get("test") or [],
+        max_candidates=int(state.get("max_test_predictions") or 2),
+        timeout_seconds=float(state.get("solve_timeout_s") or 60.0),
+    )
+    if evaluation.get("status") != "ok":
+        return None
+    # Never let acceptance silently take a worse rule than the one submitted.
+    if int(evaluation.get("train_correct") or 0) < int(last.get("train_correct") or 0):
+        return None
+
+    return {
+        "test": [
+            {"index": row.get("index"), "candidates": row.get("candidates") or [],
+             "error": row.get("error")}
+            for row in evaluation.get("test", [])
+        ],
+        "record": {
+            "code_sha": _sha(code),
+            "code_chars": len(code),
+            "train_correct": int(evaluation.get("train_correct") or 0),
+            "train_total": int(evaluation.get("train_total") or len(train_samples)),
+            "train_pixel_accuracy": float(evaluation.get("train_pixel_accuracy") or 0.0),
+            "all_train_correct": bool(evaluation.get("all_train_correct")),
+            "revalidated_at_accept": True,
+        },
+    }
+
+
 _DECISION_RE = re.compile(r"^\s*DECISION\s*:\s*(ACCEPT|RETRY)\b", re.IGNORECASE | re.MULTILINE)
 _CONFIDENCE_RE = re.compile(r"^\s*CONFIDENCE\s*:\s*([1-5])\b", re.IGNORECASE | re.MULTILINE)
 
@@ -430,6 +478,16 @@ def cmd_accept(workspace: Path) -> tuple[str, int]:
     iteration_dir = workspace / STATE_DIR / "iterations" / str(last.get("iteration"))
     predictions = json.loads((iteration_dir / "predictions.json").read_text(encoding="utf-8"))
 
+    # Re-run the solution as it stands now, so adding a second candidate after a
+    # train-perfect submission does not cost an iteration. A solver on a starved
+    # budget spent a third of it resubmitting an unchanged rule purely to record
+    # a hedge the harness had just asked for — charging an iteration for
+    # following the harness's own advice.
+    revalidated = _revalidate_current_solution(workspace, state, last)
+    if revalidated is not None:
+        predictions = {"test": revalidated["test"]}
+        last = {**last, **revalidated["record"]}
+
     final = {
         "task_id": state.get("task_id"),
         "accepted_at": _now(),
@@ -442,8 +500,14 @@ def cmd_accept(workspace: Path) -> tuple[str, int]:
         "train_pixel_accuracy": last.get("train_pixel_accuracy"),
         "best_effort": bool(lenient and not last.get("all_train_correct")),
         "confidence": int(confidence_match.group(1)) if confidence_match else None,
-        "hypothesis": (iteration_dir / "hypothesis.md").read_text(encoding="utf-8"),
-        "code": (iteration_dir / "solve.py").read_text(encoding="utf-8"),
+        "hypothesis": _read_text(workspace, HYPOTHESIS_PATH).strip()
+        or (iteration_dir / "hypothesis.md").read_text(encoding="utf-8"),
+        "code": (
+            _read_text(workspace, CODE_PATH)
+            if last.get("revalidated_at_accept")
+            else (iteration_dir / "solve.py").read_text(encoding="utf-8")
+        ),
+        "revalidated_at_accept": bool(last.get("revalidated_at_accept")),
         "audit": audit,
         "test": predictions.get("test") or [],
         "hardcoding_findings": last.get("hardcoding_findings") or [],

@@ -45,7 +45,8 @@ NOTES.md              your durable research state — keep it current
    Every bug you catch with `dryrun.py` is a budgeted submission you keep.
 5. **Submit.** `__PYTHON__ gate.py submit`. Budgeted and permanent.
 6. **Reflect.** The gate's output ends with what to do next. Follow it, and
-   append the reflection to `NOTES.md`.
+   append the reflection to `NOTES.md` — `Read` that file before your first
+   `Write`, since it already exists with template content.
 7. **Accept.** Once training passes, write `solution/audit.md`, then
    `__PYTHON__ gate.py accept`. That ends the run — stop working after it
    succeeds.
@@ -57,7 +58,7 @@ NOTES.md              your durable research state — keep it current
 | `__PYTHON__ dryrun.py` | free | Scores `solution/solve.py` against the training pairs. Use it before every submission. |
 | `__PYTHON__ gate.py status` | free | Distilled research state: iterations, verified invariants, last hypothesis, notes tail. **Run this first after any context compaction.** |
 | `__PYTHON__ gate.py submit` | 1 iteration | Runs `solution/solve.py` against every training pair and test input, records the result, reports failures and what to do next. |
-| `__PYTHON__ gate.py accept` | free | Finalizes the run using the last submission and `solution/audit.md`. |
+| `__PYTHON__ gate.py accept` | free | Finalizes the run, using `solution/audit.md`. It re-runs `solution/solve.py` as it stands, so adding a second candidate after a train-perfect submission costs you nothing — if the rule regresses, it falls back to what you submitted. |
 
 ## The invariant ledger
 
@@ -145,8 +146,8 @@ a proof; killing it with an out-of-sample extrapolation is not.
 
 - Print summaries, not grids you have already seen. A boolean, a count, or a
   set of shapes usually carries the finding.
-- `NOTES.md` already exists with template content, so `Read` it before your
-  first `Write` — otherwise the write is rejected and you spend a round trip.
+- `arc.png()` writes relative to the current directory, so `cd` into the
+  workspace first if you invoke it from elsewhere.
 
 ## Out of bounds
 

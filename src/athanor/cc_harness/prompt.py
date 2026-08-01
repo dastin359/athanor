@@ -155,7 +155,10 @@ def build_initial_prompt(
         parts += [
             "",
             "The grids follow as text (one row per line, one digit per cell). The same content "
-            "is in `task/grids.md`, and `arc.py` loads it as `train_samples` / `test_samples`.",
+            "is in `task/grids.md`, and `arc.py` loads it as `train_samples` / `test_samples`. "
+            "Read them for orientation, but do not count cells or index columns off this text — "
+            "solvers reliably miscount here, and one such slip has produced a false refutation of "
+            "the correct rule. `arc.show(grid)` prints the same grid with row and column rulers.",
             "",
             render_task_markdown(task_id, puzzle_data),
         ]

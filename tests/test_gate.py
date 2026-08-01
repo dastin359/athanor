@@ -153,6 +153,80 @@ class TestAcceptance:
             gate.cmd_submit(workspace.root)
 
 
+class TestAcceptRevalidation:
+    """Adding a hedge after a train-perfect submission must not cost an iteration.
+
+    A solver on a 3-iteration budget spent a third of it resubmitting an
+    unchanged rule purely to record a second candidate the harness had just
+    asked for — charged an iteration for following the harness's own advice.
+    """
+
+    TWO_CANDIDATES = (
+        "def solve(grid):\n"
+        "    mirrored = [row[::-1] for row in grid]\n"
+        "    if len(grid) == 2 and grid[0] == [6, 0, 3]:\n"
+        "        return [mirrored, [[3, 0, 6], [0, 4, 9]]]\n"
+        "    return mirrored\n"
+    )
+
+    def test_a_hedge_added_after_submitting_is_accepted_for_free(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        assert len(_iterations(workspace)) == 1
+
+        (workspace.root / "solution" / "solve.py").write_text(self.TWO_CANDIDATES, encoding="utf-8")
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+
+        assert len(_iterations(workspace)) == 1, "hedging must not consume an iteration"
+        final = json.loads(workspace.final_path.read_text(encoding="utf-8"))
+        assert final["revalidated_at_accept"] is True
+        assert len(final["test"][0]["candidates"]) == 2
+        assert final["code"] == self.TWO_CANDIDATES
+
+    def test_a_regression_falls_back_to_the_submitted_artifact(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+
+        (workspace.root / "solution" / "solve.py").write_text(
+            "def solve(grid):\n    return [[0]]\n", encoding="utf-8"
+        )
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+
+        final = json.loads(workspace.final_path.read_text(encoding="utf-8"))
+        assert final.get("revalidated_at_accept") is False
+        assert final["code"] == MIRROR_SOLVE, "the submitted rule is what the solver stood behind"
+        assert final["test"][0]["candidates"] == [[[3, 0, 6], [0, 4, 0]]]
+
+    def test_broken_code_falls_back_rather_than_failing_acceptance(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "solve.py").write_text("def solve(grid)\n", encoding="utf-8")
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        report, code = gate.cmd_accept(workspace.root)
+        assert code == 0
+        final = json.loads(workspace.final_path.read_text(encoding="utf-8"))
+        assert final["code"] == MIRROR_SOLVE
+
+    def test_unchanged_code_is_not_rerun(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+        final = json.loads(workspace.final_path.read_text(encoding="utf-8"))
+        assert final.get("revalidated_at_accept") is False
+
+
+class TestCandidateSpread:
+    def test_report_says_how_far_apart_two_candidates_are(self, workspace):
+        """Two candidates can share a shape and colour histogram while differing
+        in a couple of cells, leaving the printed summary looking identical."""
+        write_solution(workspace, code=TestAcceptRevalidation.TWO_CANDIDATES)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "candidates differ in 1 cell(s)" in report
+
+
 class TestBestEffort:
     def test_best_effort_window_lifts_the_training_requirement(self, workspace):
         # Fixture budget is 4 with a 1-iteration best-effort tail.

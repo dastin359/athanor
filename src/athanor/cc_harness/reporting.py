@@ -193,8 +193,16 @@ def _unspent_candidate_prompt(unspent: list[int], ruled_out: list[str]) -> str:
         "the slot should stay empty. If it reproduced every training pair and died to a "
         "regularity you observed on the training outputs and then applied to the test input, "
         "that is an inductive leap — the invariant is real, but nothing established that it "
-        "holds out of sample. Emit that reading as the second candidate. ARC-AGI-2 scores two "
-        "attempts per test example; an unspent one is a free attempt discarded."
+        "holds out of sample."
+    )
+    lines.append(
+        "Do not assume the answer is in the list above. Those are the rivals you thought to "
+        "write down, and they may all be proofs. The leap is often somewhere you never framed "
+        "as a rival at all: enumerate the situation types your rule has to handle on the test "
+        "input, and check that each one is actually witnessed in a training pair. A case the "
+        "test needs and training never shows is an unhedged assumption regardless of how "
+        "confident the rule feels. ARC-AGI-2 scores two attempts per test example; an unspent "
+        "one is a free attempt discarded."
     )
     return "\n".join(lines)
 
@@ -326,6 +334,15 @@ def format_submission_report(
         candidates = row.get("candidates") or []
         shapes = ", ".join(grid_shape(c) for c in candidates) or "none"
         lines.append(f"[test {idx}] {len(candidates)} candidate(s): {shapes}")
+        if len(candidates) > 1:
+            # Two candidates can share a colour histogram and a shape while
+            # differing in a couple of cells, which leaves the printed summary
+            # looking identical. Say how far apart they actually are.
+            spread = grid_diff(candidates[1], candidates[0])
+            if spread["shape_match"]:
+                lines.append(f"  candidates differ in {spread['num_diff']} cell(s)")
+            else:
+                lines.append("  candidates differ in shape")
         for cand_idx, candidate in enumerate(candidates, start=1):
             histogram = _colour_histogram(candidate)
             lines.append(f"  candidate {cand_idx}: {grid_shape(candidate)}  colours {histogram}")
