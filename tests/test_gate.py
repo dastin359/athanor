@@ -208,6 +208,75 @@ class TestStatus:
         assert entries[0]["holds"] is False
 
 
+class TestReportEconomy:
+    """The gate must not violate the token discipline it enforces."""
+
+    def _wide_workspace(self, tmp_path, config):
+        """A task whose outputs are far past the inline-grid threshold."""
+        from athanor.cc_harness.workspace import build_workspace
+
+        big_in = [[(r + c) % 10 for c in range(30)] for r in range(30)]
+        big_out = [[(r * c) % 10 for c in range(30)] for r in range(30)]
+        task = {
+            "train": [{"input": big_in, "output": big_out} for _ in range(2)],
+            "test": [{"input": big_in, "output": big_out}],
+        }
+        return build_workspace(
+            task_id="wide01", puzzle_data=task, root=tmp_path / "wide" / "workspace", config=config
+        )
+
+    def test_large_test_predictions_are_summarised_not_dumped(self, tmp_path, config):
+        workspace = self._wide_workspace(tmp_path, config)
+        write_solution(workspace, code="def solve(grid):\n    return [row[:] for row in grid]\n")
+        report, _ = gate.cmd_submit(workspace.root)
+
+        predictions_section = report.split("--- test predictions ---", 1)[1]
+        assert "colours {" in predictions_section, "the histogram should stand in for the grid"
+        assert "not printed" in predictions_section
+        assert "predictions.json" in predictions_section
+        # The candidate is a 30x30 copy of the input, whose first row is
+        # 012345678901234567890123456789. It must not be inlined.
+        assert "0123456789" not in predictions_section.replace(" ", "")
+
+    def test_small_test_predictions_are_still_printed_in_full(self, workspace):
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "306\n  040" in report.replace("\r", "")
+
+
+class TestGeneralizationSignals:
+    """A mechanical stand-in for the reviewer this variant drops."""
+
+    def test_signals_reach_the_report_and_the_ledger(self, tmp_path, config):
+        from athanor.cc_harness.workspace import build_workspace
+
+        # Every training output is 2x2; the solution returns the input unchanged,
+        # so the 1x3 test input yields a 1x3 prediction.
+        task = {
+            "train": [
+                {"input": [[1, 2], [3, 4]], "output": [[1, 2], [3, 4]]},
+                {"input": [[5, 6], [7, 8]], "output": [[5, 6], [7, 8]]},
+            ],
+            "test": [{"input": [[1, 2, 3]]}],
+        }
+        workspace = build_workspace(
+            task_id="sig01", puzzle_data=task, root=tmp_path / "sig" / "workspace", config=config
+        )
+        write_solution(workspace, code="def solve(grid):\n    return [row[:] for row in grid]\n")
+        report, _ = gate.cmd_submit(workspace.root)
+
+        assert "GENERALIZATION:" in report
+        assert "every training output is 2x2" in report
+        record = _iterations(workspace)[-1]
+        assert record["generalization_signals"]
+
+    def test_no_signals_on_a_consistent_prediction(self, workspace):
+        write_solution(workspace)
+        report, _ = gate.cmd_submit(workspace.root)
+        assert "GENERALIZATION:" not in report
+        assert _iterations(workspace)[-1]["generalization_signals"] == []
+
+
 class TestRefusalTelemetry:
     """Refusals are the harness's most informative signal about its own friction."""
 
