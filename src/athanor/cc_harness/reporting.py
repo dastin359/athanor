@@ -110,6 +110,22 @@ Write solution/audit.md with exactly these sections:
   REASONS:
   <your analysis>
 
+Anchor the confidence number, because an unanchored one is worthless. Across
+this experiment every audit has claimed 4 or 5 and none has ever said RETRY —
+including runs that were wrong, one of which claimed 5. So:
+
+  5  every situation the test input requires is witnessed in a training pair,
+     and you have executed a check saying so.
+  4  as above, except one such situation is unwitnessed and you have hedged it
+     with your second candidate.
+  3  a situation the test needs is unwitnessed and you have NOT hedged it, or
+     you hedged a different axis than the one you are unsure about.
+  2  the rule fits training and you cannot say why it should generalise.
+  1  you are submitting because the budget is running out.
+
+A 3 or below is a reason to spend another iteration, not a reason to write a
+longer justification.
+
 Cover, in REASONS:
 - Assumption audit. Does the code lean on any training-only coincidence — exact
   grid sizes, absolute coordinates, specific counts, colours with no semantic

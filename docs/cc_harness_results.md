@@ -1154,3 +1154,58 @@ ablated agent measured that markers-blocking made no difference and never asked
 the corner-cutting question; on `9bbf930d` both attempts verified their rule
 thoroughly and hedged on the wrong axis. Executed verification compresses the
 cost of answering a question. It does not tell you which question to ask.
+
+---
+
+## The self-audit has never rejected anything
+
+The reviewer was dropped from this variant; the self-audit in `solution/audit.md`
+is what stands in for it. `docs/design.md` predicts that substitution will be
+weak — "artifact-only review is the only mechanism that can reject a
+train-perfect but overfit solution. The self-audit is a weaker substitute by
+construction."
+
+Here is the empirical form of that prediction, across 26 audited runs:
+
+- **`DECISION: RETRY` has fired zero times.** Not once has a solver's own audit
+  declined its own work — including on the five runs that were wrong.
+- **The confidence scale has collapsed to `{4, 5}`.** Nobody has ever claimed 1,
+  2 or 3. The highest confidence in the experiment, a 5, appears on a run that
+  scored 1/2.
+
+| claimed confidence | n | fully solved |
+|---|---:|---|
+| 4 | 20 | 16 (80%) |
+| 5 | 6 | 5 (83%) |
+
+Two claims here, of different strength. The **resolution** claim — that
+confidence does not separate right from wrong — is underpowered: the base rate
+is 84%, so there is little variance to predict at n=26, and 80% vs 83% is noise.
+Do not read that table as "confidence is uninformative"; read it as "this
+experiment cannot tell".
+
+The **range** claim is solid and does not depend on the base rate. An audit that
+only ever emits 4 or 5, and never RETRY, is not functioning as a gate. It is
+functioning as a reflection prompt — which agents repeatedly credit with
+changing their work, and which is genuinely valuable — but the rejection half of
+the mechanism is inert.
+
+**What changed as a result.** An unanchored 1–5 invites exactly this collapse,
+so the scale is now anchored to something checkable, using the concept the
+solvers themselves found most useful — whether the situations the test input
+requires are witnessed in training:
+
+```
+5  every situation the test requires is witnessed in a training pair, checked.
+4  one such situation is unwitnessed and you have hedged it with candidate 2.
+3  a situation the test needs is unwitnessed and you have NOT hedged it.
+2  the rule fits training and you cannot say why it should generalise.
+1  you are submitting because the budget is running out.
+```
+
+Whether that produces a 3 — or a RETRY — is an empirical question the next
+rounds answer. It may not: a solver confident enough to submit is, by
+construction, a solver that thinks it is at 4 or 5. If the anchors change
+nothing, that is worth knowing too, and it would be evidence for the stronger
+reading of `design.md`'s claim: that self-review cannot reject its own work and
+only an independent reader can.
