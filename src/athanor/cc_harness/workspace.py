@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from . import prompt as prompt_mod
 from .config import CCRunConfig
 
 ASSETS = Path(__file__).parent / "assets"
+STATE_SUBDIR = ".athanor"
 
 
 @dataclass
@@ -130,6 +132,64 @@ def athanor_src_root() -> str:
     return str(Path(__file__).resolve().parents[2])
 
 
+#: Libraries worth telling the solver about. NumPy in particular: the doctrine
+#: carries printing rules for it, and advice about a library that turns out not
+#: to be installed is worse than no advice.
+_PROBED_MODULES = ("numpy", "PIL", "scipy")
+
+_PROBE_SOURCE = (
+    "import importlib.util,sys;"
+    "print(sys.version.split()[0]);"
+    "print(','.join(m for m in %r if importlib.util.find_spec(m)))" % (_PROBED_MODULES,)
+)
+
+
+def probe_interpreter(command: str) -> dict[str, Any] | None:
+    """Version and available libraries for ``command``, or None if unusable."""
+    try:
+        completed = subprocess.run(
+            [command, "-c", _PROBE_SOURCE], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    lines = (completed.stdout or "").strip().splitlines()
+    if not lines:
+        return None
+    modules = [m for m in (lines[1].split(",") if len(lines) > 1 else []) if m]
+    return {"command": command, "version": lines[0], "modules": modules}
+
+
+def choose_interpreter() -> dict[str, Any]:
+    """Pick the interpreter the solver should use, and say what it provides.
+
+    Prefers whatever ``python`` resolves to on PATH — that is what the agent
+    will reach for — but falls back to the interpreter running the harness when
+    that one carries libraries the PATH interpreter lacks. A workspace whose
+    contract promises NumPy on a runtime without NumPy sends the solver into a
+    dead end at the worst possible moment.
+    """
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for command in ("python", "python3", sys.executable):
+        if not command or command in seen:
+            continue
+        seen.add(command)
+        probed = probe_interpreter(command)
+        if probed is not None:
+            candidates.append(probed)
+
+    if not candidates:
+        return {"command": sys.executable, "version": "", "modules": [], "probed": False}
+
+    # More libraries wins; ties go to the earlier (more natural) command.
+    best = max(candidates, key=lambda c: len(c["modules"]))
+    if len(best["modules"]) == len(candidates[0]["modules"]):
+        best = candidates[0]
+    return {**best, "probed": True}
+
+
 def build_workspace(
     *,
     task_id: str,
@@ -173,9 +233,13 @@ def build_workspace(
     )
     _write(root / ".claude" / "settings.json", prompt_mod.settings_json(hook_script=hook_path))
 
+    interpreter = choose_interpreter()
+    _write(root / STATE_SUBDIR / "harness_python", sys.executable)
     _write(
         root / "CLAUDE.md",
-        prompt_mod.build_workspace_claude_md(task_id=task_id, puzzle_data=visible, config=config),
+        prompt_mod.build_workspace_claude_md(
+            task_id=task_id, puzzle_data=visible, config=config, interpreter=interpreter
+        ),
     )
     _write(root / "NOTES.md", prompt_mod.build_notes_seed(task_id))
     _write(
@@ -194,6 +258,7 @@ def build_workspace(
         "min_hypothesis_chars": config.min_hypothesis_chars,
         "max_test_predictions": config.max_test_predictions,
         "solve_timeout_s": config.solve_timeout_s,
+        "interpreter": interpreter,
         "iterations": [],
         "accepted": None,
         "last_hypothesis_sha": "",

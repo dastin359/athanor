@@ -113,11 +113,13 @@ def load_invariants(workspace: Path) -> list[dict[str, Any]]:
             entries.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    # Later verifications of the same claim supersede earlier ones.
+    # Later verifications of the same claim supersede earlier ones, and a
+    # retraction removes it: the ledger is only worth reading if everything in
+    # it has actually been executed.
     deduped: dict[str, dict[str, Any]] = {}
     for entry in entries:
         deduped[str(entry.get("claim"))] = entry
-    return list(deduped.values())
+    return [entry for entry in deduped.values() if not entry.get("retracted")]
 
 
 def append_event(workspace: Path, event: dict[str, Any]) -> None:

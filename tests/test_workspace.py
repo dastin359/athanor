@@ -210,8 +210,8 @@ class TestArcToolkit:
             "verify('every output is 9x9', lambda: len(train_samples[0]['output']) == 9)\n",
         )
         assert result.returncode == 0, result.stderr
-        assert "[VERIFIED] every output keeps the input shape" in result.stdout
-        assert "[REFUTED ] every output is 9x9" in result.stdout
+        assert "[VERIFIED ] every output keeps the input shape" in result.stdout
+        assert "[REFUTED  ] every output is 9x9" in result.stdout
 
         entries = [
             json.loads(line)
@@ -231,7 +231,7 @@ class TestArcToolkit:
             "verify('this blows up', lambda: 1 / 0)\n",
         )
         assert result.returncode == 0, result.stderr
-        assert "[REFUTED ]" in result.stdout
+        assert "[REFUTED  ]" in result.stdout
         assert "ZeroDivisionError" in result.stdout
 
     def test_check_dry_runs_a_candidate_for_free(self, workspace):

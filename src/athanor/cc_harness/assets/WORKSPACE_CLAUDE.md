@@ -3,6 +3,14 @@
 Solve one ARC-AGI-2 task in this directory. Everything you need is here; nothing
 outside this directory is relevant, and the test outputs are not in it.
 
+## Environment
+
+__ENVIRONMENT__
+
+`from arc import ...` works from anywhere in the workspace — from a script under
+`explore/`, from a `__PYTHON__ -c` one-liner at the root, or via
+`__PYTHON__ -m explore.foo`. You never need `sys.path` boilerplate.
+
 ## Layout
 
 ```
@@ -20,10 +28,6 @@ NOTES.md              your durable research state — keep it current
 .athanor/             run ledger: iterations, verified invariants, reports
 ```
 
-`from arc import ...` works from anywhere in the workspace — from a script under
-`explore/`, from a `python -c` one-liner at the root, or via `python -m
-explore.foo`. You never need `sys.path` boilerplate.
-
 ## The loop
 
 1. **Look.** `Read task/images/train_0.png` … and the test input(s). Then dump
@@ -36,23 +40,37 @@ explore.foo`. You never need `sys.path` boilerplate.
    enough that a programmer who has never seen this puzzle could reimplement
    `solve()` from it alone.
 4. **Implement and dry-run.** Write `solution/solve.py`, then run
-   `python dryrun.py`. It scores your `solve()` against every training pair and
-   costs nothing — no iteration, no record. Iterate here until it passes.
+   `__PYTHON__ dryrun.py`. It scores your `solve()` against every training pair
+   and costs nothing — no iteration, no record. Iterate here until it passes.
    Every bug you catch with `dryrun.py` is a budgeted submission you keep.
-5. **Submit.** `python gate.py submit`. Budgeted and permanent.
+5. **Submit.** `__PYTHON__ gate.py submit`. Budgeted and permanent.
 6. **Reflect.** The gate's output ends with what to do next. Follow it, and
    append the reflection to `NOTES.md`.
 7. **Accept.** Once training passes, write `solution/audit.md`, then
-   `python gate.py accept`. That ends the run — stop working after it succeeds.
+   `__PYTHON__ gate.py accept`. That ends the run — stop working after it
+   succeeds.
 
 ## Gate commands
 
 | Command | Cost | What it does |
 |---|---|---|
-| `python dryrun.py` | free | Scores `solution/solve.py` against the training pairs. Use it before every submission. |
-| `python gate.py status` | free | Distilled research state: iterations, verified invariants, last hypothesis, notes tail. **Run this first after any context compaction.** |
-| `python gate.py submit` | 1 iteration | Runs `solution/solve.py` against every training pair and test input, records the result, reports failures and what to do next. |
-| `python gate.py accept` | free | Finalizes the run using the last submission and `solution/audit.md`. |
+| `__PYTHON__ dryrun.py` | free | Scores `solution/solve.py` against the training pairs. Use it before every submission. |
+| `__PYTHON__ gate.py status` | free | Distilled research state: iterations, verified invariants, last hypothesis, notes tail. **Run this first after any context compaction.** |
+| `__PYTHON__ gate.py submit` | 1 iteration | Runs `solution/solve.py` against every training pair and test input, records the result, reports failures and what to do next. |
+| `__PYTHON__ gate.py accept` | free | Finalizes the run using the last submission and `solution/audit.md`. |
+
+## The invariant ledger
+
+`arc.verify(claim, condition)` appends to `.athanor/invariants.jsonl`. Two
+semantics worth knowing:
+
+- **Most recent entry per claim wins.** Re-verifying the same claim string
+  supersedes the earlier record rather than duplicating it.
+- **Retraction.** If a check was wrong — a condition that was accidentally a
+  tautology, say — withdraw it with `arc.verify("the claim", retract=True)`. It
+  then disappears from `gate.py status`. Do this rather than leaving it: the
+  ledger is only worth reading because everything in it has been executed, and
+  one claim that merely looks verified devalues all of them.
 
 ## Rules the gate enforces
 
@@ -70,6 +88,15 @@ explore.foo`. You never need `sys.path` boilerplate.
   reading of the puzzle.
 - `accept` requires `solution/audit.md` with a `CONFIDENCE: <1-5>` line and a
   `DECISION: ACCEPT` line.
+
+## Working habits
+
+- One question per exploration script, named for the question it answers.
+- If you import one `explore/` script from another, guard its report behind
+  `if __name__ == "__main__":` — otherwise its output re-prints into every
+  downstream run and pollutes your context.
+- Print summaries, not grids you have already seen. A boolean, a count, or a
+  set of shapes usually carries the finding.
 
 ## Out of bounds
 

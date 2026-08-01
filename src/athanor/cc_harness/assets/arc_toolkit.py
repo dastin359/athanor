@@ -94,7 +94,13 @@ def _caller_source() -> str:
     return "<unknown>"
 
 
-def verify(claim: str, condition: bool | Callable[[], Any], note: str | None = None) -> bool:
+def verify(
+    claim: str,
+    condition: bool | Callable[[], Any] = False,
+    note: str | None = None,
+    *,
+    retract: bool = False,
+) -> bool:
     """Establish a claim about this puzzle by executing it.
 
     ``condition`` is either a boolean or a zero-argument callable (use a
@@ -110,9 +116,22 @@ def verify(claim: str, condition: bool | Callable[[], Any], note: str | None = N
 
     Prints ``[VERIFIED]`` or ``[REFUTED]``, records the result, and returns the
     boolean so you can branch on it.
+
+    The ledger is append-only and **the most recent entry for a claim wins**, so
+    re-verifying a claim supersedes the earlier record. If a check was wrong —
+    a condition that was accidentally a tautology, say — withdraw it::
+
+        verify("outputs are always square", retract=True)
+
+    A retracted claim disappears from ``invariants()`` and from
+    ``gate.py status``. Withdrawing a bad invariant matters: the whole point of
+    the ledger is that everything in it has been executed, and one claim that
+    only looks verified poisons the rest.
     """
     error = ""
-    if callable(condition):
+    if retract:
+        holds = False
+    elif callable(condition):
         try:
             holds = bool(condition())
         except Exception as exc:  # noqa: BLE001 - a check that blows up has not held
@@ -126,6 +145,8 @@ def verify(claim: str, condition: bool | Callable[[], Any], note: str | None = N
         "holds": holds,
         "source": _caller_source(),
     }
+    if retract:
+        entry["retracted"] = True
     if note:
         entry["note"] = str(note)
     if error:
@@ -139,7 +160,7 @@ def verify(claim: str, condition: bool | Callable[[], Any], note: str | None = N
     except OSError:
         pass  # a read-only workspace must not break exploration
 
-    label = "VERIFIED" if holds else "REFUTED "
+    label = "RETRACTED" if retract else ("VERIFIED " if holds else "REFUTED  ")
     suffix = f"  ({note})" if note else ""
     if error:
         suffix += f"  [{error}]"
@@ -148,7 +169,7 @@ def verify(claim: str, condition: bool | Callable[[], Any], note: str | None = N
 
 
 def invariants() -> list[dict[str, Any]]:
-    """Everything verify() has recorded so far, most recent claim wins."""
+    """Live invariants: most recent entry per claim, retractions removed."""
     ledger = WORKSPACE / ".athanor" / "invariants.jsonl"
     if not ledger.is_file():
         return []
@@ -162,7 +183,7 @@ def invariants() -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         latest[str(entry.get("claim"))] = entry
-    return list(latest.values())
+    return [entry for entry in latest.values() if not entry.get("retracted")]
 
 
 # ── free dry-run ─────────────────────────────────────────────────────────────
@@ -244,7 +265,11 @@ def check(solve_fn: Callable[[Grid], Any], *, verbose: bool = True) -> dict[str,
             f"(mean pixel {summary['train_pixel_accuracy']:.3f})"
         )
         if summary["all_train_correct"]:
-            print("== ready for `python gate.py submit` (write solution/hypothesis.md first)")
+            hypothesis = WORKSPACE / "solution" / "hypothesis.md"
+            if hypothesis.is_file() and hypothesis.read_text(encoding="utf-8").strip():
+                print("== ready for `python gate.py submit`")
+            else:
+                print("== write solution/hypothesis.md, then `python gate.py submit`")
     return summary
 
 
@@ -366,13 +391,16 @@ def png(grid: Grid, path: str | os.PathLike[str], cell: int = 24) -> str | None:
     Returns the path, or None when Pillow is unavailable. Useful for looking at
     a predicted output the way you looked at the puzzle: as a picture.
     """
+    if not grid:
+        return None
     try:
         from PIL import Image, ImageDraw
     except ImportError:
-        print("Pillow is not installed; cannot render PNG.")
-        return None
-    if not grid:
-        return None
+        # The interpreter running this script has no Pillow, but the one that
+        # built the workspace did — it rendered task/images/. Borrow it rather
+        # than making the doctrine's "look at your prediction" advice a dead end.
+        return _png_via_harness_python(grid, path, cell)
+
     height, width = len(grid), len(grid[0])
     image = Image.new("RGB", (width * cell, height * cell), (255, 255, 255))
     draw = ImageDraw.Draw(image)
@@ -387,6 +415,47 @@ def png(grid: Grid, path: str | os.PathLike[str], cell: int = 24) -> str | None:
     target.parent.mkdir(parents=True, exist_ok=True)
     image.save(target, format="PNG", compress_level=1)
     return str(target)
+
+
+def _png_via_harness_python(grid: Grid, path: str | os.PathLike[str], cell: int) -> str | None:
+    """Render through the interpreter that built this workspace."""
+    import subprocess
+
+    recorded = WORKSPACE / ".athanor" / "harness_python"
+    if not recorded.is_file():
+        print("Pillow is not installed here and no fallback interpreter was recorded.")
+        return None
+    executable = recorded.read_text(encoding="utf-8").strip()
+    if not executable:
+        print("Pillow is not installed here and no fallback interpreter was recorded.")
+        return None
+
+    payload = json.dumps({"grid": grid, "path": str(path), "cell": int(cell), "palette": _PALETTE})
+    source = (
+        "import json,sys\n"
+        "from PIL import Image, ImageDraw\n"
+        "a=json.loads(sys.stdin.read())\n"
+        "g=a['grid']; c=a['cell']; pal={int(k):tuple(v) for k,v in a['palette'].items()}\n"
+        "h,w=len(g),len(g[0])\n"
+        "im=Image.new('RGB',(w*c,h*c),(255,255,255)); d=ImageDraw.Draw(im)\n"
+        "for r in range(h):\n"
+        "    for x in range(w):\n"
+        "        d.rectangle([x*c,r*c,x*c+c,r*c+c],fill=pal.get(int(g[r][x]),(128,128,128)),outline=(50,50,50))\n"
+        "import os\n"
+        "os.makedirs(os.path.dirname(os.path.abspath(a['path'])) or '.',exist_ok=True)\n"
+        "im.save(a['path'],format='PNG',compress_level=1)\n"
+    )
+    try:
+        done = subprocess.run(
+            [executable, "-c", source], input=payload, capture_output=True, text=True, timeout=60
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"Could not render PNG via {executable}: {exc}")
+        return None
+    if done.returncode != 0:
+        print(f"Could not render PNG via {executable}: {(done.stderr or '').strip()[:200]}")
+        return None
+    return str(path)
 
 
 def _pairs() -> Iterable[tuple[Grid, Grid]]:

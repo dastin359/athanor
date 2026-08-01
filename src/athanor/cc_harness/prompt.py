@@ -166,7 +166,52 @@ def build_initial_prompt(
     return "\n".join(parts)
 
 
-def build_workspace_claude_md(*, task_id: str, puzzle_data: dict[str, Any], config: CCRunConfig) -> str:
+#: Libraries the doctrine or the toolkit assumes, mapped to what they buy.
+_LIBRARY_NOTES = {
+    "numpy": "array work and fast whole-grid comparisons",
+    "PIL": "rendering a grid to PNG via `arc.png()`",
+    "scipy": "labelling and morphology helpers",
+}
+
+
+def describe_environment(interpreter: dict[str, Any] | None) -> str:
+    """State plainly what the solver's runtime provides.
+
+    A contract that assumes NumPy on a runtime without NumPy sends the agent
+    into a dead end at the worst moment, so the workspace says what is actually
+    installed rather than what is usually installed.
+    """
+    if not interpreter or not interpreter.get("probed"):
+        return (
+            "Run everything with `python`. The harness could not probe this runtime, so "
+            "check for a library with `python -c \"import numpy\"` before relying on it."
+        )
+
+    command = interpreter.get("command") or "python"
+    version = interpreter.get("version") or "unknown version"
+    modules = list(interpreter.get("modules") or [])
+
+    lines = [f"Run everything with `{command}` (Python {version})."]
+    if modules:
+        available = ", ".join(f"`{m}` ({_LIBRARY_NOTES.get(m, 'available')})" for m in modules)
+        lines.append(f"Available beyond the standard library: {available}.")
+    missing = [m for m in _LIBRARY_NOTES if m not in modules]
+    if missing:
+        lines.append(
+            "NOT installed: "
+            + ", ".join(f"`{m}`" for m in missing)
+            + ". Use the standard library instead — do not spend an experiment discovering this."
+        )
+    return "\n".join(lines)
+
+
+def build_workspace_claude_md(
+    *,
+    task_id: str,
+    puzzle_data: dict[str, Any],
+    config: CCRunConfig,
+    interpreter: dict[str, Any] | None = None,
+) -> str:
     template = (ASSETS / "WORKSPACE_CLAUDE.md").read_text(encoding="utf-8")
     substitutions = {
         "__TASK_ID__": task_id,
@@ -176,6 +221,8 @@ def build_workspace_claude_md(*, task_id: str, puzzle_data: dict[str, Any], conf
         "__BEST_EFFORT__": str(config.best_effort_iterations),
         "__MAX_CANDIDATES__": str(config.max_test_predictions),
         "__MIN_HYPOTHESIS_CHARS__": str(config.min_hypothesis_chars),
+        "__PYTHON__": (interpreter or {}).get("command") or "python",
+        "__ENVIRONMENT__": describe_environment(interpreter),
     }
     for key, value in substitutions.items():
         template = template.replace(key, value)

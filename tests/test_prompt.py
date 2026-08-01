@@ -99,12 +99,52 @@ class TestWorkspaceContract:
             task_id="mirror01",
             puzzle_data=MIRROR_TASK,
             config=CCRunConfig(max_iterations=9, best_effort_iterations=3, min_hypothesis_chars=250),
+            interpreter={"command": "python", "version": "3.11.0", "modules": ["numpy"], "probed": True},
         )
-        assert "__" not in text, "an unsubstituted placeholder survived"
+        import re
+
+        leftover = re.findall(r"__[A-Z_]+__", text)
+        assert leftover == [], f"unsubstituted placeholders survived: {leftover}"
         assert "task `mirror01`" in text
         assert "**9 submissions.**" in text
         assert "last 3 of" in text
         assert "250" in text
+
+    def test_claude_md_substitutes_the_interpreter_command(self):
+        text = prompt.build_workspace_claude_md(
+            task_id="mirror01",
+            puzzle_data=MIRROR_TASK,
+            config=CCRunConfig(),
+            interpreter={"command": "/opt/py/bin/python", "version": "3.12.1", "modules": [], "probed": True},
+        )
+        assert "/opt/py/bin/python gate.py submit" in text
+        assert "__PYTHON__" not in text
+
+
+class TestEnvironmentDescription:
+    """A contract that promises NumPy on a runtime without it is worse than silence."""
+
+    def test_lists_what_is_present(self):
+        text = prompt.describe_environment(
+            {"command": "python", "version": "3.11.0", "modules": ["numpy", "PIL"], "probed": True}
+        )
+        assert "Python 3.11.0" in text
+        assert "`numpy`" in text and "`PIL`" in text
+
+    def test_names_what_is_missing(self):
+        text = prompt.describe_environment(
+            {"command": "python", "version": "3.11.0", "modules": [], "probed": True}
+        )
+        assert "NOT installed" in text
+        assert "`numpy`" in text
+        assert "do not spend an experiment discovering this" in text
+
+    def test_unprobed_runtime_says_so_rather_than_guessing(self):
+        text = prompt.describe_environment({"command": "python", "probed": False})
+        assert "could not probe" in text
+
+    def test_missing_interpreter_info_is_handled(self):
+        assert "python" in prompt.describe_environment(None)
 
     def test_settings_json_wires_the_compaction_hook(self, tmp_path):
         import json
