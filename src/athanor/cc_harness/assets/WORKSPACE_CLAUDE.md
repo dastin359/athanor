@@ -56,7 +56,8 @@ NOTES.md              your durable research state — keep it current
 | Command | Cost | What it does |
 |---|---|---|
 | `__PYTHON__ dryrun.py` | free | Scores `solution/solve.py` against the training pairs. Use it before every submission. |
-| `__PYTHON__ gate.py status` | free | Distilled research state: iterations, verified invariants, last hypothesis, notes tail. **Run this first after any context compaction.** |
+| `__PYTHON__ gate.py status` | free | Distilled research state: iterations, executed ledger, last hypothesis, notes tail. **Run this first after any context compaction.** |
+| `__PYTHON__ gate.py status --brief` | free | Same, minus the hypothesis dump and notes tail — iteration history and ledger only. Use this for a mid-run check. |
 | `__PYTHON__ gate.py submit` | 1 iteration | Runs `solution/solve.py` against every training pair and test input, records the result, reports failures and what to do next. |
 | `__PYTHON__ gate.py accept` | free | Finalizes the run, using `solution/audit.md`. It re-runs `solution/solve.py` as it stands, so adding a second candidate after a train-perfect submission costs you nothing — if the rule regresses, it falls back to what you submitted. |
 
@@ -85,9 +86,10 @@ gate replays it. Four things worth knowing:
 - **A changed verdict is loud, and worth stopping for.** If a claim held
   earlier and fails now, `CHANGED VERDICT` prints: whatever you built while it
   held is now suspect.
-- **`gate.py status` marks dead ends `[DEAD]`, not `[OK]`.** A `refute()` entry
-  that "holds" means the hypothesis is dead, so the claim beside `[DEAD]` is
-  something you ruled *out*. Read the marker, not just the sentence.
+- **`gate.py status` marks dead ends `[KILLED]`, not `[OK]`.** A `refute()`
+  entry that "holds" means the hypothesis is dead, so the claim beside
+  `[KILLED]` is something you ruled *out*. Read the marker, not just the
+  sentence.
 - **Record from a script, not from `python -c`.** `verify()` recovers evidence
   by reading your script's source; from a `-c` one-liner or a heredoc there is
   no source to read, so the entry carries the claim and nothing about what ran,

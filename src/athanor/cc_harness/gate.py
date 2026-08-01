@@ -193,7 +193,16 @@ def best_effort_active(state: dict[str, Any], *, used: int | None = None) -> boo
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
-def cmd_status(workspace: Path) -> tuple[str, int]:
+def cmd_status(workspace: Path, *, brief: bool = False) -> tuple[str, int]:
+    """Distilled research state.
+
+    ``brief`` drops the stored hypothesis and the NOTES tail, leaving the
+    iteration history and the executed ledger. A solver reported reaching for
+    ``head``/``tail`` twice on a ~120-line status mid-run, which is the opposite
+    of the "print signal, not dumps" rule this harness holds it to. The full
+    form stays the default because the compaction hook injects it, and after a
+    compaction the hypothesis is exactly what you have lost.
+    """
     state = load_state(workspace)
     iterations = state.get("iterations") or []
     hypothesis = ""
@@ -208,6 +217,10 @@ def cmd_status(workspace: Path) -> tuple[str, int]:
     notes = _read_text(workspace, NOTES_PATH)
     if len(notes) > NOTES_TAIL_CHARS:
         notes = "… (earlier entries omitted) …\n" + notes[-NOTES_TAIL_CHARS:]
+
+    if brief:
+        hypothesis = ""
+        notes = ""
 
     report = format_status(
         state=state,
@@ -564,7 +577,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Athanor CC harness verification gate.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("status", help="Print the distilled research state (use this after a compaction).")
+    status = sub.add_parser(
+        "status", help="Print the distilled research state (use this after a compaction)."
+    )
+    status.add_argument(
+        "--brief",
+        action="store_true",
+        help="Iteration history and executed ledger only — no hypothesis dump, no NOTES tail.",
+    )
     sub.add_parser("submit", help="Record a formal iteration: hypothesis + solve() vs. the training pairs.")
     sub.add_parser("accept", help="Finalize the run using the last submission and solution/audit.md.")
     return parser
@@ -575,8 +595,10 @@ def main(argv: list[str] | None = None) -> int:
     workspace: Path | None = None
     try:
         workspace = find_workspace()
-        handler = {"status": cmd_status, "submit": cmd_submit, "accept": cmd_accept}[args.command]
-        report, code = handler(workspace)
+        if args.command == "status":
+            report, code = cmd_status(workspace, brief=bool(getattr(args, "brief", False)))
+        else:
+            report, code = {"submit": cmd_submit, "accept": cmd_accept}[args.command](workspace)
     except GateError as exc:
         # Refusals are the harness's most informative telemetry: they say which
         # precondition the agent tripped and how often. Record them, or the

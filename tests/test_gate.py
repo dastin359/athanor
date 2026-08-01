@@ -473,6 +473,40 @@ class TestUnspentCandidatePrompt:
         assert "the strict diagonal reading" in report
         assert "inductive leap" in report or "applied to the test input" in report
 
+    def test_brief_status_drops_the_dumps_and_keeps_the_ledger(self, workspace):
+        """A solver reached for head/tail twice on a ~120-line status mid-run.
+
+        Its note: that is the opposite of the "print signal, not dumps" rule
+        the same harness holds it to.
+        """
+        import json
+        import subprocess
+        import sys as _sys
+
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / ".athanor" / "invariants.jsonl").write_text(
+            json.dumps({"claim": "outputs keep the shape", "holds": True,
+                        "source": "explore/a.py"}) + "\n",
+            encoding="utf-8",
+        )
+        (workspace.root / "NOTES.md").write_text(
+            "a very distinctive notes marker\n" * 40, encoding="utf-8"
+        )
+
+        def run(*extra):
+            return subprocess.run(
+                [_sys.executable, "gate.py", "status", *extra],
+                cwd=str(workspace.root), capture_output=True, text=True, timeout=60,
+            )
+
+        full, brief = run(), run("--brief")
+        assert full.returncode == 0 and brief.returncode == 0, brief.stderr
+        assert "outputs keep the shape" in brief.stdout
+        assert "a very distinctive notes marker" in full.stdout
+        assert "a very distinctive notes marker" not in brief.stdout
+        assert len(brief.stdout.splitlines()) < len(full.stdout.splitlines())
+
     def test_status_marks_a_dead_end_dead_not_ok(self, workspace):
         """Reported live: the status replay inverted every refute() entry.
 
