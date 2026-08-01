@@ -381,13 +381,47 @@ partial answers so far are noted inline below.
   solution. The self-audit is a weaker substitute by construction. The gap
   should be measurable on the hard-pair frontier in `RESULTS.md`.
 
-  *Not yet measured.* Six for six leaves the question open: nothing has been
-  train-perfect and wrong. `signals.py` now recovers the model-free half of the
-  reviewer's job mechanically, which bounds the gap but does not close it.
+  *Partly answered, and the answer was not what the question assumed.* The cost
+  showed up on `88e364bc`: train-perfect, wrong by 2 cells out of 400, accepted
+  at confidence 4. But the failure was not overfitting in the sense the question
+  anticipated. The solver had the correct rival reading implemented, and killed
+  it by taking a regularity that held across the training *outputs* and applying
+  it to the test *input*. That is an inductive leap wearing a proof's clothes,
+  and it is *more* dangerous under this doctrine than under prose reasoning,
+  because it arrives with a `[REFUTED]` line in the ledger and reads as settled.
+  Executed verification compresses the cost of checking; it does not turn
+  induction into deduction.
+
+  The mechanical signals in `signals.py` cannot reach that class of error —
+  shape, palette and structure were all consistent, and they correctly fired
+  nothing. What *did* recover it is cheaper than a reviewer and narrower:
+  `arc.rival()` plus the gate reporting a registered rival that fits every
+  training pair and disagrees with the submission. On `abc82100` — a zero-solve
+  frontier pair — the registered rival was the correct answer and the task
+  scored on candidate 2. Second-attempt usage across the experiment moved from
+  2/11 test examples to 5/8.
+
+  So the reviewer-shaped hole is real but partly fillable without a reviewer:
+  the recoverable part is *ambiguity the solver already noticed and then argued
+  away*, and the fix is to make the arguing-away visible rather than to add a
+  second opinion. What remains unfilled is genuine misreading that the solver
+  never entertained an alternative to.
 - **Is compaction a real regression?** ICAE compresses on measured context
   pressure with a purpose-built schema; Claude Code compacts on its own schedule
   with a general summarizer. The disk-backed state is meant to cover the
   difference. Whether it does is an empirical question.
+
+  *Untested directly — no run has been compacted — but the state that would
+  survive one has been inspected, and it degrades in ways worth knowing.* Three
+  separate failures of the same kind turned up: a tautology recorded as a
+  verified invariant; an invariant whose recorded evidence was the bare name
+  `allok`; and `NOTES.md` still holding its seeded template after seven
+  exploration scripts and six invariants. Each looks recorded and carries no
+  information, which is worse than an empty ledger because it reads as
+  established fact to the context that inherits it. All three now warn at the
+  point of the mistake. The pattern is consistent enough to state as a design
+  rule: **durability machinery degrades silently, so the checks that guard it
+  earn their cost.**
 - **Where does the cost land?** The flagship's headline is $3.12/task. Claude
   Code carries a larger default system prompt and a general-purpose tool
   surface, but avoids re-sending puzzle data on every turn and does not pay for
