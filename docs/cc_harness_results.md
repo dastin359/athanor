@@ -553,3 +553,65 @@ Four more harness bugs, all mine, all found by agents rather than by tests:
 The pattern across all four: **every convenience added to the budgeted path
 creates an incentive to spend budget, and every door added to acceptance needs
 the same locks as the front one.**
+
+---
+
+## The cache defect: the harness was paying full price on every task
+
+The cost caveat above assumed the only thing missing was a batch. It wasn't. I
+ran one and read the token counts per task:
+
+```
+task 1   cache_write 52k
+task 2   cache_write 61k     ← should have been near zero
+```
+
+The second task in a sequential batch wrote *more* cache than the first. There
+was no amortisation at all — the mechanism the flagship's $3.12/task figure
+depends on was simply not operating in this harness.
+
+**Cause.** Every task runs in its own workspace directory, and Claude Code's
+default system prompt embeds the working directory (along with env info, memory
+paths, and git status). The cached prefix therefore differed on every single
+task. Prompt caching matches on an exact prefix; one differing path near the
+front invalidates everything after it.
+
+**Fix.** `--exclude-dynamic-system-prompt-sections`, which relocates those
+volatile sections into the first user message. It applies only alongside the
+default system prompt — which is what this harness uses, since it composes via
+`--append-system-prompt` rather than replacing the prompt outright. Wired to
+`CCRunConfig.stable_system_prompt`, default on.
+
+**Measurement.** Rather than wait on a second batch, a direct A/B: the same
+trivial prompt (`Reply with exactly: OK`) run in two different working
+directories, with and without the flag.
+
+| | workspace 1 | workspace 2 |
+|---|---|---|
+| **without the flag** — cache_write | 1739 | 1739 |
+| **without the flag** — cache_read | 3289 | 3289 |
+| **with the flag** — cache_write | 1675 | **745** |
+| **with the flag** — cache_read | 3289 | **4219** |
+
+Without the flag, workspace 2 wrote the identical 1739 tokens workspace 1 did —
+byte-for-byte no reuse, exactly the batch's signature. With the flag, workspace
+2's write dropped to 745 while its read rose to 4219: the second workspace
+consumed the prefix the first one had cached.
+
+That closes the caveat left standing after the production run. The earlier
+statement — that a comparable cost figure "requires `athanor cc batch` over a
+real task set with a warm cache" — was true but incomplete. The harness could
+not have produced a warm cache at all, however many tasks it ran.
+
+**Cost after the fix**, sequential batch, four unseen public-eval tasks:
+
+| task | result | iterations | cost |
+|---|---|---|---|
+| `e8686506` | SOLVED 1/1 | 1 | $1.702 |
+| `78332cb0` | SOLVED 2/2 | 1 | $1.707 |
+| `7b5033c1` | SOLVED 1/1 | 1 | $1.066 |
+
+Against the flagship's $3.12 mean and $1.71 median per task. These are
+first-iteration solves, so they are the cheap end of the distribution and not a
+mean — but they are no longer inflated by a defect, which is the part that
+changed.
