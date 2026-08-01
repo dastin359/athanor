@@ -456,6 +456,10 @@ class TestArcToolkit:
         assert "blob majority, branch count" in result.stdout
         assert "you already did the hard part" in result.stdout
         assert "registered no rival readings" not in result.stdout
+        # A sweep carries no per-test-index detail, so the advice must not imply
+        # relevance to the specific unhedged example — the same overreach that
+        # made irrelevant rival names "train you to skim it".
+        assert "may bear on a different" in result.stdout
 
     def test_hedging_advice_ignores_a_decided_sweep(self, workspace):
         result = self._run(

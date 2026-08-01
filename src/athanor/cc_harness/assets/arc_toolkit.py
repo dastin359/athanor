@@ -776,8 +776,15 @@ def _hedging_advice(test_rows: list[dict[str, Any]]) -> None:
             print(f"   your sweep '{entry.get('claim')}' left {len(survivors)} readings alive:")
             print(f"     {', '.join(survivors)}")
         print("   You established by execution that training cannot separate these. Put them")
-        print("   through arc.rival(name, fn) and ship whichever diverges on the test input —")
+        print("   through arc.rival(name, fn) and see which diverges on the example above —")
         print("   that is what the second slot is for, and you already did the hard part.")
+        # A sweep records no per-test-index information, so unlike a rival it
+        # cannot be filtered to the example with the free slot. Say so rather
+        # than implying relevance the harness has not established — naming an
+        # irrelevant rival was reported as "training you to skim it", and the
+        # same wording would earn the same result here.
+        print("   (A sweep records no per-example detail, so this may bear on a different")
+        print("   test example than the one above. Running the rival is how you find out.)")
         _print_situation_types_prompt()
         return
 
