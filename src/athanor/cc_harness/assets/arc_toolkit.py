@@ -253,8 +253,12 @@ def sweep(
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "claim": str(question),
-        # A sweep "holds" when it is decisive: exactly one reading left standing.
-        "holds": len(survivors) == 1,
+        # A sweep always holds: it ran and produced a finding. Tying decisiveness
+        # to `holds` meant a solver's most valuable sweep — four launch criteria,
+        # all four surviving, the discovery that changed what it shipped — was
+        # recorded as *not holding*, which "reads like a failure in the ledger".
+        "holds": True,
+        "decisive": len(survivors) == 1,
         "mode": "sweep",
         "survivors": survivors,
         "killed": killed,
@@ -944,6 +948,31 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
                 print(
                     f"           It predicts differently on {where}. That is your second candidate."
                 )
+                # There is one slot. A solver registered two diverging rivals in
+                # the same script and each was told, independently, "that is your
+                # second candidate" — because standing is computed against
+                # solve.py alone and cannot see a sibling registered two lines
+                # earlier. It had to arbitrate in prose.
+                claimants = [
+                    other.get("name")
+                    for other in rivals()
+                    if other.get("fits_training")
+                    and str(other.get("name")) != entry["name"]
+                    and any(
+                        index in differs
+                        for index, standing_ in (
+                            _rival_standing(other.get("predictions") or []) or {}
+                        ).items()
+                        if standing_ == "differs"
+                    )
+                ]
+                if claimants:
+                    listed = ", ".join(str(name) for name in claimants[:3])
+                    print(
+                        f"           But {len(claimants)} other registered rival(s) also diverge "
+                        f"on {where}: {listed}.\n"
+                        "           There is one slot. Which of them survives the most evidence?"
+                    )
             if hedged:
                 where = ", ".join(f"test {i}" for i in hedged)
                 print(

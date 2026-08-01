@@ -137,11 +137,16 @@ def collect_trace(workspace_root: Path | str) -> dict[str, Any]:
         # facts. Ruled-out entries now count separately, in both directions.
         "invariants_held": sum(
             1 for entry in invariants
-            if entry.get("holds") and entry.get("mode") != "ruled_out"
+            if entry.get("holds") and entry.get("mode") not in {"ruled_out", "sweep"}
         ),
         "invariants_refuted": sum(
             1 for entry in invariants
-            if not entry.get("holds") and entry.get("mode") != "ruled_out"
+            if not entry.get("holds") and entry.get("mode") not in {"ruled_out", "sweep"}
+        ),
+        "sweeps": sum(1 for entry in invariants if entry.get("mode") == "sweep"),
+        "sweeps_undecided": sum(
+            1 for entry in invariants
+            if entry.get("mode") == "sweep" and not entry.get("decisive")
         ),
         "invariants_ruled_out": sum(
             1 for entry in invariants
@@ -219,6 +224,8 @@ def format_trace(trace: dict[str, Any], *, verbose: bool = False) -> str:
     breakdown = f"{trace['invariants_held']} held, {trace['invariants_refuted']} refuted"
     if trace.get("invariants_ruled_out"):
         breakdown += f", {trace['invariants_ruled_out']} ruled out"
+    if trace.get("sweeps"):
+        breakdown += f", {trace['sweeps']} sweep(s)"
     lines.append(f"  recorded invariants     : {len(trace['invariants'])}"
                  f"  ({density['invariants_per_iteration']} per iteration)"
                  f"  [{breakdown}]")

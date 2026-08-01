@@ -607,6 +607,69 @@ class TestArcToolkit:
         assert result.returncode == 0, result.stderr
         assert "LEN 400" in result.stdout
 
+    def test_two_rivals_claiming_one_slot_are_told_so(self, workspace):
+        """Reported live: each of two diverging rivals was told it was "the" second.
+
+        Standing is computed against solve.py alone, so a rival cannot see a
+        sibling registered two lines earlier with an equal claim. The solver had
+        to arbitrate in prose.
+        """
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt_a(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "def alt_b(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[8, 8, 8], [8, 8, 8]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('reading A', alt_a)\n"
+            "rival('reading B', alt_b)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "other registered rival(s) also diverge" in result.stdout
+        assert "reading A" in result.stdout
+        assert "There is one slot" in result.stdout
+
+    def test_a_lone_diverging_rival_is_not_told_it_is_contested(self, workspace):
+        from conftest import MIRROR_SOLVE
+
+        (workspace.root / "solution" / "solve.py").write_text(MIRROR_SOLVE, encoding="utf-8")
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('the only reading', alt)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "also diverge" not in result.stdout
+
+    def test_an_undecided_sweep_is_not_recorded_as_a_failure(self, workspace):
+        """A solver's most valuable sweep left four readings alive.
+
+        Tying `holds` to decisiveness recorded that as not holding, which
+        "reads like a failure in the ledger even though it is the finding that
+        changed what I shipped".
+        """
+        result = self._run(
+            workspace,
+            "from arc import sweep, invariants\n"
+            "n = 3\n"
+            "sweep('which launch criterion?', {'a': n == 3, 'b': n == 3, 'c': n == 9})\n"
+            "e = invariants()[-1]\n"
+            "print('HOLDS', e['holds'], 'DECISIVE', e['decisive'])\n",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "HOLDS True DECISIVE False" in result.stdout
+
     def test_sweep_records_a_per_reading_detail(self, workspace):
         """The first solver to use sweep() lost its 0/3-vs-3/3 scores.
 

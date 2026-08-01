@@ -220,6 +220,9 @@ a proof; killing it with an out-of-sample extrapolation is not.
 
   `arc.solution_module()` returns the whole module when you need its helpers —
   building a rival that reuses the shipped parse rather than re-deriving it.
+  **`solution/` is not a package**: `from solution.solve import _helper` raises
+  `ModuleNotFoundError`, which is the natural next thought once you have inlined
+  helpers into `solve.py`. Reach into it with `arc.solution_module()` instead.
 
 - Print summaries, not grids you have already seen. A boolean, a count, or a
   set of shapes usually carries the finding.
