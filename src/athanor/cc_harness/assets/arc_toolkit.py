@@ -925,7 +925,8 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
         # The whole point is to stop a slot being forfeited, so the payload is
         # whether spending it would change anything. This function holds the
         # rival's predictions; comparing them costs nothing.
-        standing = _rival_standing(predictions)
+        shipped = _shipped_candidates()
+        standing = _rival_standing(predictions, shipped)
         if standing is None:
             print(
                 "           No solution/solve.py to compare against yet — the gate will check "
@@ -961,7 +962,7 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
                     and any(
                         index in differs
                         for index, standing_ in (
-                            _rival_standing(other.get("predictions") or []) or {}
+                            _rival_standing(other.get("predictions") or [], shipped) or {}
                         ).items()
                         if standing_ == "differs"
                     )
@@ -993,7 +994,29 @@ def rival(name: str, solve_fn: Callable[[Grid], Any]) -> dict[str, Any]:
     return entry
 
 
-def _rival_standing(predictions: list[Any]) -> dict[int, str] | None:
+def _shipped_candidates() -> dict[int, list[Any]] | None:
+    """The current solution's candidates per test index, computed once.
+
+    Returns None when there is no loadable solution. An index missing from the
+    mapping is one whose solve() raised.
+    """
+    try:
+        solve = load_solution()
+    except Exception:  # noqa: BLE001 - no solution yet, or it does not load
+        return None
+    out: dict[int, list[Any]] = {}
+    for index, sample in enumerate(test_samples):
+        try:
+            raw = solve([row[:] for row in sample["input"]])
+        except Exception:  # noqa: BLE001
+            continue
+        out[index] = raw if _looks_like_candidate_list(raw) else [raw]
+    return out
+
+
+def _rival_standing(
+    predictions: list[Any], shipped: dict[int, list[Any]] | None = None
+) -> dict[int, str] | None:
     """How a rival stands against the current solution, per test index.
 
     ``"differs"``  — predicts something neither of your candidates does.
@@ -1009,21 +1032,24 @@ def _rival_standing(predictions: list[Any]) -> dict[int, str] | None:
     your first" are opposite situations and must not print the same sentence.
 
     Returns None when there is no loadable solution to compare against.
+
+    ``shipped`` lets a caller supply the shipped candidates it has already
+    computed. Without it, checking N rivals for contention meant N module loads
+    and N x T solve() calls — for an advisory print, on a solve() that may do
+    real search.
     """
-    try:
-        solve = load_solution()
-    except Exception:  # noqa: BLE001 - no solution yet, or it does not load
+    if shipped is None:
+        shipped = _shipped_candidates()
+    if shipped is None:
         return None
 
     standing: dict[int, str] = {}
     for index, prediction in enumerate(predictions):
         if prediction is None or index >= len(test_samples):
             continue
-        try:
-            raw = solve([row[:] for row in test_samples[index]["input"]])
-        except Exception:  # noqa: BLE001
+        mine = shipped.get(index)
+        if mine is None:
             continue
-        mine = raw if _looks_like_candidate_list(raw) else [raw]
         if not mine:
             standing[index] = "differs"
         elif prediction == mine[0]:

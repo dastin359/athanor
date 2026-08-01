@@ -636,6 +636,40 @@ class TestArcToolkit:
         assert "reading A" in result.stdout
         assert "There is one slot" in result.stdout
 
+    def test_contention_check_loads_the_solution_once(self, workspace):
+        """The contention check is an advisory print; it must not re-run solve().
+
+        Naively it did: N registered rivals meant N module loads and N x T
+        solve() calls, on a solve() that may do real search.
+        """
+        (workspace.root / "solution" / "solve.py").write_text(
+            "import os\n"
+            "with open(os.path.join(os.path.dirname(__file__), 'loads.txt'), 'a') as fh:\n"
+            "    fh.write('x')\n"
+            "def solve(grid):\n"
+            "    return [row[::-1] for row in grid]\n",
+            encoding="utf-8",
+        )
+        result = self._run(
+            workspace,
+            "from arc import rival\n"
+            "def alt(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[9, 9, 9], [9, 9, 9]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "def alt2(g):\n"
+            "    if g[0][0] == 6:\n"
+            "        return [[8, 8, 8], [8, 8, 8]]\n"
+            "    return [r[::-1] for r in g]\n"
+            "rival('reading A', alt)\n"
+            "rival('reading B', alt2)\n",
+        )
+        assert result.returncode == 0, result.stderr
+        loads = (workspace.root / "solution" / "loads.txt").read_text()
+        # Two rival() calls, each loading the shipped solution once. Before the
+        # fix the second call loaded it again per already-registered rival.
+        assert len(loads) == 2, f"solution loaded {len(loads)} times, expected 2"
+
     def test_a_lone_diverging_rival_is_not_told_it_is_contested(self, workspace):
         from conftest import MIRROR_SOLVE
 
