@@ -354,7 +354,11 @@ def run_task(
     )
     record["finished_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    # Only a launched run has an outcome to record. Writing result.json for a
+    # freshly prepared workspace would plant a zero-iteration record that any
+    # later scoring pass could mistake for the finished run.
+    if launch:
+        (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
     return record
 
 
@@ -381,19 +385,57 @@ def collect_outcome(workspace: Workspace, puzzle_data: dict[str, Any]) -> dict[s
 
 def rescore_run(run_dir: Path | str, *, dataset_root: str | None = None,
                 dataset_split: str = "public_eval") -> dict[str, Any]:
-    """Recompute a finished run's outcome from its workspace on disk."""
+    """Recompute a run's outcome from its workspace on disk.
+
+    Works whether or not the run was started by ``athanor cc run``: a workspace
+    driven by hand, or by a sub-agent inside an existing Claude Code session,
+    carries everything needed to score it. The workspace is the record.
+    """
     from .workspace import load_workspace
 
     run_dir = Path(run_dir).resolve()
-    record = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    result_path = run_dir / "result.json"
+    record: dict[str, Any] = {}
+    if result_path.is_file():
+        try:
+            record = json.loads(result_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            record = {}
+
     workspace = load_workspace(run_dir / "workspace")
+    record.setdefault("task_id", workspace.task_id)
+    record.setdefault("harness", "claude-code")
+    record.setdefault("workspace", str(workspace.root))
+    record.setdefault("config", workspace.config.to_dict())
+
     puzzle_path = Path(
         record.get("puzzle_path")
         or resolve_task_path(task=workspace.task_id, split=dataset_split, dataset_root=dataset_root)
     )
+    record["puzzle_path"] = str(puzzle_path)
     record.update(collect_outcome(workspace, load_task_json(puzzle_path)))
-    (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+    stream_path = run_dir / "stream.jsonl"
+    record["integrity"] = contamination_scan(
+        workspace_root=workspace.root,
+        stream_path=stream_path if stream_path.is_file() else None,
+        dataset_root=puzzle_path.parent,
+        task_id=workspace.task_id,
+    )
+    result_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return record
+
+
+def discover_runs(out_dir: Path | str) -> list[Path]:
+    """Run directories under ``out_dir``, with or without a result.json."""
+    out_dir = Path(out_dir).resolve()
+    if not out_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in out_dir.iterdir()
+        if path.is_dir() and ((path / "result.json").is_file() or (path / "workspace").is_dir())
+    )
 
 
 def run_batch(

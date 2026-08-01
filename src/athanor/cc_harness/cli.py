@@ -9,7 +9,7 @@ from pathlib import Path
 from athanor.data import list_tasks
 
 from .config import CCRunConfig
-from .runner import default_event_printer, rescore_run, run_batch, run_task
+from .runner import default_event_printer, discover_runs, rescore_run, run_batch, run_task
 from .scoring import aggregate, format_aggregate
 from .trace import collect_trace, format_trace
 
@@ -159,11 +159,19 @@ def cmd_score(args: argparse.Namespace) -> int:
         return 2
 
     results = []
-    for run_dir in sorted(p for p in out_dir.iterdir() if (p / "result.json").is_file()):
-        if args.rescore:
-            results.append(rescore_run(run_dir, dataset_root=args.dataset_root, dataset_split=args.split))
-        else:
-            results.append(json.loads((run_dir / "result.json").read_text(encoding="utf-8")))
+    for run_dir in discover_runs(out_dir):
+        # Recompute from the workspace by default: the workspace is the record,
+        # and result.json is a cache that goes stale the moment an agent keeps
+        # working — including a workspace prepared by `cc workspace` and then
+        # driven by a sub-agent, whose cached record predates all of the work.
+        try:
+            if args.cached and (run_dir / "result.json").is_file():
+                results.append(json.loads((run_dir / "result.json").read_text(encoding="utf-8")))
+            else:
+                results.append(rescore_run(run_dir, dataset_root=args.dataset_root, dataset_split=args.split))
+        except Exception as exc:  # noqa: BLE001 - one unreadable run must not sink the sweep
+            print(f"  {run_dir.name}: could not score ({type(exc).__name__}: {exc})")
+            results.append({"task_id": run_dir.name, "error": f"{type(exc).__name__}: {exc}"})
 
     if not results:
         print(f"No runs found under {out_dir}")
@@ -230,7 +238,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
     score = sub.add_parser("score", help="Aggregate finished runs in a directory.")
     score.add_argument("out_dir", nargs="?", default=DEFAULT_OUT_DIR)
-    score.add_argument("--rescore", action="store_true", help="Recompute from each workspace on disk.")
+    score.add_argument(
+        "--cached",
+        action="store_true",
+        help="Trust each run's stored result.json instead of recomputing from its workspace.",
+    )
     score.add_argument("--dataset-root", default=None)
     score.add_argument("--split", default="public_eval")
     score.set_defaults(func=cmd_score)

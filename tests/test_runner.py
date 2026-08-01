@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+import json
+
 from conftest import LONG_HYPOTHESIS, MIRROR_SOLVE, MIRROR_TASK, write_solution
 
 from athanor.cc_harness import gate, runner
@@ -134,6 +136,53 @@ class TestStreamTranslation:
 
     def test_unknown_message_types_are_ignored(self):
         assert list(runner.stream_message_to_events({"type": "stream_event"})) == []
+
+
+class TestRescoringFromAWorkspace:
+    """A workspace driven by a sub-agent has no result.json — score it anyway."""
+
+    def _accept(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+
+    def test_scores_a_run_with_no_result_json(self, workspace, task_json):
+        self._accept(workspace)
+        run_dir = workspace.root.parent
+        assert not (run_dir / "result.json").is_file()
+
+        record = runner.rescore_run(run_dir, dataset_root=task_json.parent)
+        assert record["task_id"] == "mirror01"
+        assert record["accepted"] is True
+        assert record["score"]["solved"] is True
+        assert (run_dir / "result.json").is_file()
+
+    def test_rescoring_supersedes_a_stale_record(self, workspace, task_json):
+        run_dir = workspace.root.parent
+        # A record written before the agent did any work — exactly what
+        # `cc workspace` used to leave behind.
+        (run_dir / "result.json").write_text(
+            json.dumps({"task_id": "mirror01", "accepted": False, "iterations_used": 0}), encoding="utf-8"
+        )
+        self._accept(workspace)
+
+        record = runner.rescore_run(run_dir, dataset_root=task_json.parent)
+        assert record["accepted"] is True
+        assert record["iterations_used"] == 1
+
+    def test_records_an_integrity_verdict(self, workspace, task_json):
+        self._accept(workspace)
+        record = runner.rescore_run(workspace.root.parent, dataset_root=task_json.parent)
+        assert record["integrity"]["suspected"] is False
+
+    def test_discover_runs_finds_workspace_only_directories(self, workspace):
+        out_dir = workspace.root.parent.parent
+        found = runner.discover_runs(out_dir)
+        assert workspace.root.parent in found
+
+    def test_discover_runs_on_a_missing_directory(self, tmp_path):
+        assert runner.discover_runs(tmp_path / "nope") == []
 
 
 class TestOutcomeCollection:
