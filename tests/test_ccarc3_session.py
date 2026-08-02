@@ -62,11 +62,7 @@ def test_the_generated_files_are_valid_after_template_substitution(ws):
 
 
 def test_the_worked_examples_name_things_that_exist(ws):
-    """A CLAUDE.md example is API documentation the solver will run verbatim.
-
-    `arc.level_pace(client.transitions(), baselines)` shipped in the doctrine
-    and `baselines` is not defined anywhere in a solver's namespace.
-    """
+    """A CLAUDE.md example is API documentation the solver will run verbatim."""
     import re
 
     from athanor.ccarc3 import ArcClient
@@ -77,6 +73,58 @@ def test_the_worked_examples_name_things_that_exist(ws):
         assert hasattr(ArcClient, attr), f"CLAUDE.md calls client.{attr}(), which does not exist"
     for name in set(re.findall(r"\barc\.(\w+)\(", text)):
         assert name in exported, f"CLAUDE.md calls arc.{name}(), which is not exported"
+
+
+def test_the_worked_examples_do_not_reference_undefined_variables(ws):
+    """The bug the test above was written for, which it could not actually catch.
+
+    It validated the *callee* names in `client.X(` / `arc.X(` and nothing else.
+    The shipped defect was `arc.level_pace(client.transitions(), baselines)` --
+    a real function, called with an **argument** that exists nowhere in a
+    solver's namespace. Checking names alone passes that happily.
+
+    This parses every python block and resolves each free variable against what
+    a solver actually has: the three names `session` provides, plus builtins,
+    plus anything the block defines itself.
+    """
+    import ast
+    import builtins
+    import re
+
+    provided = {"client", "gate", "arc", "INFO", "ACTION_BUDGET", "HERE"}
+    # Names the reader is explicitly asked to supply -- a forward model and the
+    # endpoints to route between. Every other free name is a defect, and this
+    # set is closed on purpose: a new placeholder has to be justified here.
+    placeholders = {"step", "start", "goal"}
+    text = (ws.root / "CLAUDE.md").read_text() + "\n" + (ws.root / "DOCTRINE.md").read_text()
+    blocks = re.findall(r"```python\n(.*?)```", text, re.DOTALL)
+    assert blocks, "the guide is supposed to contain worked examples"
+
+    unknown = []
+    for block in blocks:
+        try:
+            tree = ast.parse(block)
+        except SyntaxError:
+            continue                      # a fragment, not a runnable example
+        bound = set(provided) | set(dir(builtins))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound.add(node.id)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                bound |= {(a.asname or a.name).split(".")[0] for a in node.names}
+            elif isinstance(node, (ast.comprehension,)):
+                for name in ast.walk(node.target):
+                    if isinstance(name, ast.Name):
+                        bound.add(name.id)
+            elif isinstance(node, (ast.FunctionDef, ast.Lambda)):
+                bound |= {a.arg for a in node.args.args}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                if node.id not in bound and node.id not in placeholders:
+                    unknown.append(node.id)
+    assert not unknown, (
+        f"worked examples reference names a solver does not have: {sorted(set(unknown))}"
+    )
 
 
 def test_the_workspace_puts_athanor_on_the_path(ws):
@@ -167,15 +215,19 @@ def test_a_full_reset_splits_the_trace_into_playthroughs(ws):
     _trace(ws, [
         ("RESET", 0, "NOT_FINISHED", [[[1]]]),
         ("ACTION1", 1, "NOT_FINISHED", [[[2]]]),
+        ("ACTION1", 2, "NOT_FINISHED", [[[6]]]),    # the discarded run got to 2
         ("RESET", 0, "NOT_FINISHED", [[[3]]]),      # level went down: full reset
         ("ACTION1", 1, "NOT_FINISHED", [[[4]]]),
-        ("ACTION1", 2, "WIN", [[[5]]]),
     ])
     out = collect_outcome(ws, exit_code=0, timed_out=False)
     assert out["actions_used"] == 5, "the budget paid for all of them"
     assert out["playthroughs"] == 2
-    assert out["actions_final_playthrough"] == 3, "the restart itself was billed"
-    assert out["levels_reached_final_playthrough"] == 2
+    assert out["actions_final_playthrough"] == 2, "the restart itself was billed"
+    # The surviving playthrough peaks *below* the discarded one on purpose. With
+    # both peaking at the same level this assertion passed under a whole-trace
+    # max too, and could not detect the scoping it exists to check.
+    assert out["levels_reached"] == 2, "the best ever reached"
+    assert out["levels_reached_final_playthrough"] == 1, "what actually survived"
 
 
 def test_a_run_with_no_full_reset_reports_one_playthrough(ws):
@@ -199,8 +251,39 @@ def test_turns_and_cost_are_read_from_the_stream(ws):
                       "total_cost_usd": 3.0381, "duration_ms": 732994}) + "\n"
     )
     assert run_cost(ws.root / "stream.jsonl") == {
-        "turns": 36, "cost_usd": 3.0381, "duration_s": 733,
+        "turns": 36, "cost_usd": 3.0381, "duration_s": 733, "attempts": 1,
     }
+
+
+def test_cost_sums_every_attempt_of_a_resumed_run(ws):
+    """`run_game` archives the previous stream on resume while the trace carries
+    across, so reading only stream.jsonl charged a resumed run's full action
+    count against the last attempt's bill alone."""
+    from athanor.ccarc3.session import run_cost
+
+    def stream(path, turns, cost, ms):
+        path.write_text(json.dumps({
+            "type": "result", "num_turns": turns,
+            "total_cost_usd": cost, "duration_ms": ms}) + "\n")
+
+    stream(ws.root / "stream.1.jsonl", 40, 5.00, 600_000)   # the archived attempt
+    stream(ws.root / "stream.jsonl", 36, 3.00, 400_000)     # the one that finished
+    assert run_cost(ws.root / "stream.jsonl") == {
+        "turns": 76, "cost_usd": 8.00, "duration_s": 1000, "attempts": 2,
+    }
+
+
+def test_a_non_object_line_in_the_stream_is_not_a_crash(ws):
+    """`run_game` merges the solver's stderr into stream.jsonl, so a line can be
+    valid JSON without being an object."""
+    from athanor.ccarc3.session import run_cost
+
+    (ws.root / "stream.jsonl").write_text(
+        '"a bare string mentioning \\"type\\":\\"result\\""\n'
+        + json.dumps({"type": "result", "num_turns": 5,
+                      "total_cost_usd": 1.0, "duration_ms": 1000}) + "\n"
+    )
+    assert run_cost(ws.root / "stream.jsonl")["turns"] == 5
 
 
 def test_a_run_with_no_stream_reports_no_cost_rather_than_failing(ws):

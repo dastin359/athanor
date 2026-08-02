@@ -263,14 +263,29 @@ def test_waste_spread_across_a_working_action_is_still_reported(stub):
     replies.extend([
         _frame(frame=[[[1, 1]]], available_actions=av),
         _frame(frame=[[[2, 2]]], available_actions=av),   # works
-        _frame(frame=[[[2, 2]]], available_actions=av),   # no effect
+        _frame(frame=[[[2, 2]]], available_actions=av),   # (1,0) does nothing
+        _frame(frame=[[[2, 2]]], available_actions=av),   # (2,0) does nothing too
         _frame(frame=[[[3, 3]]], available_actions=av),   # works again
     ])
-    for x in range(4):
+    for x in range(5):
         c.act(6, x=x, y=0)
     s = c.status()
-    assert "1/3 actions on this level changed nothing" in s
+    assert "2/4 actions on this level changed nothing" in s
+    # Two dead clicks at *different* coordinates. Keying ACTION6 by name alone
+    # would call the second a repeat; only (x, y) keying gets this right, and
+    # the previous version of this test used one dead click, so `repeats` was 0
+    # under either keying and the assertion could not fail.
     assert "repeated" not in s, "distinct coordinates are not a repeat"
+
+
+def test_the_same_dead_click_twice_is_a_repeat(stub):
+    """The other half: identical coordinates must be recognised."""
+    c, _, replies = stub
+    av = [6]
+    replies.extend([_frame(frame=[[[1]]], available_actions=av)] * 4)
+    for _ in range(4):
+        c.act(6, x=7, y=7)
+    assert "2 repeated one you had already seen do nothing" in c.status()
 
 
 def test_the_waste_tally_restarts_with_the_level(stub):
@@ -676,3 +691,23 @@ def test_state_is_written_after_every_action(stub):
     c.act(1)
     saved = json.loads(c.state_path.read_text())
     assert saved["actions_used"] == 1 and saved["level"] == 1
+
+
+def test_a_state_file_predating_the_counters_does_not_report_a_false_pace(monkeypatch, tmp_path):
+    """Defaulting to 0 made `status()` claim 0.0x and hide OVER BASELINE on
+    exactly the resumed runs the warning exists for."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    with path.open("w") as fh:
+        for i in range(12):                       # 12 actions, all on level 0
+            fh.write(json.dumps({
+                "i": i, "level": 0, "action": "ACTION1", "params": {},
+                "frames": [[[i]]], "score": 0, "state": "NOT_FINISHED",
+                "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
+    # an old-format state file: game and level, but none of today's counters
+    path.with_suffix(".state.json").write_text(json.dumps(
+        {"game_id": "g", "card_id": "card-1", "level": 0, "actions_used": 12}))
+
+    c = ArcClient("g", trace_path=path, info=GameInfo("g", baseline_actions=(10,)))
+    assert c.level_actions == 12, "recovered from the trace, not defaulted to 0"
+    assert "OVER BASELINE" in c.status()

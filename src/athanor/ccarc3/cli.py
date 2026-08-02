@@ -103,7 +103,12 @@ def _read_runs(root: Path) -> list[dict]:
     for p in sorted(root.glob("*/result.json")):
         stored = json.loads(p.read_text(encoding="utf-8"))
         trace = p.parent / "trace.jsonl"
-        fresh = {**ledger_facts(trace), **run_cost(p.parent / "stream.jsonl")} if trace.exists() else {}
+        # Cost comes from the stream and does not need the trace. Gating it on
+        # `trace.exists()` silently dropped turns and cost for any run whose
+        # trace is gone -- including archived runs, which keep only result.json.
+        fresh = dict(run_cost(p.parent / "stream.jsonl"))
+        if trace.exists():
+            fresh.update(ledger_facts(trace))
         meta = p.parent / "meta.json"
         if trace.exists() and meta.exists():
             baselines = json.loads(meta.read_text(encoding="utf-8")).get("baseline_actions")

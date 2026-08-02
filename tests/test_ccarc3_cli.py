@@ -105,11 +105,38 @@ def test_report_still_works_for_a_run_whose_trace_is_gone(tmp_path, capsys):
     assert "42" in capsys.readouterr().out
 
 
-def _run_dir(root, game, **kw):
+def _run_dir(root, game, trace=None, **kw):
+    """``trace`` is a list of levels, one per action, so a test can exercise the
+    final-playthrough preference. Without it `_compare` falls back to the stored
+    totals and the day's total-vs-final correction is never reached."""
     d = root / game
     d.mkdir(parents=True)
     (d / "result.json").write_text(json.dumps(_result(game, **kw)))
+    if trace is not None:
+        with (d / "trace.jsonl").open("w") as fh:
+            for i, level in enumerate(trace):
+                fh.write(json.dumps({
+                    "i": i, "level": level, "action": "ACTION1", "params": {},
+                    "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                    "full_reset": False, "available_actions": ["ACTION1"],
+                }) + "\n")
     return d
+
+
+def test_compare_uses_the_final_playthrough_on_both_sides(tmp_path, capsys):
+    """Exercises the correction `_run_dir` alone cannot reach.
+
+    The 'before' run climbed to level 3, was wiped, and ended on 1 having spent
+    3 of its 6 actions after the reset. Reporting 3 levels against 3 actions
+    would credit progress a full reset destroyed.
+    """
+    old, new = tmp_path / "old", tmp_path / "new"
+    _run_dir(old, "g", trace=[0, 1, 2, 3, 0, 1], levels_total=6, baseline_total=100)
+    _run_dir(new, "g", trace=[0, 1, 2], levels_total=6, baseline_total=100)
+    cli.main(["report", "--out-dir", str(new), "--against", str(old)])
+    out = capsys.readouterr().out
+    assert "1->2/6" in out, "before ended on level 1, not the 3 it once reached"
+    assert "3->2" not in out.split("paired against")[-1].split("\n")[2]
 
 
 def test_report_pairs_a_game_against_an_earlier_batch(tmp_path, capsys):

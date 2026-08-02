@@ -332,7 +332,15 @@ class ArcClient:
         self.available_actions = tuple(saved.get("available_actions") or ())
         self.full_resets = int(saved.get("full_resets", 0))
         self.wasted_actions = int(saved.get("wasted_actions", 0))
-        self.level_actions = int(saved.get("level_actions", 0))
+        # A state file written before these counters existed has none of them.
+        # Defaulting `level_actions` to 0 makes `status()` report 0.0x pace and
+        # suppress OVER BASELINE on precisely the resumed runs the warning is
+        # for -- a silently wrong number is worse than an absent one, so derive
+        # it from the trace instead.
+        if "level_actions" in saved:
+            self.level_actions = int(saved["level_actions"])
+        else:
+            self.level_actions = self._level_actions_from_trace(int(saved.get("level", 0)))
         self._last_advanced = bool(saved.get("last_advanced", False))
         self.level_tried = int(saved.get("level_tried", 0))
         self.level_dead = int(saved.get("level_dead", 0))
@@ -520,7 +528,14 @@ class ArcClient:
             self.level_actions = 0
         if not frame.get("frame"):
             self.wasted_actions += 1
-        self._account_effect(frame, name, payload, board_replaced=self.level != previous_level)
+        # `or frame.get("full_reset")` is defensive, not decorative: the server
+        # has already been observed lying in the other direction (false on a
+        # 6 -> 0 transition), so trust neither signal alone. Either one means
+        # the board this level's tally describes is gone.
+        self._account_effect(
+            frame, name, payload,
+            board_replaced=self.level != previous_level or bool(frame.get("full_reset")),
+        )
         # Set *after* reading, so the flag describes the state the next call
         # will act in -- which is exactly when the RESET trap fires.
         self._last_advanced = self.level > previous_level
@@ -594,6 +609,25 @@ class ArcClient:
 
         return " ".join(facts) + "".join(f"\n  <- {w}" for w in warnings)
 
+    def _level_actions_from_trace(self, level: int) -> int:
+        """How many actions the ledger says were spent on ``level``.
+
+        Only used to repair a state file that predates the counter. Attribution
+        matches :func:`athanor.ccarc3.scoring.actions_per_level`: an action
+        belongs to the level it was taken *from*.
+        """
+        try:
+            transitions = self.transitions()
+        except Exception:  # noqa: BLE001 -- a resume must not die on a bad trace
+            return 0
+        count = 0
+        previous: int | None = None
+        for t in transitions:
+            if (previous if previous is not None else 0) == level:
+                count += 1
+            previous = t.level
+        return count
+
     def _account_effect(
         self, frame: dict[str, Any], name: str, payload: dict[str, Any], *,
         board_replaced: bool,
@@ -619,7 +653,14 @@ class ArcClient:
         """
         grids = frame.get("frame") or []
         if not grids:
-            return                                    # wasted: never reached the game
+            # A wasted action never reached the game, so it is not evidence
+            # about the action -- but if the *level* changed anyway, the tally
+            # describes a board that no longer exists and must not carry over.
+            if board_replaced:
+                self.level_tried = self.level_dead = self.level_repeats = 0
+                self._dead_keys = []
+                self._last_frame_key = ""
+            return
         key = hashlib.blake2b(
             json.dumps(grids[-1], separators=(",", ":")).encode(), digest_size=16
         ).hexdigest()

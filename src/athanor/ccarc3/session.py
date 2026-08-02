@@ -318,6 +318,7 @@ frame as an image in the real palette, and you can open it with the Read tool
 and see it:
 
 ```python
+ts = client.transitions()
 arc.png(ts[-1].after, "notes/now.png", scale=8)   # then Read notes/now.png
 ```
 
@@ -328,6 +329,7 @@ for exact values and diffs — they are complementary, not alternatives.
 Rules are checked three ways, never two:
 
 ```python
+ts = client.transitions()
 r = arc.Rule(name="...", applies=lambda t: ..., holds=lambda t: ..., scope="game")
 arc.verify(r, ts)     # THIS level only. Can refute.
 arc.survey(r, ts)     # every level. Reports where it holds. Cannot refute.
@@ -565,28 +567,50 @@ def run_cost(stream_path: Path | str) -> dict[str, Any]:
     against `sb26`'s $3.04. Nothing in `result.json` reported any of that, so
     the comparison had to be made by hand from the stream twice.
 
-    Returns an empty dict when the stream is missing or has no result event —
-    a killed run has neither, and that is not an error worth raising over.
+    **Sums every attempt, not just the last.** ``run_game`` archives a previous
+    stream to ``stream.N.jsonl`` when it resumes, while the trace — and so
+    ``actions_used`` — carries across attempts. Reading only ``stream.jsonl``
+    therefore reported a resumed run's actions in full against the *final*
+    attempt's turns and cost, understating the bill by whatever the earlier
+    attempts spent. `ls20` was resumed once.
+
+    Returns an empty dict when no stream has a result event — a killed run has
+    none, and that is not an error worth raising over.
     """
     path = Path(stream_path)
-    if not path.exists():
-        return {}
-    final: dict[str, Any] = {}
-    for line in path.open(encoding="utf-8", errors="ignore"):
-        if '"type":"result"' not in line and '"type": "result"' not in line:
+    attempts = sorted(path.parent.glob("stream.*.jsonl")) + [path]
+    turns = cost = duration = 0
+    found = False
+    for attempt in attempts:
+        if not attempt.exists():
             continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
+        final: dict[str, Any] = {}
+        for line in attempt.open(encoding="utf-8", errors="ignore"):
+            if '"type":"result"' not in line and '"type": "result"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            # `run_game` merges the solver's stderr into this file, so a line can
+            # be valid JSON without being an object. `.get` on a str is an
+            # AttributeError out of a function whose whole contract is "never
+            # raise over a killed run".
+            if isinstance(record, dict) and record.get("type") == "result":
+                final = record
+        if not final:
             continue
-        if record.get("type") == "result":
-            final = record
-    if not final:
+        found = True
+        turns += final.get("num_turns") or 0
+        cost += final.get("total_cost_usd") or 0.0
+        duration += final.get("duration_ms") or 0
+    if not found:
         return {}
     return {
-        "turns": final.get("num_turns"),
-        "cost_usd": final.get("total_cost_usd"),
-        "duration_s": round(final["duration_ms"] / 1000) if final.get("duration_ms") else None,
+        "turns": turns,
+        "cost_usd": cost,
+        "duration_s": round(duration / 1000) if duration else None,
+        "attempts": sum(1 for a in attempts if a.exists()),
     }
 
 

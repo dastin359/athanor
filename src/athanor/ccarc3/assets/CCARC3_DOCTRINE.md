@@ -145,6 +145,7 @@ position or adjacency across one is nonsense: the avatar appears to teleport.
 This bites in a plain list comprehension exactly as hard as in a rule:
 
 ```python
+ts = client.transitions()
 [t for t in ts if t.action == "ACTION1" and not t.board_replaced]
 ```
 
@@ -294,10 +295,10 @@ Ask questions in code:
 
 ```python
 ts = client.transitions()
-# Which actions ever changed anything?
-{t.action for t in ts if t.changed}
+# Which actions are doing anything at all, on this level?
+arc.effective_actions(ts, level=client.level)
 # What did ACTION3 do, every time?
-[diff(t.before, t.after) for t in ts if t.action == "ACTION3" and t.changed]
+[arc.diff(t.before, t.after) for t in ts if t.action == "ACTION3" and t.changed]
 ```
 
 Downscaling will not save you as much as you expect — real frames rarely have a
