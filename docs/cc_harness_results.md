@@ -2087,3 +2087,93 @@ one it got right (`88e364bc` test 1 solved; `78332cb0` both wrong, hedged on tes
 calibrated — it knows which input is hard — while its second candidate is drawn
 from too narrow a space to rescue it. That would make candidate *quality*, not
 candidate *targeting*, the thing to work on.
+
+---
+
+## `78332cb0`: the other failure mode, and the one coverage cannot see
+
+The second Arm A failure looks superficially like the first — train-perfect,
+accepted on iteration 1, hedged on test 0 and not on test 1, scored 0.0 — and is
+mechanically its opposite.
+
+The task: a grid of 5×5 blocks separated by magenta lines, relaid into a single
+line of blocks. The solver read the transformation as **a 90° clockwise rotation
+of the block arrangement** and derived three cases from the three training pairs:
+
+| | input blocks | output blocks |
+|---|---|---|
+| train 0 | 2×2 | 4×1 — a column |
+| train 1 | 3×1 — a column | 1×3 — a row |
+| train 2 | 1×3 — a row | 3×1 — a column |
+
+All three fit. Row becomes column, column becomes row, 2×2 becomes column. The
+rule reproduces every training pair exactly, and `check()` and the gate both
+agree it does.
+
+Ground truth for the test inputs:
+
+| | input blocks | output blocks |
+|---|---|---|
+| test 0 | **2×2** | **1×4 — a row** |
+| test 1 | 4×1 — a column | **4×1 — a column** |
+
+**Test 0 has the same 2×2 input arrangement as train 0 and a transposed output.**
+That single fact is decisive, and it needs no statistics: output orientation
+cannot be a function of the input arrangement, because here one input arrangement
+produces both orientations. Test 1 confirms it from the other side — a column
+input that stays a column, where train 1's column became a row. The governing
+variable is something in the block *content*, and the solver's entire framing —
+that the arrangement determines the layout — was wrong rather than
+mis-parameterised.
+
+Both candidates on test 0 came out 23×5 against a 5×23 ground truth. Transposed.
+The single candidate on test 1 came out 5×23 against 23×5. Transposed.
+
+**Now run the coverage check on it.**
+
+```
+3 of 56 lines in solve78.py never run on any training pair (95% reached).
+    95          return [primary, alt]
+    98      ordered = [meta[R - 1 - j][i] for i in range(C) for j in range(R)]
+    99      return _stack_column(ordered)
+```
+
+95% reached, and **not one of the three unreached lines is the bug.** The bug is
+distributed across the orientation logic, every line of which executed on every
+training pair and produced the correct answer each time. Compare `88e364bc`,
+where the faulty line was in the unreached list. The two failures are cleanly
+different:
+
+- **`88e364bc` — untested code.** The rule was right, both readings were
+  enumerated, the strict one was correct, and a bug on a branch training never
+  ran discarded the answer. Coverage finds this.
+- **`78332cb0` — underdetermined rule.** Every line ran, every training pair
+  passed, and the induction was wrong. **Coverage is blind to this by
+  construction**, because there is nothing unexecuted to point at.
+
+**And the hedge went to the wrong axis, for a reason that generalises.** The
+solver hedged on *ordering within the line* — positional versus size-ascending —
+and wrote a careful note about why the training pairs cannot separate them. It
+was right that this was ambiguous. But the fatal error was *orientation of the
+line*, where all three training pairs agreed and it therefore had no doubt at
+all. Both candidates inherited the same wrong orientation, so the hedge could
+not have helped no matter how many candidates it spent.
+
+> A solver hedges where it has doubt. It has no doubt where the training data is
+> unanimous. And with three examples, unanimity is cheap — three pairs can agree
+> perfectly about a variable that is not the governing variable at all. **The
+> hedging mechanism is therefore structurally aimed away from the errors most
+> likely to be fatal.**
+
+This is not an argument against hedging; `88e364bc` shows the machinery working
+exactly as designed, and it is a scoring mechanism ARC-AGI-2 explicitly offers.
+It is an argument that "where should I spend the second candidate?" has a better
+answer than "wherever I noticed ambiguity". The interesting version of the
+question is: *which component of my rule is supported by unanimous agreement
+across few examples, and how many values could that component take?* A component
+that could have taken four values and was pinned by three concordant examples is
+not verified, it is merely unopposed — and it is invisible to every check the
+harness currently runs, because it passes all of them.
+
+**Two failures, two mechanisms, n=2.** Recorded as mechanism rather than rate;
+the rates come when the batch does.
