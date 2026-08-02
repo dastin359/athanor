@@ -2649,3 +2649,56 @@ honest version is narrower and less flattering:
 > first three is to ask which artifact is causally downstream of the question. The
 > remedy for the fourth is just to look — and no amount of methodology substitutes
 > for that, including the methodology I had written down forty minutes earlier.
+
+---
+
+## The iteration budget is inert
+
+Across 24 scored runs of the 4.8 batch, iterations consumed out of a budget of
+**eight**:
+
+```
+0 iterations:  1 run   (abc82100 — never submitted)
+1 iteration : 22 runs
+2 iterations:  1 run
+```
+
+**22 of 24 runs submit once and accept.** This is not a statistic that will shift
+with the remaining tasks; it is a description of how the mechanism is used, and it
+has held at roughly this ratio in every batch this project has run.
+
+The reason is in the gate contract, and it is a design consequence rather than an
+accident. `submit` is budgeted; `check()` is free and unlimited. The gate refuses
+a submission that is not train-perfect, so a solver that runs `check()` first
+never spends an iteration on a refusal. All the actual iteration — hypothesis,
+implementation, failure, revision — happens against `check()`, invisibly to the
+ledger, and by the time `submit` is called the answer is already train-perfect
+and there is nothing left to iterate toward.
+
+> **The budgeted resource is not the scarce one.** `max_iterations` bounds
+> submissions, but submissions were never the constraint. What actually bounds
+> the work is wall-clock time and the solver's own judgement about when a
+> hypothesis is worth committing — neither of which the gate meters. Raising the
+> budget from 8 to 80 would change nothing; lowering it to 2 would change almost
+> nothing.
+
+Two consequences worth acting on.
+
+**The iteration path is barely exercised in practice**, so its behaviour under
+load is largely untested by these runs — the `best_effort_iterations` tail, the
+resume-with-ledger path, the refusal logging. Earlier rounds had to *starve* the
+budget deliberately to reach that code at all. Anything inferred about it from
+batch data is inferred from a sample of one.
+
+**And the metric it invites is misleading.** "Mean iterations to accept ≈ 1.2"
+reads like efficiency — a harness so effective that solvers get it right first
+time. It is closer to the opposite: the number says the ledger cannot see where
+the effort went. A run that spent $10.91 and 50 turns before submitting once
+records the same `iterations_used: 1` as one that spent $1.19 and 18 turns. Cost
+and turns discriminate those two; the iteration count is constant across the
+entire batch and therefore carries almost no information.
+
+For an ARC-AGI-2 harness the practical reading is that the *submission* budget is
+the wrong place to put the pressure, because a solver that self-checks will never
+feel it. If the intent is to make the agent commit earlier or explore longer, the
+lever is wall-clock and the doctrine, not `max_iterations`.
