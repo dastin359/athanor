@@ -3304,3 +3304,65 @@ their stratum. The 4.8 figure additionally assumes zero regression across all 85
 easy tasks, which now has one counterexample (`4e34c42c`, 0.50) and one more here
 (`3e6067c3`, 0.00). **The regression term is the weakest part of both numbers**,
 and it is the cheapest to improve: 68 easy-stratum tasks remain unsampled.
+
+---
+
+## Where an ARC-AGI-3 harness should live, measured rather than argued
+
+The question is whether a Claude-Code-harness attempt at ARC-AGI-3 belongs in
+athanor or in a new repository. The coupling is measurable, so this is an
+empirical question about `cc_harness` rather than a matter of taste.
+
+**4,408 lines, and the ARC-2 semantics are not evenly spread:**
+
+| module | lines | ARC-2-specific mentions |
+|---|---|---|
+| `runner.py` | 631 | 12 |
+| `trace.py` | 350 | 4 |
+| `config.py` | 168 | 5 |
+| `cli.py` | 338 | 8 |
+| `signals.py` | 117 | 8 |
+| `gate.py` | 706 | **35** |
+| `reporting.py` | 625 | **47** |
+| `evaluate.py` | 428 | **55** |
+| `prompt.py` | 407 | **29** |
+| `workspace.py` | 350 | **20** |
+
+There is a seam at roughly **1,600 task-agnostic lines against 2,500 ARC-2
+lines** — and the transferable side is precisely the expensive side: launching
+Claude Code, translating `stream-json` into athanor's event vocabulary, resume,
+salvage-on-timeout, `--ablate`, quota-aware batching, trace collection. Most of
+that was debugged the hard way, and several of its bugs were found only tonight.
+
+The non-transferable side encodes ARC-2's *shape*: `gate.py`'s submit/accept
+under a train-100% requirement, `evaluate.py` scoring `solve(grid)` against
+withheld outputs, the toolkit's `train_samples` / `rival` / `sweep`.
+
+**Recommendation: same repository, new sibling package, and no refactor first.**
+A separate repo duplicates the resume, salvage and quota machinery, which means
+duplicating its bugs; it also breaks the property this whole project exists for,
+that the harness is held constant when results are compared. But extracting a
+clean core from 2,500 lines of woven semantics is work paid *before* any science
+happens, and which seams matter is not yet known. Let the new package import what
+it needs directly and let the shared surface emerge from use.
+
+**The real problem is not layout — it is what replaces the gate.**
+
+athanor's doctrine is *code as verification*, and the gate enforces it by
+refusing any submission whose rule does not reproduce every training example.
+**An interactive benchmark has no training set.** There is nothing to be 100% on
+before acting; the rules are learned by acting. So the mechanism that makes this
+project distinctive has no direct analogue, and "port the harness" quietly means
+"invent a new verification contract".
+
+> The doctrine is *"a claim that has been executed is worth more than a claim
+> that has been asserted."* **Train-100% is not the doctrine — it is the doctrine's
+> ARC-2 implementation.** A candidate analogue for an interactive setting is a
+> *predictive* gate rather than a retrospective one: the agent writes down what
+> it expects the environment to do, executes, and is scored on that prediction
+> before it may bank progress. That keeps execution as the arbiter while dropping
+> the assumption that the examples exist up front.
+
+Worth settling before any code is written, because it determines whether the new
+package shares `gate.py` at all — and that single answer decides how much of the
+2,500 lines is really ARC-2-specific rather than merely written that way.
