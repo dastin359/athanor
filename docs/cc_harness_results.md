@@ -1302,6 +1302,15 @@ contention detection, all shipped between the two sets. The ablated arm had the
 better tools and did worse. That makes the toolkit-improvements story weaker,
 not the doctrine story stronger; both are undercut by the same variance.
 
+> **CORRECTED 2026-08-02.** That paragraph is wrong, and wrong in the direction
+> that penalised the doctrine contrast. The toolkit is **crossed** with condition,
+> not confounded with it. `arc.py` md5s: `8cb06eb6` (round6), **`21e0f74e`
+> (replicate *and* ablation2)**, `341a6434` (ablation3 and arm_a_48). The winning
+> `replicate` and the losing `ablation2` shipped the *same* toolkit, so toolkit
+> version cannot explain the split in either direction. See the section
+> "The ablation was mislabelled" below — which also establishes that the doctrine
+> itself was never removed from any arm.
+
 **What survives from all three arms** is the qualitative finding, which
 replicated cleanly every time: an agent given the toolkit and no doctrine reads
 `arc.py` and adopts the practice — `verify`, `refute`, `sweep`, `rival`,
@@ -2387,3 +2396,100 @@ trusted instead of the bytes. `--append-system-prompt-file` was right there in
 `runner.py`; one `md5sum` across five files would have caught this months of
 conclusions ago. **The experiment I did not verify is the experiment I did not
 run.**
+
+---
+
+## Five runs, two candidates: the ablation refined
+
+The adversarial pass on d35bdbdc finished. The synthesis corrected the refuters
+as well as me, in one place *in the doctrine contrast's favour*, and it replaces
+the "selection rule versus edge case" reading I wrote two sections ago with
+something sharper.
+
+**Correction one, in the contrast's favour: the toolkit is crossed, not
+confounded.** `arc.py` md5s across the five runs:
+
+```
+8cb06eb6  round6     (doctrine, WIN)
+21e0f74e  replicate  (doctrine, WIN)
+21e0f74e  ablation2  (ablated,  LOSS)   <- same toolkit as a winner
+341a6434  ablation3  (ablated,  LOSS)
+341a6434  arm_a_48   (Opus 4.8, LOSS)
+```
+
+A winner and a loser share a byte-identical toolkit, so toolkit version cannot
+carry the split. The earlier claim that "the ablated runs used a strictly newer
+toolkit" is corrected in place above.
+
+**Correction two: the ablated runs were not blind to the discriminating feature,
+and they did seek rivals.** `ablation2/workspace/explore/wire_pairing.py` opens
+with the line
+
+```python
+"""Does the gray wire encode the pairing (an alternative to the colour chain)?"""
+```
+
+It tests connected components and 4-adjacent ports against the true pairing, and
+refutes both. `ablation3` has `02_gray.py`. Both ablated runs hedged all six test
+slots. Files mentioning gray, per run: round6 10, replicate 11, ablation3 9,
+arm_a_48 5, ablation2 4. Rival-seeking was present in every arm.
+
+**And now the striking part. Five runs produced exactly two second candidates.**
+
+```
+                test 0     test 1     test 2
+ground truth   43882962   7a5d4dbb   989db8fd
+round6         43882962   7a5d4dbb      —          WIN
+replicate      43882962   7a5d4dbb   84b81539      WIN
+ablation2      36643cce   95c40947   85b95e5d      loss
+ablation3      36643cce   95c40947   85b95e5d      loss
+arm_a_48       36643cce      —          —          loss
+```
+
+The two winners are **bit-identical to each other**. The three losers are
+**bit-identical to each other**. Across a doctrine change, two toolkit versions,
+five different `CLAUDE.md` files and a model swap, the second slot took exactly
+one of two values. It is not a noisy sample from a wide space of alternatives; it
+is a fork.
+
+**What the fork is.** Both branches are readings of the *same* feature — the gray
+path. The winners built the rival on the path's **degree-1 endpoints**. The losers
+formulated it as **connected components and 4-adjacent ports**, tested that,
+watched it fail, and concluded the gray was inert scenery.
+
+So my earlier framing — hedge on a selection rule, not an edge case — was aimed in
+roughly the right direction and named the wrong variable. The runs did not differ
+in *what category of thing* they hedged on. They differed in **which
+representation of the discriminating feature they tried, and how long they kept
+trying it**.
+
+> **A refutation of a representation is not a refutation of the feature.**
+> `ablation2` did exactly what code-as-verification asks: it formed a rival about
+> the gray wire, implemented it, executed it against the training pairs, and got a
+> negative. The negative was true — of components-and-ports. It then recorded the
+> gray as inert and moved on. The feature was the right one; only the encoding was
+> wrong. **Executing a check licenses a conclusion about the thing you executed,
+> which is narrower than the thing you were asking about**, and nothing in the
+> harness marks that gap.
+
+That reframes the finding this log had promoted as its most transferable — that
+ablated arms verified *more* and used the rigour to kill a correct rival. Closer
+to the truth: they killed a correct *feature* on the strength of a genuine
+refutation of one *encoding* of it. Rigour applied to a proxy is still rigour, and
+it is still wrong.
+
+**Statistics, stated once and plainly.** Fisher exact one-sided: 2/2 vs 0/3 gives
+p = 0.100; the same-model comparison 2/2 vs 0/2 gives p = 0.167; dropping `round6`
+as the discovery run gives p = 0.333. The design could not have reached
+significance before it ran, and the task was selected after its first win. Only
+two distinct outcomes exist in the data, so the effective n is smaller than five.
+**Everything above is a mechanism observation. None of it is a result.**
+
+**What would settle it**, and this is now runnable because `--ablate` exists:
+three doctrine and three ablated runs with `CLAUDE.md` byte-identical within each
+arm and differing *only* by the two named sections, `arc.py` md5 and harness
+commit pinned across all six. Perfect separation at 3v3 gives p = 0.050 — the
+smallest design capable of a significant result at all. Then separate the two
+removed sections factorially, since `## Rival readings` and `## The invariant
+ledger` were deleted together and invariant density is already known not to track
+outcome here (the losing `ablation2` logged 19 against the winning `round6`'s 14).
