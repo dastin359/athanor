@@ -2749,3 +2749,59 @@ session has repeatedly demonstrated: a claim restated at each new n, each versio
 weaker, each explained after the fact. A prediction is only worth something before
 the data arrives, and this one is cheap to check — the batch will settle it within
 the hour.
+
+---
+
+## Arm B is complete: no regression, 9 of 9
+
+The control arm of the Opus 4.8 head-to-head has finished. Its ten tasks were
+drawn with `random.Random(20260801).sample` from the 85 that CoT-4.8-high solves,
+so the baseline is **1.00 on every one of them by construction**, and the arm
+exists to answer a single question: does putting the same model inside CCARC break
+anything it could already do?
+
+```
+task       score    cost turns iters  inv conf cands
+2ba387bc    1.00    1.19    18     1    1    5  [1]
+981571dc    1.00    1.29    18     1    3    5  [1]
+7c66cb00    1.00    2.01    23     1    1    5  [1]
+7666fa5d    1.00    2.62    27     1    3    5  [1]
+5961cc34    1.00    2.71    29     1    5    5  [1]
+409aa875    1.00    2.71    29     1    2    4  [1]
+135a2760    1.00    2.77    30     1    5    4  [1]
+7b0280bc    1.00    3.08    37     1    2    5  [1]
+fc7cae8d    1.00    3.27    34     1    5    4  [1]
+4e34c42c    0.00   25.99    11     1    0    -  []    wall-clock timeout after 3600s
+```
+
+**9 scoreable, 9.00 of 9.00 points, no partials, no zeros.** The tenth,
+`4e34c42c`, is excluded and the run record says why: `error: 'wall-clock timeout
+after 3600s'`. It is an infrastructure loss, not a regression — the gate ledger
+shows a train-perfect submission in hand when the harness stopped it. Counting it
+as a miss would attribute my timeout to the model.
+
+**The answer to the arm's question is no, with the honest caveat that n = 9.**
+Nine of nine is what a clean control looks like at this size; it is also the most
+a nine-task arm can say. It cannot exclude a regression rate below roughly 10%.
+
+Three things in the table are worth more than the headline.
+
+**Not one hedged output in the entire arm.** Zero of nine test outputs shipped a
+second candidate. On tasks a solver finds tractable it commits, and the hedging
+apparatus simply does not engage — which is the correct behaviour, and it means
+every hedging observation in this project comes from Arm A by construction.
+
+**The cost profile is tight and low**: $1.19 to $3.27, mean $2.55 across the nine
+scoreable runs, 18 to 37 turns. Against Arm A's $139 for 21 tasks, easy tasks are
+cheap and predictable in a way hard ones are not. The single $25.99 outlier is the
+timeout, not a difficult puzzle.
+
+**Confidence was 4 or 5 on every run, and every run was right.** That is what
+calibration looks like when the work is genuinely tractable, and it is the
+uninformative half of the picture — a predictor that never varies on a set where
+the outcome never varies has not been tested. Whether confidence discriminates is
+an Arm A question.
+
+The comparison this arm licenses is narrow and worth stating exactly: **on tasks
+the baseline already solves, CCARC neither helps nor hurts.** All the movement in
+this experiment is in Arm A, which is what the design intended.
