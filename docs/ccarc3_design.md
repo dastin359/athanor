@@ -1,16 +1,18 @@
 # CCARC3 — a Claude-Code-as-harness design for ARC-AGI-3
 
-**Status: design, pre-implementation.** No games have been played against the
-live API (no `ARC_API_KEY` yet). Everything in §1 and §2 is verified by reading
-the installed SDK; everything in §3 onward is design, and §7 lists what must be
-measured before the design is trusted.
+**Status: implemented and running.** `athanor.ccarc3` is built and tested, and
+games have been driven against the live API. The design below is kept in the
+order it was reasoned, including the parts that were **wrong** — §4.2 and §2.5
+carry corrections rather than quiet rewrites, because what the reasoning missed
+is more useful than a tidy document.
 
-Provenance is marked throughout, because the two kinds of claim have very
-different strength:
+Provenance is marked throughout, because the kinds of claim have very different
+strength:
 
 - **[SDK]** — read directly out of `arc_agi_3` 0.0.1 / `arcengine` 0.9.3.
 - **[PLAY]** — the operator's direct experience playing games in the public set.
-- **[DESIGN]** — proposed here, not yet validated.
+- **[LIVE]** — measured against the live API with a real key.
+- **[DESIGN]** — proposed here; most is now built, see §8.
 
 ---
 
@@ -36,7 +38,7 @@ class FrameData(BaseModel):
     game_id: str
     frame: list[list[list[int]]]      # a SEQUENCE of 64x64 int grids per action
     state: GameState                   # NOT_PLAYED | NOT_FINISHED | WIN | GAME_OVER
-    score: int                         # 0..254
+    score: int                         # 0..254 -- NOT SENT BY THE LIVE API, see 2.5
     action_input: ActionInput          # the action that PRODUCED this frame
     guid: str | None
     full_reset: bool
@@ -117,37 +119,6 @@ knowledge of real game lengths, and §2.6 shows it would truncate 5 of the 25
 public games outright. The reasoning behind it survives — a guessed cap must not
 be the thing that ends a run, which is the direct lesson from ARC-AGI-2's inert
 iteration budget (38 of 45 runs used 1 of 8) — but the number was wrong.
-
-### 2.6 The API publishes per-level baselines and action-type tags [SDK]
-
-`GET /api/games` returns, for each of the **25** public games, a `baseline_actions`
-list — one entry per level — and usually a `tags` field. Measured:
-
-| | min | median | max |
-|---|---|---|---|
-| levels per game | 6 | 7 | 10 |
-| baseline actions per game | 171 | 638 | **1843** |
-
-Two things follow immediately.
-
-**The stock `MAX_ACTIONS = 80` is not merely conservative, it is unusable.** The
-*shortest* game in the set needs 171 baseline actions. Several individual levels
-exceed 80 on their own, and `dc22-fdcac232` has a single level with a baseline of
-**578**. An 80-action agent is not playing these games; it is sampling their
-opening moves. This is the operator's play experience confirmed with numbers.
-
-**`baseline_actions` is a planning signal, not just a budget.** It is per level
-and known before you start, so it says roughly how long a level *should* take
-when you already understand it. That gives a control law the solver otherwise
-lacks: **at a large multiple of the level's baseline, the working hypothesis is
-probably wrong — stop grinding and go re-explore.** Without it, a solver has no
-way to distinguish "this level is long" from "I have misunderstood it", and will
-happily burn a thousand actions executing a wrong plan.
-
-**`tags` prunes the action space for free.** Of 25 games: 13 `keyboard_click`,
-7 `click`, 4 `keyboard`, 1 untagged. A `click` game is telling you `ACTION6(x,y)`
-is what matters; a `keyboard` game is telling you it is not. Discovering that by
-experiment costs actions that the tag gives away.
 
 ### 2.2 Retry economics: score is best-of, actions are cumulative
 
@@ -307,6 +278,37 @@ Two more fields worth using, both per frame and both free:
 The scorecard adds **`actions_by_level`**, which is directly comparable to the
 published `baseline_actions` — so the §2.6 control law ("am I over budget for
 this level?") can be evaluated live rather than reconstructed.
+
+### 2.6 The API publishes per-level baselines and action-type tags [LIVE]
+
+`GET /api/games` returns, for each of the **25** public games, a `baseline_actions`
+list — one entry per level — and usually a `tags` field. Measured:
+
+| | min | median | max |
+|---|---|---|---|
+| levels per game | 6 | 7 | 10 |
+| baseline actions per game | 171 | 638 | **1843** |
+
+Two things follow immediately.
+
+**The stock `MAX_ACTIONS = 80` is not merely conservative, it is unusable.** The
+*shortest* game in the set needs 171 baseline actions. Several individual levels
+exceed 80 on their own, and `dc22-fdcac232` has a single level with a baseline of
+**578**. An 80-action agent is not playing these games; it is sampling their
+opening moves. This is the operator's play experience confirmed with numbers.
+
+**`baseline_actions` is a planning signal, not just a budget.** It is per level
+and known before you start, so it says roughly how long a level *should* take
+when you already understand it. That gives a control law the solver otherwise
+lacks: **at a large multiple of the level's baseline, the working hypothesis is
+probably wrong — stop grinding and go re-explore.** Without it, a solver has no
+way to distinguish "this level is long" from "I have misunderstood it", and will
+happily burn a thousand actions executing a wrong plan.
+
+**`tags` prunes the action space for free.** Of 25 games: 13 `keyboard_click`,
+7 `click`, 4 `keyboard`, 1 untagged. A `click` game is telling you `ACTION6(x,y)`
+is what matters; a `keyboard` game is telling you it is not. Discovering that by
+experiment costs actions that the tag gives away.
 
 ---
 
@@ -555,10 +557,15 @@ dependency beyond numpy.
 
 ---
 
-## Appendix: verified local loop
+## Appendix: what has actually been run
 
-`scratchpad/arc3/toy_game.py` drives a minimal `arcengine` game RESET -> actions
--> WIN with no API key, confirming that the engine can be driven standalone and
-that frames come back as the integer grids `FrameData` promises. `arcengine`
-allows local authoring without a key; the live API returns 401 without
-`ARC_API_KEY`.
+- **Local loop, no key.** `scratchpad/arc3/toy_game.py` and
+  `athanor.ccarc3.bench.lineage` drive `arcengine` games standalone. The bench
+  game is built so rules and mechanics come apart across levels, which is what
+  makes §5's central claim falsifiable rather than merely stated.
+- **Live API.** `ls20-9607627b` driven with scripted policies, and a full solver
+  workspace generated and run against it. Everything marked [LIVE] came from
+  these, including the three corrections the design needed.
+- **Tests.** 403, covering the grid primitives, the ledger, the three-valued
+  rule core, the gate's refusals, the client's refusals, and workspace/outcome
+  construction.
