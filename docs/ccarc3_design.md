@@ -732,6 +732,38 @@ and the third by driving a real game with a scripted policy. **Run the thing
 before trusting it**, and treat the first real run as an experiment about the
 harness rather than about the model.
 
+### 9.9 A refusal is only as durable as the state that arms it
+
+§9.1 and §9.3 have an intersection, and it is the worst place in the design to
+be wrong. Refusals beat instructions — but a refusal has *state*, and in a
+harness whose caller is a sequence of processes that state has to survive to
+disk like everything else.
+
+The RESET-after-advance refusal is armed by a single boolean recording that the
+last action completed a level. It was a plain in-memory field. Across the
+process boundary that §9.1 says is the defining fact of this architecture, it
+defaulted to `False`, and the guard protecting the one unrecoverable mistake in
+the game stood down. A resumed run opened with RESET, discarded a won game, and
+replayed all seven levels.
+
+The failure is strictly worse than having no refusal at all, for a reason worth
+stating plainly: **a guard that is present but unarmed removes the vigilance
+that its absence would have preserved.** The prompt for that run did say "Do not
+RESET to 'start clean'; that discards real progress" — advice which by §9.3 was
+never going to be sufficient, and which nothing was left to back up.
+
+Two rules follow, both mechanical enough to check:
+
+- **Every field that arms a refusal belongs in the persisted state, and there
+  should be a test that a fresh process still refuses.** Not a test that the
+  refusal fires — that one passed throughout.
+- **Do not let a server flag be the only witness to an irreversible event.** The
+  same run received `full_reset: false` on the transition that took it from
+  level 6 to level 0. Derive the fact from state you own — the level went down —
+  and treat the flag as corroboration. Two of this harness's counters, and the
+  `board_replaced` property documented as the check spatial rules want, were all
+  reading the flag and all reported nothing.
+
 ---
 
 ## Appendix: what has actually been run
@@ -743,6 +775,6 @@ harness rather than about the model.
 - **Live API.** `ls20-9607627b` driven with scripted policies, and a full solver
   workspace generated and run against it. Everything marked [LIVE] came from
   these, including the three corrections the design needed.
-- **Tests.** 403, covering the grid primitives, the ledger, the three-valued
-  rule core, the gate's refusals, the client's refusals, and workspace/outcome
-  construction.
+- **Tests.** 473, covering the grid primitives, the ledger, the three-valued
+  rule core, the gate's refusals, the client's refusals, cross-process
+  resumption, and workspace/outcome construction.
