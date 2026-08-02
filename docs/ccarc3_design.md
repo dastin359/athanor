@@ -557,6 +557,83 @@ dependency beyond numpy.
 
 ---
 
+## 9. What building it taught — findings about the harness, not the game
+
+Everything above §8 is about ARC-AGI-3. These are about *Claude Code as a
+harness*, and they generalise past this benchmark. Each was found by a real
+solver run failing, and none of them would have appeared in a unit test.
+
+### 9.1 A CC solver is a sequence of processes, not a process
+
+The single most important structural fact. An agent works in one-shot
+`python -c` commands, so **every action arrives in a brand new interpreter**.
+Any harness object holding a session, a connection, a counter or an open handle
+must persist to disk and resume, or it silently resets on every call.
+
+This harness had two failure modes stacked on it before the fix. Each
+construction deleted the trace file as a stale-run guard, and each `open()`
+requested a fresh scorecard — so the agent restarted the game on every command
+and truncated the record as fast as it wrote it, while every individual command
+looked like it worked.
+
+The general rule: **a harness API for a CC agent should be idempotent to
+construct and resumable by default.** Design for "the caller has no memory",
+because it does not.
+
+### 9.2 `--allowedTools` grants permission; the permission mode alone does not
+
+`acceptEdits` approves file writes but not Bash. A run configured with only a
+permission mode reaches the model, thinks, writes files, and then takes **zero**
+actions, because everything that touches the outside world is denied. It does
+not look like a permissions failure; it looks like a solver that would not act.
+
+CCARC had already hit this and documented it in `cc_harness/config.py`. It was
+re-derived here anyway. The fix was to *import* those lists rather than restate
+them — a second copy of a hard-won constant is a second chance to get it wrong.
+
+### 9.3 Refusals are a better interface than instructions
+
+Three things in this harness are enforced rather than advised: the action
+budget, the RESET that would discard the game, and acting while dead. All three
+began as documentation, and the documentation was correct and insufficient.
+
+A refusal costs no budget, arrives at exactly the moment it is relevant, and
+carries its reason. An instruction in `CLAUDE.md` competes with everything else
+in context at the moment it matters most. Where a mistake is unrecoverable —
+`full_reset` discards an entire game with no undo — advice is not an
+appropriate mechanism.
+
+This is the ARC-AGI-2 gate's lesson in a new setting: the submission gate worked
+not because it told solvers to check their work, but because it declined to
+accept work that had not been checked.
+
+### 9.4 Cleanup must never mask the failure it follows
+
+A 404 from `scorecard/close` in `__exit__` replaced the real exception from the
+run, twice, before it was noticed. The information asymmetry is total: the body
+error is why the run failed, and the cleanup error is trivia. Cleanup paths in a
+harness should swallow and record, never raise.
+
+The same instinct applies to error text. `HTTP Error 400: Bad Request` cost more
+time than any other single message here; the server was putting the reason in
+the response body, and urllib discards it unless you read it off the exception
+before the handle closes. Once surfaced, the actual message — `game <id> not
+found` — pointed straight at the bug in one step.
+
+### 9.5 Only a real agent finds the interface bugs
+
+Every offline test passed while the harness was unusable, three separate times
+and for three unrelated reasons. The tests were not wrong; they were written by
+the same author as the code and encoded the same assumption about how it would
+be called.
+
+Two of the three bugs were found within minutes of a live solver touching it,
+and the third by driving a real game with a scripted policy. **Run the thing
+before trusting it**, and treat the first real run as an experiment about the
+harness rather than about the model.
+
+---
+
 ## Appendix: what has actually been run
 
 - **Local loop, no key.** `scratchpad/arc3/toy_game.py` and
