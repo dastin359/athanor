@@ -2493,3 +2493,60 @@ smallest design capable of a significant result at all. Then separate the two
 removed sections factorially, since `## Rival readings` and `## The invariant
 ledger` were deleted together and invariant density is already known not to track
 outcome here (the losing `ablation2` logged 19 against the winning `round6`'s 14).
+
+---
+
+## Coverage diagnoses the failure mode; it does not predict failure
+
+Before landing `unreached()` I measured it across every 4.8-batch run whose code
+would re-execute against its training pairs (11 of 20; the rest had no code, or
+no `solve` to load). Training-line reach, sorted:
+
+```
+arm task       score  reach%   unreached/lines
+A   13e47133    1.00  100.0%        0/60
+A   de809cff    1.00  100.0%        0/42
+B   981571dc    1.00  100.0%        0/23
+B   7b0280bc    1.00   98.7%        1/79
+B   409aa875    1.00   98.0%        1/51
+A   9bbf930d    0.00   95.9%        2/49     <- failure, high reach
+A   2b83f449    0.00   95.7%        5/115    <- failure, high reach
+A   269e22fb    1.00   94.7%        2/38     <- solve, low reach
+A   78332cb0    0.00   94.6%        3/56
+A   88e364bc    0.50   90.0%        8/80
+A   d35bdbdc    0.33   86.8%        9/68
+
+solved n=6: 94.7-100.0%, mean 98.6%
+failed n=5: 86.8- 95.9%, mean 92.6%
+```
+
+The means separate. The distributions do not: two zero-scoring runs reach *more*
+of their code than a run that solved. **This is not a gate signal and must not be
+used as one** — a submission check keyed on it would have blocked `269e22fb`,
+which was correct, and waved through `9bbf930d`, which scored nothing.
+
+What it does do is sort the failures by *mechanism*, which is what it was built
+for. The five failures fall into two groups with nothing in between:
+
+- **low reach (86.8%, 90.0%)** — `d35bdbdc`, `88e364bc`. Both are the
+  untested-code mode, and in `88e364bc` the faulty line is in the unreached list.
+  Both have the hedge branch among the unreached lines.
+- **high reach (94.6%, 95.7%, 95.9%)** — `78332cb0`, `2b83f449`, `9bbf930d`.
+  `78332cb0` was established two sections above as the underdetermined-rule mode:
+  every line ran, every training pair passed, the induction was wrong.
+
+That split was predicted before it was measured, from two hand-analysed cases, and
+it held on three more. So the honest claim for the tool is narrower and more
+useful than "it finds bugs":
+
+> **Reach tells a solver which kind of trouble it is in, not whether it is in
+> trouble.** High reach and a wrong answer means the rule is wrong and no amount
+> of further testing against training will find it. Low reach means there is code
+> the examples have never run, and the hedge branch is usually in it. Those two
+> situations call for opposite next moves, and the solver currently cannot tell
+> them apart.
+
+Landing it as a diagnostic, with that framing in the doctrine, and explicitly not
+as a submission gate. A metric that correlates with correctness across a sample
+and overlaps within it is exactly the kind of number this log has twice now
+mistaken for a threshold.
