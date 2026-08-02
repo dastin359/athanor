@@ -94,6 +94,16 @@ athanor ccarc3 run --game ls20-9607627b            # resumes if a trace exists
 athanor ccarc3 run --game ls20-9607627b --fresh    # discard and start over
 ```
 
+Resuming also raises the cap, which is the natural move when a run stops on
+budget partway through:
+
+```bash
+athanor ccarc3 run --game ls20-9607627b --budget-multiple 4.0
+```
+
+The larger cap reaches the client while the trace, session and rule book stay
+put — so buying more actions never costs the ones already paid for.
+
 ## Reading a run
 
 ```bash

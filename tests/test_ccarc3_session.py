@@ -229,3 +229,26 @@ def test_fresh_discards_the_previous_run(tmp_path):
 def test_a_first_run_is_not_reported_as_resumed(tmp_path):
     ws = build_workspace(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO)
     assert not ws.resumed
+
+
+def test_resuming_with_a_bigger_budget_keeps_the_game(tmp_path):
+    """The natural move when a first run hits its cap partway through.
+
+    Rebuilding with a larger multiple must raise the cap in the generated
+    session.py while leaving the trace, state and rule book alone -- otherwise
+    the only way to buy more actions is to throw away the ones already paid for.
+    """
+    small = Ccarc3Config("ls20-test", out_dir=tmp_path, budget_multiple=0.5)
+    ws = build_workspace(small, INFO)
+    _seed(ws.root)
+    first_cap = json.loads((ws.root / "meta.json").read_text())["action_budget"]
+
+    big = Ccarc3Config("ls20-test", out_dir=tmp_path, budget_multiple=4.0)
+    ws2 = build_workspace(big, INFO)
+    second_cap = json.loads((ws2.root / "meta.json").read_text())["action_budget"]
+
+    assert second_cap > first_cap
+    assert f"max_actions={second_cap}" in (ws2.root / "session.py").read_text()
+    assert ws2.resumed
+    assert ws2.trace_path.read_text().strip(), "the actions already paid for survive"
+    assert ws2.rules_path.exists(), "so does what was learned"
