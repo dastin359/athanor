@@ -630,12 +630,33 @@ def test_state_from_a_different_game_is_ignored(monkeypatch, tmp_path):
     assert not b._resumed and b.card_id == ""
 
 
-def test_corrupt_state_falls_back_to_a_fresh_client(monkeypatch, tmp_path):
+def test_an_unreadable_state_file_refuses_rather_than_discarding_the_game(monkeypatch, tmp_path):
+    """This test previously asserted the opposite, and the opposite is dangerous.
+
+    Falling back to "no previous run" makes the caller delete `trace.jsonl` and
+    open a fresh scorecard — throwing away a game because a small sidecar file
+    became unreadable. The state file's *presence* says a run exists; only its
+    details are lost, and those are far cheaper than the run.
+    """
     monkeypatch.setenv("ARC_API_KEY", "k")
     path = tmp_path / "t.jsonl"
+    path.write_text('{"i":0,"action":"RESET","frames":[[[1]]],"score":0,"level":0}\n')
     path.with_suffix(".state.json").write_text("{not json")
+
+    with pytest.raises(RuntimeError, match="cannot be read"):
+        ArcClient("g", trace_path=path)
+    assert path.read_text().strip(), "the trace must survive an unreadable state file"
+
+
+def test_state_is_written_atomically(monkeypatch, tmp_path):
+    """A reader must never observe a half-written state file."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
     c = ArcClient("g", trace_path=path)
-    assert not c._resumed
+    c.card_id = "card-1"
+    c._save_state()
+    assert json.loads(c.state_path.read_text())["card_id"] == "card-1"
+    assert not c.state_path.with_suffix(".json.tmp").exists(), "the temp file is renamed away"
 
 
 def test_every_refusal_still_refuses_in_a_fresh_process(monkeypatch, tmp_path):

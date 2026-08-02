@@ -263,8 +263,19 @@ class ArcClient:
     def state_path(self) -> Path:
         return Path(self.trace_path).with_suffix(".state.json")
 
+    def _write_state_atomically(self, payload: str, encoding: str = "utf-8") -> None:
+        """Write the state file so a reader never sees a half-written one."""
+        tmp = self.state_path.with_suffix(".json.tmp")
+        tmp.write_text(payload, encoding=encoding)
+        os.replace(tmp, self.state_path)      # atomic on POSIX
+
     def _save_state(self) -> None:
-        self.state_path.write_text(
+        # Written via a temporary file and os.replace, which is atomic on POSIX.
+        # `write_text` was measured to issue a single write() syscall, so a torn
+        # file is not something this code produces on its own -- but a reader
+        # can still observe a partial file, and the cost of an unreadable one is
+        # a refused start. Two lines to remove the possibility entirely.
+        self._write_state_atomically(
             json.dumps(
                 {
                     "game_id": self.game_id,
@@ -318,8 +329,17 @@ class ArcClient:
             return False
         try:
             saved = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return False
+        except (OSError, json.JSONDecodeError) as exc:
+            # **Refuse, do not fall through.** Returning False here means "no
+            # previous run", and the caller then deletes trace.jsonl and opens a
+            # fresh scorecard -- discarding a game because a small sidecar file
+            # became unreadable. The file being present says a run exists; only
+            # its details are lost, and those are cheaper to lose than the game.
+            raise RuntimeError(
+                f"{self.state_path} exists but cannot be read ({exc}). A run is "
+                f"in progress and its trace has NOT been touched. Move the state "
+                f"file aside to start over, or repair it to resume."
+            ) from exc
         if saved.get("game_id") != self.game_id:
             return False
 

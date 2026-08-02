@@ -101,14 +101,25 @@ def _read_runs(root: Path) -> list[dict]:
 
     out = []
     for p in sorted(root.glob("*/result.json")):
-        stored = json.loads(p.read_text(encoding="utf-8"))
+        # Per-run isolation. One unreadable file costs one row, not the report.
+        # Not a regression -- the original had the same unguarded parse -- but a
+        # summary of twenty runs should not be destroyed by one of them.
+        try:
+            stored = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            out.append({"game_id": p.parent.name, "error": f"unreadable result.json: {exc}"})
+            continue
         trace = p.parent / "trace.jsonl"
         # Cost comes from the stream and does not need the trace. Gating it on
         # `trace.exists()` silently dropped turns and cost for any run whose
         # trace is gone -- including archived runs, which keep only result.json.
         fresh = dict(run_cost(p.parent / "stream.jsonl"))
         if trace.exists():
-            fresh.update(ledger_facts(trace))
+            try:
+                fresh.update(ledger_facts(trace))
+            except ValueError as exc:
+                out.append({"game_id": p.parent.name, "error": f"corrupt trace: {exc}"})
+                continue
         meta = p.parent / "meta.json"
         if trace.exists() and meta.exists():
             baselines = json.loads(meta.read_text(encoding="utf-8")).get("baseline_actions")
@@ -217,8 +228,22 @@ def _summarise(results: list[dict]) -> None:
 PUBLIC_ENVIRONMENTS = 25
 """Size of the ARC-AGI-3 public demo set — the benchmark's denominator."""
 
-OPUS5_PUBLISHED = 30.16
-"""Claude Opus 5 on the ARC-AGI-3 leaderboard, 24 Jul 2026, High effort."""
+OPUS5_PER_ENVIRONMENT = (
+    100.0, 100.0, 100.0, 100.0, 100.0, 98.8, 77.8, 58.3, 56.3, 47.6,
+    47.6, 44.8, 28.6, 10.6, 10.4, 10.4, 8.3, 6.0, 5.4, 3.6,
+    1.8, 0.6, 0.0, 0.0, 0.0,
+)
+"""Claude Opus 5 per environment, ARC-AGI-3 public demo, 24 Jul 2026, High effort.
+
+Kept per environment rather than as a single figure because the shape matters
+and a summary of the page got the total wrong once: **five** environments at
+100%, nine at or above 50%, three at zero, and a long tail of partial credit in
+between. RHAE gives partial credit for levels cleared, so most of that tail is
+progress that stopped short rather than nothing at all.
+"""
+
+OPUS5_PUBLISHED = sum(OPUS5_PER_ENVIRONMENT) / len(OPUS5_PER_ENVIRONMENT)
+"""40.676% — the unweighted mean, which is how the benchmark aggregates."""
 
 
 def _rhae(results: list[dict]) -> None:
@@ -243,7 +268,11 @@ def _rhae(results: list[dict]) -> None:
     played = 100.0 * sum(scores.values()) / len(scores)
     print(f"RHAE: {total:.2f}% over all {PUBLIC_ENVIRONMENTS} public environments "
           f"({len(scores)} scored, {played:.2f}% mean on those). "
-          f"Opus 5 published: {OPUS5_PUBLISHED}%.")
+          f"Opus 5 published: {OPUS5_PUBLISHED:.2f}%.")
+    cleared = sum(1 for s in scores.values() if s >= 0.99)
+    theirs = sum(1 for s in OPUS5_PER_ENVIRONMENT if s >= 99.0)
+    print(f"      environments scoring >=99%: {cleared} here vs {theirs} for Opus 5 "
+          f"(it earns the rest of its total on partial progress we score 0 for).")
     gap = OPUS5_PUBLISHED / 100 * PUBLIC_ENVIRONMENTS - sum(scores.values())
     if gap > 0:
         print(f"      {gap:.3f} environment-units behind — about "
