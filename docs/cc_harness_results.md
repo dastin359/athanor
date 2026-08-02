@@ -2956,3 +2956,70 @@ watched decay four times that evening, and I built on it anyway. The scoring was
 delegated to a script written before the data existed, which is the only reason
 this appears here as `WRONG` rather than as a paragraph explaining why it was
 nearly right.
+
+---
+
+## The 3v3 ablation: the original finding does not reproduce
+
+The properly-controlled replication is complete. Task `d35bdbdc`, model `opus`
+(Opus 5), effort `high`, all six runs at commit `d5a2abf` — one commit, so one
+`arc.py`, one `CLAUDE.md` template, one doctrine, one runner. The only deliberate
+difference is two sections of the workspace `CLAUDE.md`, and the manipulation was
+verified by md5 **and** by confirming each run actually produced stream events,
+which the first attempt did not.
+
+```
+doctrine_1  1.00   matched=[1, 1, 1]   $6.05
+doctrine_2  1.00   matched=[1, 1, 1]   $4.84
+doctrine_3  1.00   matched=[2, 2, 1]   $7.69
+ablated_1   1.00   matched=[1, 1, 1]   $5.55
+ablated_2   0.33   matched=[None, None, 1]   $3.63
+ablated_3   1.00   matched=[1, 1, 1]   $5.63
+```
+
+**Doctrine 3/3, ablated 2/3. Fisher exact one-sided p = 0.500.** There is no
+detectable effect. For scale: the original 2v2 with *perfect* separation scored
+p = 0.067, and the best a 3v3 could ever have done was p = 0.050.
+
+The earlier result — two doctrine runs at 1.00 against two ablated at 0.33, which
+this log treated as its headline finding — **does not reproduce**. It was a
+perfect separation at n=2 per arm, on a task selected for study after it first
+scored 1.00, in a design already shown to have had the doctrine present in every
+arm despite the labels. Every one of those objections was raised by the
+adversarial pass before this replication ran, and the replication agrees with
+them.
+
+**Why it vanished is more interesting than that it vanished.** The old five runs
+shared a bit-identical candidate 1 that lost tests 0 and 1 in **5 of 5**, so the
+entire score spread lived in candidate 2 — which is what made "100% of the
+variance is the second candidate" true at the time. In the six new runs, **5 of 6
+win tests 0 and 1 on candidate 1**. The primary hypothesis now usually succeeds
+outright.
+
+> The contrast disappeared because **the task stopped being hard for the
+> harness**. An ablation measures the gap between two conditions; when both
+> conditions start solving the task on their primary hypothesis, there is no gap
+> left to measure. The old effect was a real difference in *rescue rate* on a
+> task where the primary reliably failed — and the harness improvements since
+> (`sweep()`, `rival()`, the full tool surface, the doctrine additions) removed
+> the failure the rescue was rescuing.
+
+That also means the replication is not a clean refutation of the original
+observation. It is a demonstration that the observation was **conditional on a
+harness state that no longer exists**, which is a different and more useful thing
+to know. A finding that depends on the primary being broken is not a finding
+about hedging; it is a finding about a bug that has since been fixed.
+
+**What this costs the log.** Everything previously drawn from the ablation needs
+reading as conditional. The "rigour applied to killing is still killing"
+observation, promoted at one point as the project's most transferable lesson,
+rests on ablated runs refuting a correct rival — behaviour observed when the
+primary was failing, in arms that all received the doctrine, at p = 0.167. It may
+still be true. It has now been tested twice and confirmed neither time.
+
+**What survives untouched** is the mechanism observation, because it never
+depended on the arms separating: across four tasks and two models, candidate-2
+wins came from rivals about *which rule applies* (`d35bdbdc`, `16b78196`) and
+candidate-2 losses from rivals about *boundary behaviour* (`78332cb0`,
+`88e364bc`). `doctrine_3` adds a fifth instance — `matched=[2, 2, 1]`, the only
+run in the six to win on its hedge, and it hedged the selection rule.
