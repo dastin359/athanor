@@ -48,6 +48,7 @@ where = ["src"]
 "athanor.solver" = ["*.md"]
 "athanor.web_demo" = ["templates/*.html", "saved_runs/.gitkeep"]
 "athanor.cc_harness" = ["assets/*.md", "assets/*.py", "assets/*.sh"]
+"athanor.ccarc3" = ["assets/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

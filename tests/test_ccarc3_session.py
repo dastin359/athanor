@@ -160,3 +160,21 @@ def test_network_tools_are_denied_for_benchmark_integrity(ws):
     assert "--disallowed-tools" in args
     denied = args[args.index("--disallowed-tools") + 1]
     assert "WebSearch" in denied or "WebFetch" in denied
+
+
+def test_the_doctrine_asset_is_declared_as_package_data():
+    """Without this, build_workspace raises FileNotFoundError on an installed
+    (non-editable) copy -- and only there, so tests would never catch it."""
+    import tomllib
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    data = tomllib.loads((root / "pyproject.toml").read_text())
+    patterns = data["tool"]["setuptools"]["package-data"]["athanor.ccarc3"]
+    assert any(p.endswith(".md") for p in patterns)
+
+
+def test_the_doctrine_asset_actually_exists_where_the_code_looks():
+    from athanor.ccarc3.session import ASSETS
+
+    assert (ASSETS / "CCARC3_DOCTRINE.md").is_file()
