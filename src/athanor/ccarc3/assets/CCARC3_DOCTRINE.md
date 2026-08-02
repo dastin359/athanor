@@ -119,29 +119,38 @@ priors about what to test first.** A mechanic seen on three levels is worth two
 actions to confirm rather than fifteen to rediscover. Prior evidence buys you
 *search order*, never *truth*.
 
-## 5. Failure is not refutation unless the rule was applicable.
+## 5. Failure is not refutation unless the belief was applicable.
 
-Every rule you write has a precondition and a claim, and they are separate. A
-rule about a red block, checked on a level with no red block, returns
-`NOT_APPLICABLE` — not `VIOLATED`. Only `VIOLATED` is evidence against.
+Every belief you hold has a precondition and a claim, and they are separate.
+"The red block moves when pushed", checked on a level with no red block, is
+**not applicable** — it is not *refuted*. Only a case where the precondition was
+met and the claim still failed is evidence against you.
+
+Three outcomes, never two. Collapsing "did not apply" into "did not hold" is how
+correct knowledge gets thrown away, and it is the single most expensive mistake
+available here. It is the same distinction `gate.acknowledge()` asks you to make
+between `refuted=` and `untested=`: something you never tried is not something
+you disproved, and filing it as a refutation makes you stop asking.
+
+If you want it mechanised, `arc.Rule` takes `applies` and `holds` as separate
+callables so the two cannot merge, and `arc.verify` / `arc.survey` check one
+level or report across all of them. Most solvers do this reasoning in their own
+code instead, which is fine — the distinction is what matters, not the API.
+
+**Exclude level boundaries from anything spatial — however you are analysing.**
+The action that completes a level returns the *next* level's board, so `before`
+and `after` are different boards entirely. Anything you conclude about movement,
+position or adjacency across one is nonsense: the avatar appears to teleport.
+
+This bites in a plain list comprehension exactly as hard as in a rule:
 
 ```python
-verify(rule, transitions)   # THIS level only. Can refute.
-survey(rule, transitions)   # every level. Reports. CANNOT refute.
+[t for t in ts if t.action == "ACTION1" and not t.board_replaced]
 ```
 
-Use `survey` to see where a rule holds — `L0: 0/0/47 | L1: 12/0/19 | L2: 31/0/0`
-reads "applicable from L1 onward, never violated where applicable", which is
-strong. Use `verify` when you want a verdict, and only against the level the
-rule is about.
-
-**Exclude level boundaries from spatial rules.** The action that completes a
-level returns the *next* level's board, so `before` and `after` are different
-boards entirely. A movement rule checked across one sees the avatar teleport and
-reports a violation that never happened. Use **`not t.board_replaced`** in the `applies` of any rule about position,
-movement or adjacency. It covers both causes: completing a level, and a full
-reset that rewinds the game to level 0. (`t.crosses_level` alone catches only
-the first — a full reset moves the level *down*.)
+`board_replaced` covers both causes — completing a level, and a full reset that
+rewinds the game to level 0. `crosses_level` catches only the first, because a
+full reset moves the level *down*.
 
 This is not hypothetical: on a real run, "ACTION1 moves the cursor up" held 7/7
 on level 0 and showed 13 holds and 1 violation on level 1. The violation was the

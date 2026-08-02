@@ -87,7 +87,11 @@ def test_doctrine_carries_the_findings_that_contradict_instinct(ws):
     doctrine = (ws.root / "DOCTRINE.md").read_text().lower()
     assert "dying is cheap" in doctrine
     assert "never make reset your first action after completing a level" in doctrine
-    assert "not refutation unless the rule was applicable" in doctrine
+    assert "not refutation unless the belief was applicable" in doctrine
+    # The three-valued distinction must reach the surface solvers actually
+    # touch: no run has ever constructed a Rule, but gate.acknowledge() was
+    # called 21 times across five runs.
+    assert "refuted=" in doctrine and "untested=" in doctrine
 
 
 def test_the_run_defaults_are_the_ones_the_project_requires():
