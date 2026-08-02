@@ -104,6 +104,16 @@ def _read_runs(root: Path) -> list[dict]:
         stored = json.loads(p.read_text(encoding="utf-8"))
         trace = p.parent / "trace.jsonl"
         fresh = {**ledger_facts(trace), **run_cost(p.parent / "stream.jsonl")} if trace.exists() else {}
+        meta = p.parent / "meta.json"
+        if trace.exists() and meta.exists():
+            baselines = json.loads(meta.read_text(encoding="utf-8")).get("baseline_actions")
+            if baselines:
+                from .ledger import load as _load
+                from .scoring import score_run
+                try:
+                    fresh["rhae"] = score_run(_load(trace), baselines).score
+                except ValueError:
+                    pass          # a trace the rubric cannot score is not a crash
         out.append({**stored, **fresh})
     return out
 
@@ -184,6 +194,45 @@ def _summarise(results: list[dict]) -> None:
           f"{sum(1 for r in ok if r.get('won'))} games won.")
     if failed:
         print(f"{len(failed)} run(s) failed outright and are excluded above.")
+    _rhae(ok)
+
+
+PUBLIC_ENVIRONMENTS = 25
+"""Size of the ARC-AGI-3 public demo set — the benchmark's denominator."""
+
+OPUS5_PUBLISHED = 30.16
+"""Claude Opus 5 on the ARC-AGI-3 leaderboard, 24 Jul 2026, High effort."""
+
+
+def _rhae(results: list[dict]) -> None:
+    """Print the official RHAE score, so it is never recomputed by hand.
+
+    Unattempted environments count as zero: the benchmark divides by the whole
+    set, and scoring only what was played is the easiest way to overstate a
+    result here.
+    """
+    from .scoring import total_score
+
+    scores = {}
+    for r in results:
+        score = r.get("rhae")
+        if score is None:
+            continue
+        scores[r["game_id"]] = max(score, scores.get(r["game_id"], 0.0))
+    if not scores:
+        return
+    padded = list(scores.values()) + [0.0] * max(0, PUBLIC_ENVIRONMENTS - len(scores))
+    total = total_score(padded)
+    played = 100.0 * sum(scores.values()) / len(scores)
+    print(f"RHAE: {total:.2f}% over all {PUBLIC_ENVIRONMENTS} public environments "
+          f"({len(scores)} scored, {played:.2f}% mean on those). "
+          f"Opus 5 published: {OPUS5_PUBLISHED}%.")
+    gap = OPUS5_PUBLISHED / 100 * PUBLIC_ENVIRONMENTS - sum(scores.values())
+    if gap > 0:
+        print(f"      {gap:.3f} environment-units behind — about "
+              f"{gap:.2f} more full wins.")
+    else:
+        print(f"      ahead by {-gap:.3f} environment-units.")
 
 
 def cmd_trace(args: argparse.Namespace) -> int:

@@ -49,6 +49,15 @@ from .ledger import (
     infer_levels,
     load,
 )
+from .scoring import (
+    EnvironmentScore,
+    LevelScore,
+    actions_per_level,
+    environment_score,
+    score_environment,
+    score_run,
+    total_score,
+)
 from .session import Ccarc3Config, build_workspace, ledger_facts, run_game
 from .planning import reachable, shortest_path
 from .rules import (
@@ -100,6 +109,14 @@ __all__ = [
     "build_workspace",
     "ledger_facts",
     "run_game",
+    # scoring — the official RHAE rubric
+    "EnvironmentScore",
+    "LevelScore",
+    "actions_per_level",
+    "environment_score",
+    "score_environment",
+    "score_run",
+    "total_score",
     # ledger
     "ACTION_NAMES",
     "Transition",

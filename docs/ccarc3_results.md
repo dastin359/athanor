@@ -7,38 +7,84 @@ run it: `ccarc3.md`.
 
 The ARC-AGI-3 leaderboard entry for Claude Opus 5 (24 July 2026) reports
 **30.16%**, at High reasoning effort, on the **public demo set of 25
-environments**. The metric is *percentage of the 25 environments completed*.
+environments**.
+
+**The metric is not "games finished".** It is *Relative Human Action
+Efficiency*, implemented in `athanor.ccarc3.scoring` and checked against the
+rubric's published validation example:
+
+```
+S_l   = min(1.15, (h_l / a_l) ** 2)     per completed level, 0 if not completed
+E_raw = Σ(l · S_l) / Σ(l)               weights are the 1-indexed level numbers
+C     = Σ(1..k) / Σ(1..n)               k = sequential levels completed
+E     = min(C, E_raw)
+T     = mean(E) over the evaluated set
+```
+
+The ratio is **squared and then capped**, so twice the human's actions scores
+0.25 rather than 0.5; later levels carry more weight; and the completion cap
+stops early speed from paying for late failure.
+
+### The score
+
+| environment | levels | E_raw | cap | **E** | limited by |
+|---|---|---|---|---|---|
+| `ls20-9607627b` | 7/7 | 1.150 | 1.000 | **1.000** | completion cap |
+| `ft09-0d8bbf25` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
+| `r11l-495a7899` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
+| `sb26-7fbdac44` | 8/8 | 1.144 | 1.000 | **1.000** | completion cap |
+| `cd82-fb555c5d` | 6/6 | 1.108 | 1.000 | **1.000** | completion cap |
+| `sc25-635fd71a` | 6/6 | 1.040 | 1.000 | **1.000** | completion cap |
+| `tr87-cd924810` | 6/6 | 0.947 | 1.000 | **0.947** | efficiency, level 3 |
 
 | | |
 |---|---|
-| Opus 5, published | **30.16%** = ~7.5 of 25 |
-| CCARC3, games won | **6** |
-| CCARC3 on the same metric | **24.00%** |
-| needed to pass | **8** of 25 = 32.00% |
+| Opus 5, published | **30.16%** |
+| CCARC3, 7 environments won, 18 unplayed scored 0 | **27.79%** |
+| mean over environments actually played | 99.24% |
+| still needed to pass | **0.593 environment-units — under one more win** |
 
-**So this is not ahead yet, and the denominator is why.** Six games have been
-won out of six attempted, which is the encouraging figure, but eighteen
-environments have never been played and an unplayed environment scores zero. The
-run in flight (`sc25`) would make seven; one more clears the bar.
+**Not ahead yet.** Seven of seven attempted are essentially perfect; eighteen
+environments have never been played and an unplayed environment scores zero.
 
-Three things any comparison drawn from this must carry:
+### What the rubric says about where the remaining margin is
 
-- **Same model, different scaffold.** Both are `claude-opus-5` at effort `high`.
-  The difference under test is the harness, which is the point of the project —
-  but it also means the comparison says nothing about the model.
-- **`cd82` took two runs.** It scored 0/6 on its first attempt and 6/6 on a
-  second, against a harness that had changed in between. ARC-AGI-3's own scoring
-  is best-of across plays, so that is legitimate inside the benchmark's rules; it
-  is still not a single-shot result and should not be quoted as one.
-- **The games played were chosen, not sampled.** Batch 1 picked one game per tag
-  type; batch 2 deliberately picked `keyboard_click`, including a re-run of the
-  only failure. A 6-of-6 rate on a chosen subset is weak evidence about the
-  remaining eighteen.
+**Efficiency is already saturated, and this is the finding that matters.** On
+six of the seven environments `E_raw` exceeds 1.0 — between 1.04 and the
+theoretical maximum of 1.15 — and is then clipped by the completion cap. Every
+level is being finished so far inside the human baseline that the rubric stops
+paying for it.
 
-The remaining eighteen are queued cheapest-baseline-first (`scratchpad/batch6.py`).
-That ordering is not cosmetic: every environment is worth 1/25 whatever its
-length, a run costs turns × roughly $0.10, and baselines span 317 to 1843 — so
-cheap games buy the same score for a fraction of the budget.
+So for this harness, RHAE has collapsed into *a count of environments finished*,
+and the two levers are worth wildly different amounts:
+
+- **A new environment won: +1.000 units = +4.0 percentage points.**
+- **Perfecting `tr87`, the one environment where efficiency binds: +0.053 units
+  = +0.21 points.** Its level 3 took 155 actions against a 45 baseline —
+  `(45/155)² = 0.08` — and that level carries weight 4 of 21.
+
+A new environment is worth **nineteen times** more than repairing the worst
+level in an existing win. That is why `scratchpad/batch6.py` plays the remaining
+eighteen cheapest-baseline-first: every environment is worth the same 1/25, a
+run costs turns × roughly $0.10, and baselines span 317 to 1843.
+
+### Caveats any published comparison must carry
+
+- **Same model, different scaffold.** Both sides are `claude-opus-5` at effort
+  `high`. What is under test is the harness; nothing here says anything about
+  the model.
+- **`cd82` took two runs.** 0/6 first, 6/6 second, against a harness that had
+  changed in between. Its score above is the better of the two. ARC-AGI-3 scores
+  best-of across plays, so that is legitimate inside the benchmark's own rules,
+  but it is not a single-shot result.
+- **The games played were chosen, not sampled.** Batch 1 took one game per tag
+  type; batch 2 deliberately took `keyboard_click`, including a re-run of the
+  only failure. Seven-of-seven on a chosen subset is weak evidence about the
+  eighteen that remain — and the eighteen are, on average, *longer* games.
+- **`baseline_actions` from the API is assumed to be the rubric's `h_l`** — the
+  upper-median action count among humans who completed that level. It is the
+  only baseline data available; if the leaderboard used a different figure, every
+  number here moves.
 
 > **Best single result so far: `sb26-7fbdac44` — 8 of 8 levels in 125 actions
 > against a 213 baseline (0.59×), zero deaths, $3.04.**
