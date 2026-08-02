@@ -598,6 +598,12 @@ class ArcClient:
         Memoising would not help: every action arrives in a new process (§9.1),
         so a per-process cache never gets a second hit. Persisted counters are
         the same shape ``level_actions`` and ``full_resets`` already use.
+
+        Cross-checked against the version it replaced by replaying four real
+        traces through both: identical on all of them, including the run that
+        never cleared a level, where both give ``(336 tried, 67 dead, 17
+        repeats)``. Two counters that are supposed to mean the same thing and
+        are computed two different ways should be made to say so.
         """
         grids = frame.get("frame") or []
         if not grids:
