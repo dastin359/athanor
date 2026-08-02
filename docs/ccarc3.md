@@ -56,10 +56,38 @@ athanor ccarc3 run --game ls20-9607627b --budget-multiple 4.0
 solver must *discover* the rules as well as execute them. It is enforced in the
 client, not merely advertised to the solver.
 
-The same number is also a control law worth using: **at a large multiple of a
-level's baseline, the working hypothesis is probably wrong** — the solver should
-re-explore rather than grind. Without it there is no way to tell "this level is
-long" from "I have misunderstood this level".
+The same number is also a control law, and it is no longer only advice.
+`client.status()` leads with the ratio for the level in play:
+
+```
+cd82: level 2/6 state=NOT_FINISHED actions=38 [42/41 on this level = 1.0x]  <- OVER BASELINE
+```
+
+**What normal looks like, measured over 26 level-attempts across five games:**
+24 of 25 cleared levels finished at or under **0.92×** their baseline, median
+**0.52×**. A solver that understands a level beats the published figure, which
+was set by a human who already knew the rules and still hesitated. So crossing
+1.0× is itself the unusual case — that is where the warning fires, and where
+"this level is long" stops being the likely explanation.
+
+Do not read a precise cutoff into it. The sample is **empty between 0.92× and
+3.44×**, so every threshold in that range separates it identically; 1.0× was
+chosen on asymmetric cost, not on fit.
+
+`client.pace()` gives the same figures for every level at once, and the relative
+reading is the sharper one — a game can run above or below baseline throughout,
+so a level that runs above *its own run* is the real outlier.
+
+`status()` also names wasted effort when there is any:
+
+```
+... [42/41 on this level = 1.0x]  <- 4/41 actions on this level changed nothing
+```
+
+Waste is rank-ordered with outcome across the runs on record — the run that
+never cleared a level was 80% effective with 5.1 repeats per 100 actions, four
+clean wins were 100% with none — but a fifth run won at 93%, so this is reported
+as a count and not as a verdict.
 
 ## The level gate
 
