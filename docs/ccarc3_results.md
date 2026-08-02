@@ -104,10 +104,41 @@ Two consequences:
   which one `a_l` comes from.
 - **Replaying a game is not punished by the score, only by the budget.** A run
   that wins a long game sloppily can be replayed against a known route to raise
-  that environment toward the 1.15 cap, paying only in actions and money. Not
-  worth it here — `tr87` is the only environment where efficiency binds and
-  repairing it is worth 0.21 points against a new environment's 4.0 — but it is
-  a real lever on a game won badly.
+  that environment toward the cap, paying only in actions and money.
+
+### The games are deterministic, so a known route replays exactly
+
+The remaining doubt about replaying was whether a recorded action sequence
+reproduces. `ls20` has **patrolling items** — objects that move on their own
+schedule — and if their phase depended on a fresh seed or wall-clock, a replay
+would desync and the route would be worthless.
+
+Replaying the first 40 actions of `ls20`'s winning route on a fresh play:
+**40 of 40 frames identical**, cell for cell, and the same level reached at the
+same action. The game is deterministic; the patrol phase is a function of the
+action count, not of anything external.
+
+That closes the loop on a strategy the scoring permits:
+
+1. explore freely, spending whatever it takes to learn each level's rule;
+2. after any level advance, RESET — which starts a **new play**;
+3. execute the known-optimal route, which is the play that gets scored.
+
+The exploration play's waste never enters `a_l`. The only cost is
+`total_actions`, the budget field.
+
+**It is worth almost nothing to this project today, and the arithmetic is worth
+stating so.** An environment scores `min(completion cap, raw)`, and with every
+level cleared the cap is 1.0 — so six of the seven wins are already at ceiling
+and a replay gains them exactly zero. The whole lever is worth **+0.053 units
+(+0.21 points)**, all of it on `tr87`, against **+4.0 points** for one new
+environment. A 19:1 loser at current margins. It becomes material only on a
+game won badly enough that `raw` falls well below 1.0.
+
+Recorded because it is a property of the benchmark rather than of this harness:
+**RHAE's efficiency term is defeatable by any agent that can replay a
+deterministic game**, and an efficiency figure obtained that way is not a
+first-discovery result. Nothing in this document used it.
 
 ### What the rubric says about where the remaining margin is
 

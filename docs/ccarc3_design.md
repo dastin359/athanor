@@ -24,6 +24,8 @@ anything below.
 
 | claim | evidence |
 |---|---|
+| The games are deterministic — a recorded action sequence replays frame-for-frame | [LIVE] 40/40 identical on `ls20`, including its patrolling items |
+| A RESET with the action counter at zero starts a **new play**; per-level actions are recorded per play and never summed | [LIVE] scorecard probe: `plays` 1→2, new guid, new `actions_by_level` row |
 | Score is best-of across plays, actions are summed. Dying costs no score. | [SDK] read from source; the whole doctrine turns on it |
 | RESET as the first action after a level advance discards the entire game | [LIVE] observed, and it cost a won game (§9.9) |
 | A solver that understands a level finishes it under the published baseline | [LIVE] 24 of 25 cleared levels at ≤0.92×, median 0.52× |
