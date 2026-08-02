@@ -2702,3 +2702,50 @@ For an ARC-AGI-2 harness the practical reading is that the *submission* budget i
 the wrong place to put the pressure, because a solver that self-checks will never
 feel it. If the intent is to make the agent commit earlier or explore longer, the
 lever is wall-clock and the doctrine, not `max_iterations`.
+
+---
+
+## How the two arms must be read, and a prediction recorded before the data
+
+The 44-task batch is two measurements with **opposite baselines**, not two halves
+of one sample:
+
+| | Arm A | Arm B |
+|---|---|---|
+| selection | the 35 tasks CoT-4.8-high **fails** | 10 of the 85 it **solves**, `random.Random(20260801).sample` |
+| per-task CoT baseline | 0.00 | 1.00 |
+| measures | **gain** | **regression** |
+
+At 16 of 35 and 7 of 10 scoreable: Arm A **9.33 points, 8 full solves, 3
+partials**; Arm B **7.00 of 7.00**. Against their own baselines that is **+9.33**
+and **0.00** — additive so far, recovering what the baseline cannot do without
+costing anything on what it can.
+
+**Never sum them.** 9.33 + 7.00 over 23 tasks reads as 71%, and that number
+describes no population: the tasks were selected *by their baseline outcome*, so
+the hard/easy mix is an artifact of the sampling frame. Arm A's denominator is
+"known hard for this model", Arm B's is "known easy". Report the two figures and
+the two baselines, always.
+
+**Prediction, recorded now at 16/35 rather than explained later.** Arm A's final
+score will land **materially below its current 58.3%**, and the reason is
+structural rather than statistical. Shards run tasks sequentially, so a shard
+stuck on a slow task contributes nothing further; the completed set therefore
+over-represents fast runs, and speed tracks success hard:
+
+```
+completed solves    n=16:  3-35 min, median  9 min
+completed failures  n= 9:  5-44 min, median 20 min
+in flight           n= 6:  0, 5, 11, 23, 24, 50 min
+```
+
+Three of the six still running have already exceeded the median solve duration,
+and one has been going 50 minutes — longer than any completed run of either kind.
+The 19 outstanding Arm A tasks are enriched for exactly the slow profile that has
+been failing.
+
+This is written down because the failure mode it guards against is the one this
+session has repeatedly demonstrated: a claim restated at each new n, each version
+weaker, each explained after the fact. A prediction is only worth something before
+the data arrives, and this one is cheap to check — the batch will settle it within
+the hour.
