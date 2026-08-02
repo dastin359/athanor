@@ -407,6 +407,33 @@ games.
 **Sixth consecutive run in which the rule engine, forward model and planner were
 never called.** See §9.8a of the design note.
 
+### `sb26-7fbdac44` — **WON 8/8 in 125 actions** against a 213 baseline (0.59×)
+
+Zero deaths, zero wasted actions, zero full resets — and **100% effective**, in
+the sense that every one of its 118 in-level actions changed the board. 51
+mechanics and 12 refutations recorded, the most of any run so far.
+
+| level | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| ratio | 0.50× | 0.54× | 0.83× | 0.79× | 0.55× | 0.83× | 0.29× | 0.06× |
+
+Eight levels, none above 0.83× — the tightest run on record, and the strongest
+single data point for the "cleared levels come in under baseline" finding.
+
+It is also the most *economical*: **35 tool calls** for an eight-level win,
+against 83 for `cd82`'s six. Whatever varies between runs, it is not only
+actions.
+
+### The batch's own verdict on the hypothesis it was built to test
+
+Two `keyboard_click` games, two wins, both comfortably under baseline. Combined
+with `cd82`'s six action types, the batch-1 proposal that a wide action space is
+what breaks the solver is **refuted**, not merely unsupported.
+
+What remains is the observation the hypothesis was invented to explain — the
+losing run wasted one action in five — and that is now recorded as a rank order
+without a threshold, because a later run won at 93% effective.
+
 ### The click space is easier, not harder
 
 Recorded because it contradicts a prediction stated twice while building this.
