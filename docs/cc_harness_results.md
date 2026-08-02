@@ -2713,7 +2713,7 @@ of one sample:
 | | Arm A | Arm B |
 |---|---|---|
 | selection | the 35 tasks CoT-4.8-high **fails** | 10 of the 85 it **solves**, `random.Random(20260801).sample` |
-| per-task CoT baseline | 0.00 | 1.00 |
+| per-task CoT baseline | **0.21** (see correction below) | 1.00 |
 | measures | **gain** | **regression** |
 
 At 16 of 35 and 7 of 10 scoreable: Arm A **9.33 points, 8 full solves, 3
@@ -2862,3 +2862,97 @@ training pair, or only a different boundary behaviour?"** — because only the f
 kind of rival has ever won a slot here.
 
 n = 4 tasks. Stated as a mechanism, not a rate.
+
+---
+
+## The 4.8 head-to-head, complete — and a correction to Arm A's baseline
+
+Both arms are finished. Model `claude-opus-4-8`, effort `high`, `max_iterations 8`,
+2 candidates per output, identical across arms — the arms differ **only** in which
+tasks they contain.
+
+**Arm A** — the 35 tasks CoT-4.8-high fails. Measures **gain**.
+**Arm B** — 10 of the 85 it solves, `random.Random(20260801).sample`. Measures
+**regression**.
+
+```
+ARM A   35/35 scoreable   23.33 points = 66.7%   21 solves  5 partials  9 zeros   $218.74
+ARM B    9/10 scoreable    9.00 points = 100.0%   9 solves  0 partials  0 zeros    $47.65
+```
+
+### The correction, which cuts the headline gain by a third
+
+Every report of this experiment, including several in this log, described Arm A's
+baseline as **0.00 per task**. That is wrong, and the error is in the premise
+rather than the arithmetic.
+
+The baseline is **85/120 fully solved, 92.33 points**. Eighty-five fully-solved
+tasks contribute exactly 85.00 points — so the remaining 35, which are *precisely
+Arm A*, already earn the baseline **92.33 − 85.00 = 7.33 points of partial
+credit**. ARC-AGI-2 scores multi-output tasks fractionally, and "CoT fails this
+task" means *did not fully solve it*, not *scored nothing*.
+
+| | as reported | actual |
+|---|---|---|
+| Arm A baseline | 0.00/task, 0 points | **0.21/task, 7.33 points** |
+| Arm A CCARC | 23.33 points | 23.33 points |
+| **gain** | **+23.33** | **+16.00** |
+
+The projection is unchanged, because it was right for the wrong reason:
+
+```
+baseline: 92.33 points (85 solved = 85.00 pts, + 7.33 partial on the 35 it fails)
+CCARC keeps the 85.00 and replaces 7.33 with 23.33
+=> 108.33/120 = 90.3%  vs baseline 76.9%  (+16.00 points, +13.3 pp)
+```
+
+`92.33 − 7.33 + 23.33` lands in the same place as `85 + 23.33`, so the final
+number checked out while the comparison beneath it did not. **A correct total is
+not evidence of a correct model**, and this one survived precisely because nobody
+asked how it was built until someone did.
+
+> Both figures corrected tonight — this baseline, and "4.8 has produced no
+> winning second candidate" — were among the most-repeated. Restating a number
+> does not test it; it only makes it load-bearing. The check that caught this was
+> "show me the arithmetic", which is cheap and which I had not run on my own
+> headline.
+
+### What the completed arms support
+
+**On tasks the baseline already solves, the harness costs nothing** — 9.00/9.00,
+zero regression. Measured on 9 tasks, which cannot exclude a regression rate
+below roughly 10%; the subtraction term in the projection is not zero, it is
+unmeasured.
+
+**On tasks the baseline fails, the harness recovers about two-thirds** — 66.7% of
+available points, 21 of 35 solved outright, against a baseline that scraped 7.33
+points of partial credit from the same set.
+
+**Hedging, now with an n.** 10 of 21 hedged outputs solved against 37 of 42
+single-candidate outputs, and **two outputs were won by the second candidate**
+(`16b78196`, `8e5c0c38`). Earlier in the batch that count was zero and the
+tempting write-up — "4.8 cannot produce a winning rival" — would have been
+falsified within the hour.
+
+**Every threshold stayed dissolved.** cost/score rank correlation is −0.583 at
+n=44, down from −0.864 at n=15, with solves ($1.19–$10.75) and failures
+($3.20–$29.90) overlapping across almost the whole range. Four cutpoints were
+drawn tonight and none survived a full sample.
+
+**The iteration budget is inert**: 38 of 45 runs used exactly 1 of 8.
+
+### A prediction, scored by machine
+
+Recorded at 16/35 with Arm A standing at 58.3%, predicting the final figure would
+land materially below that as slower tasks arrived:
+
+```
+predicted: materially below 58.3%.  actual: 66.7%  ->  WRONG
+```
+
+The reasoning was that completion order favours fast runs and speed tracked
+success. The mechanism was real; the premise was a correlation I had already
+watched decay four times that evening, and I built on it anyway. The scoring was
+delegated to a script written before the data existed, which is the only reason
+this appears here as `WRONG` rather than as a paragraph explaining why it was
+nearly right.
