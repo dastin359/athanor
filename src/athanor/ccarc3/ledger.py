@@ -126,6 +126,20 @@ class Transition:
     """
 
     @property
+    def board_replaced(self) -> bool:
+        """``before`` and ``after`` are different boards, for any reason.
+
+        Two things cause it: completing a level (:attr:`crosses_level`) and a
+        full reset, which rewinds the whole game to level 0. Both make a spatial
+        comparison meaningless, and ``crosses_level`` alone only catches the
+        first -- a full reset moves the level *down*, so it slips past a test
+        that looks for an increase.
+
+        **This is the check a spatial rule wants**, not ``crosses_level``.
+        """
+        return self.crosses_level or self.full_reset
+
+    @property
     def score_delta(self) -> int:
         return self.score_after - self.score_before
 
@@ -236,7 +250,12 @@ def load(path: str | Path) -> list[Transition]:
                 after=grids[-1],
                 intermediate=tuple(grids),
                 wasted=wasted,
-                crosses_level=int(rec.get("level", 0)) > previous_level,
+                # The first transition has no predecessor, so it cannot have crossed
+                # anything -- comparing it against a level-0 default would flag
+                # any trace that starts mid-game.
+                crosses_level=(
+                    previous is not None and int(rec.get("level", 0)) > previous_level
+                ),
                 score_before=previous_score,
                 score_after=int(rec.get("score", 0)),
                 state=str(rec.get("state", "NOT_PLAYED")),

@@ -505,3 +505,32 @@ def test_excluding_boundaries_is_what_a_spatial_rule_must_do(tmp_path):
 
     assert survey(naive, ts).levels_violated == [1]
     assert survey(careful, ts).levels_violated == []
+
+
+def test_a_full_reset_also_replaces_the_board(tmp_path):
+    """crosses_level only catches level *increases*; a full reset moves it down.
+
+    Both make a spatial comparison meaningless, so board_replaced is what a
+    movement rule should actually exclude on.
+    """
+    path = tmp_path / "t.jsonl"
+    w = TraceWriter(path)
+    w.append(_frame(1, [[[0]]], score=2), level=2)
+    w.append(_frame(1, [[[1]]], score=2), level=2)
+    frame = _frame(0, [[[9]]], score=0)
+    frame["full_reset"] = True
+    w.append(frame, level=0)
+
+    _first, a, b = load(path)
+    assert not b.crosses_level, "the level went down, not up"
+    assert b.full_reset and b.board_replaced
+    assert not a.board_replaced
+
+
+def test_the_first_transition_never_counts_as_crossing_a_level(tmp_path):
+    """It has no predecessor. Comparing against a level-0 default would flag
+    any trace that starts mid-game."""
+    path = tmp_path / "t.jsonl"
+    TraceWriter(path).append(_frame(0, [[[1]]], score=3), level=3)
+    (t,) = load(path)
+    assert t.before is None and not t.crosses_level and not t.board_replaced
