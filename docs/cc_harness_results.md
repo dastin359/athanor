@@ -2805,3 +2805,60 @@ an Arm A question.
 The comparison this arm licenses is narrow and worth stating exactly: **on tasks
 the baseline already solves, CCARC neither helps nor hurts.** All the movement in
 this experiment is in Arm A, which is what the design intended.
+
+---
+
+## `16b78196`: the hedging mechanism earns its keep, and the pattern holds across models
+
+Correcting something stated earlier tonight: *"Opus 4.8 has not produced a single
+winning second candidate."* That was true when written and is now false.
+`16b78196` — the unexplained $9.58 solve — **won its only test output on
+candidate 2**, `matched_candidate: 2`. It is the first candidate-2 win of the
+batch, and it explains an anomaly rather than adding one: the run was expensive
+because the task was genuinely ambiguous, and it scored because the hedge was
+right.
+
+Its hypothesis states the fork explicitly:
+
+> **Candidate 1 (primary).** Rule A — the towers partition the pieces *by
+> parallel extent*. On the test all five pieces share extent 4, so a single group
+> → one tower.
+>
+> **Candidate 2 (hedge).** Rule C — one tower per wall *side* that carries a
+> notch. train0 has notches on two surfaces (2 towers); train1's are all on one
+> (1 tower). These two rules **agree on both training pairs but diverge on the
+> test**, whose wall is notched on the left and the right → two towers.
+
+Two rules, both train-perfect, separated only out of sample. That is exactly the
+situation the second ARC attempt exists for, and the solver spent it correctly.
+It also reported **confidence 3 — the lowest in the batch** — and was right. Good
+calibration expressed as an *action* rather than as a number: it did not know, it
+said so, and it hedged accordingly.
+
+**And the rival is a selection rule, not an edge case.** "What determines how many
+towers there are" is a question about which rule governs, not about what happens
+at a boundary. Set the four hedges this project has examined side by side:
+
+| task | model | rival was about | candidate 2 |
+|---|---|---|---|
+| `d35bdbdc` | Opus 5 | **selection** — degree-1 endpoints of the gray path | **won** (×2 outputs) |
+| `16b78196` | Opus 4.8 | **selection** — one tower per notched side | **won** |
+| `78332cb0` | Opus 4.8 | edge case — ordering within the line | lost (fatal error was *orientation*) |
+| `88e364bc` | Opus 4.8 | edge case — diagonal corner-brushing | lost to a bug on the untested branch |
+
+The pattern proposed after `d35bdbdc` now has an independent instance in a
+different model, arrived at without looking for it: **candidate-2 wins come from
+rivals about which rule applies; candidate-2 losses come from rivals about
+boundary behaviour.** `88e364bc` is the instructive near-miss — its edge-case
+rival happened to be the correct axis, and a bug in the branch training never ran
+discarded the point anyway.
+
+This is worth more than the ablation claim it replaces, for three reasons. It is a
+within-task mechanism observation, so it needs no matched arms and survives all
+the confounds that killed the earlier result. It now spans two models. And it is
+directly actionable in the doctrine: the question to put to a solver is not
+"where are you uncertain" but **"is there a different rule that fits every
+training pair, or only a different boundary behaviour?"** — because only the first
+kind of rival has ever won a slot here.
+
+n = 4 tasks. Stated as a mechanism, not a rate.
