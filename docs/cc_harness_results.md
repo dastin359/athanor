@@ -1862,3 +1862,121 @@ The same shape as inferring process liveness from filesystem state — an answer
 read off whichever artifact was easiest to look at. The corrective is cheap and
 should be automatic: before concluding that something was destroyed, establish
 where it would be if it still existed.
+
+---
+
+## The container-death question, settled: an exact ledger, and the clock it runs on
+
+The section above was written from behavioural correlation at n=2, and I flagged
+it as such: the headline might be right, but a gap in the orchestrator's
+transcript could mean "blocked inside one long tool call" rather than "idle,"
+and there was no way to tell from the outside. That confound is now closed. The
+platform keeps its own supervisor log, it survives reboots, and it records every
+shutdown with a signal name and a timestamp.
+
+**Why the evidence exists at all.** The root filesystem is a real block device —
+`/dev/vda / ext4 rw,relatime` — not overlayfs and not tmpfs, and `/tmp` is on it.
+PID 1 is `/process_api --firecracker-init`. So each "container death" is a
+Firecracker microVM recycled onto the *same persistent disk*: the VM is
+destroyed, the disk is remounted, and anything written to `/tmp` is still there.
+That is also the mechanism behind the durability inversion recorded above — the
+scratchpad lives on this disk, while the repository working tree is re-cloned.
+
+**Nine restarts, not two.** Four mutually independent artifacts agree exactly:
+
+| Method | Count |
+|---|---|
+| ext4 superblock `Mount count` on `/dev/vda` | 10 |
+| `workerEpoch` field in `/tmp/env-manager.log` | 1..10 |
+| Timestamp-named MCP log files under `~/.cache/claude-cli-nodejs/` | 10 |
+| Per-process `*.diag.log` birth/mtime pairs in `/tmp` | 10 |
+
+Ten incarnations, so nine restarts. The earlier figure of two understates it by
+4.5x. The other seven were invisible for a structural reason worth naming: a
+restart only leaves a *solver-shaped* trace if solvers happen to be running when
+it lands. Six of the nine landed on an empty box. **A detector that can only see
+an event when something else is already running is not a detector; it is a
+coincidence counter.**
+
+**Every death was a deliberate, orderly, externally-signalled kill.** All nine
+appear in `/tmp/env-manager.log` as `"Received signal, shutting down gracefully"`
+with `attributes:{"signal":"terminated"}` — SIGTERM — followed by
+`"Sending SIGTERM to Claude Code for graceful shutdown"` with
+`{"grace_period_seconds":5}`, then an ordinary teardown: MCP servers closed
+cleanly, executor destroyed, `"Environment manager completed successfully"`,
+lockfile released. Claude Code's own log (`/tmp/claude-code.log`, a different
+binary, different serialisation) records the matching
+`"Command stopped gracefully after Nms (context cancelled)"` within ~300 ms on
+all nine.
+
+Exit codes: **eight of nine exited 143** (128+15, SIGTERM). One exited −1, having
+missed the 5-second grace period. **Zero exited 137.** There has never been an
+OOM kill on this box: `memory.failcnt` is 0, `memory.limit_in_bytes` is
+unlimited, and `dmesg` has no OOM-killer lines. The memory hypothesis is not
+merely unsupported, it is excluded.
+
+**It is not a fixed lifetime either.** Uptime per incarnation, in minutes:
+305.76, 10.05, 18.04, 20.27, 14.70, 8.08, 13.11, 9.39, 49.48. A 38x spread, with
+the busiest incarnation being by far the longest-lived. Nor is it periodic: the
+nine kill times sit on no wall-clock boundary.
+
+**What the clock actually tracks.** Time from the orchestrator's last API request
+(`[API REQUEST] /v1/messages` in `/tmp/claude-code.log`) to the SIGTERM, in
+minutes:
+
+```
+4.09  4.55  6.87  5.54  4.02  3.76  5.01  5.15  5.71
+mean 4.97   median 5.01   sd 0.94   min 3.76
+```
+
+Measured instead from the last event in the orchestrator's own transcript: mean
+5.27, median 5.07, range 3.81–7.57. Two independent clocks, same ~5-minute
+answer. Set that against the 38x spread in uptime and the comparison is not
+close — idle time predicts the kill, elapsed lifetime does not.
+
+**The confound is dead, on the strongest available evidence.** At every one of
+the nine kills, the orchestrator's last transcript event was an `assistant`
+message with `stop_reason: end_turn`. Not one kill interrupted a turn in
+progress. So the transcript gaps preceding these deaths were genuine idleness —
+the session had finished speaking and was waiting for input — and not, as I had
+to allow for at n=2, a long tool call in flight.
+
+**And the box was not idle.** Kill #9 is a natural experiment. In the 5m44s
+before that SIGTERM the container was running eight solver processes; the agent
+proxy negotiated a tunnel **4.05 seconds** before the signal; a solver wrote to
+its transcript on disk **1.4 seconds** before it. Kill #7 shows the same shape:
+last proxy tunnel 4.5s before SIGTERM. The control plane killed a demonstrably
+busy machine because the *orchestrator session* had been quiet for five minutes.
+CPU, network, disk, and child-process liveness are all invisible to it.
+
+**The restart is transparent by design, which is why none of this was noticeable
+from the inside.** The microVM is recreated and the *same session id* is resumed:
+identical process chain, `claude` landing on PID 569 on two separate boots,
+subagent transcripts restored at boot+21s, an unbroken `parentUuid` chain across
+both boots, and no re-initialisation attachments. Searching the transcript for
+restart keywords returns nothing — not because nothing happened, but because
+**from the model's point of view nothing did happen.** Anyone who greps a
+transcript for evidence of a restart and finds none has learned nothing at all.
+
+**So: yes, it is an idle policy, and the answer to the obvious follow-up is
+"the session, not the machine."** The reclamation clock keys on the orchestrator
+Claude Code process's turn state. Background work does not feed it. This produces
+the failure mode that has cost this project the most time: **a batch is at
+greatest risk precisely when it is running well enough that the orchestrator has
+nothing to do.** The better the automation, the quieter the supervisor, the
+sooner everything dies.
+
+**Operational rule, now with a number behind it.** The minimum observed
+idle-to-kill was **3.76 minutes**. Emit an API request at least every ~2.5
+minutes for as long as a batch is live. A heartbeat monitor on a 150-second
+cadence is sufficient and costs almost nothing; polling "to check on progress" is
+not the point, and the check need not even be useful. Staying audible is the
+point.
+
+*Methodology note: this ledger came out of a fan-out over six evidence angles
+with adversarial falsifiers, rather than a single investigation. The single most
+valuable move was the one that ignored its brief — an agent assigned to inspect
+background-task output files found that angle empty, swept the surrounding
+directory anyway, and surfaced the supervisor log that made everything else
+exact. The assigned angle produced nothing; the unassigned neighbourhood
+produced the answer.*
