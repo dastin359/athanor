@@ -266,6 +266,16 @@ def _rhae(results: list[dict]) -> None:
     padded = list(scores.values()) + [0.0] * max(0, PUBLIC_ENVIRONMENTS - len(scores))
     total = total_score(padded)
     played = 100.0 * sum(scores.values()) / len(scores)
+    alt = [r.get("rhae_per_play_reading") for r in results if r.get("rhae_per_play_reading")]
+    if alt:
+        other = total_score(
+            [max(r.get("rhae_per_play_reading", r.get("rhae", 0.0)), 0.0)
+             for r in results if r.get("rhae") is not None]
+            + [0.0] * max(0, PUBLIC_ENVIRONMENTS - len(scores))
+        )
+        print(f"      replay ambiguity unresolved: {min(total, other):.2f}%-"
+              f"{max(total, other):.2f}% depending on whether a replayed level's "
+              f"actions accumulate.")
     print(f"RHAE: {total:.2f}% over all {PUBLIC_ENVIRONMENTS} public environments "
           f"({len(scores)} scored, {played:.2f}% mean on those). "
           f"Opus 5 published: {OPUS5_PUBLISHED:.2f}%.")

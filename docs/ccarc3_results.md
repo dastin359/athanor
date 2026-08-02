@@ -86,20 +86,33 @@ readings:
 | (a) count only the playthrough that finished | **1.000** |
 | (b) count every action ever spent on that level | **0.799** |
 
-**This project uses (b).** The SDK's own aggregation is asymmetric —
-`Card.high_score = max(scores)` but `Card.total_actions = sum(actions)` — score
-is best-of and actions accumulate. That asymmetry has no purpose *except* to
-make replaying self-defeating, and under reading (a) the summing would be inert
-and the benchmark trivially gameable by memorising a route. There is no "play
-the game only once" rule because none is needed: the scoring already punishes
-it, and punishes it squared.
+**Neither reading is established, and this document has now argued both.**
 
-Reading (a) was what this harness implemented first, and it is the flattering
-one. Adopting (b) costs 0.201 units and drops the headline from 27.79% to
-**26.98%** — and drops `ls20` out of the ≥99% column, so the "6 versus 5" claim
-above becomes **5 versus 5**. Both figures are kept in `result.json`
-(`rhae` and `rhae_per_play_reading`) so the choice stays visible rather than
-buried. `ls20` is the only affected environment; no other run has a full reset.
+The case for (a): the benchmark takes `Card.high_score = max(scores)` — it
+explicitly scores your *best* play — so scoring that play's actions is the
+natural reading. Grinding is then deterred by the total action budget rather
+than by the denominator.
+
+The case for (b): `Card.total_actions = sum(actions)` accumulates across plays,
+and if replaying were free a solver could grind out the route and walk it back
+clean.
+
+**The second argument is weaker than it first looks, and an earlier version of
+this section overstated it.** `total_actions` is a *game-level* total while
+`a_l` is *per level*, and the scorecard exposes no per-level action counts at
+all — so one does not establish the other. On reflection (a) is arguably the
+more likely reading, which is the opposite of what this section asserted an
+hour before.
+
+This project therefore **reports the range, 26.98%–27.79%**, and uses (b) as the
+default because it is the conservative choice for a number that might be
+published — not because it is known to be right. Both are kept in `result.json`
+(`rhae`, `rhae_per_play_reading`); `cumulative=False` gives the other. Under (a)
+`ls20` scores 1.000 and the ≥99% count is 6 against Opus 5's 5; under (b) it is
+0.799 and the count is 5 against 5. `ls20` is the only affected environment.
+
+**Settling it is worth one cheap experiment**: play a one-level game to a win,
+replay it faster, and read the scorecard. That has not been done.
 
 ### What the rubric says about where the remaining margin is
 

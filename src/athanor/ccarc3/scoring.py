@@ -189,24 +189,33 @@ def actions_per_level(
     this returns 18 actions for level 0, which is exactly what that solver
     reported for itself; grouping by the recorded level gives 17.
 
-    **``cumulative=True`` (the default) counts a replayed level twice**, and
-    that is the conservative reading of an ambiguity in the rubric. It says
-    ``a_l`` is "the agent's action count for completing level l" without saying
-    how multiple playthroughs combine. Two things decide it in favour of
-    summing:
+    **``cumulative`` selects between two readings of a genuine ambiguity, and
+    which is correct is NOT established.** The rubric says ``a_l`` is "the
+    agent's action count for completing level l" and its reference
+    implementation takes one integer per level with no notion of plays, so it
+    does not answer the question at all.
 
-    - The SDK's own aggregation is asymmetric: ``Card.high_score = max(scores)``
-      but ``Card.total_actions = sum(actions)``. Score is best-of, actions
-      accumulate. That asymmetry exists precisely so that replaying a game to
-      learn its route cannot pay — and if ``a_l`` were per-play, the summing
-      would be pointless and the benchmark trivially gameable by grinding out
-      the optimal route and then walking it.
-    - Choosing otherwise means reporting the flattering reading of a rule you
-      have not resolved.
+    Concretely: a one-level game with a human baseline of 7, won in 10 actions,
+    then replayed and won in 7. Is ``a_l`` 7 or 17?
 
-    Pass ``cumulative=False`` for the per-play reading, which counts only the
-    playthrough that finished. On `ls20` — the one run here with a full reset —
-    the two give **0.799** and **1.000**. Nothing else in the set is affected.
+    - **7 (``cumulative=False``)** — the benchmark takes ``Card.high_score =
+      max(scores)``, i.e. it explicitly scores your *best* play, so scoring that
+      play's actions is the natural reading. Grinding is then deterred by the
+      total action budget rather than by the denominator.
+    - **17 (``cumulative=True``, the default here)** — ``Card.total_actions =
+      sum(actions)`` sums across plays, and if replaying cost nothing a solver
+      could grind out the route and walk it back clean.
+
+    **The second argument is weaker than it first appears**, and this docstring
+    previously overstated it: ``total_actions`` is a *game-level* total, while
+    ``a_l`` is *per level*. The scorecard exposes no per-level action counts at
+    all, so one does not establish the other.
+
+    Cumulative is the default because it is the conservative choice for a number
+    that might be published, not because it is known to be right. On `ls20` —
+    the one run here with a full reset — the readings give **0.799** and
+    **1.000**, so the project total is a range, 26.98%–27.79%. Nothing else in
+    the set is affected.
 
     Actions spent on abandoned attempts and on failed level retries are included
     either way. They were spent, and "actions used to complete this level" is
