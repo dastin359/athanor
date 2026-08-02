@@ -1,10 +1,47 @@
 # CCARC3 results
 
-> **`ls20-9607627b`: WON — all 7 levels, 489 actions against a 776 human
-> baseline (63%), zero deaths.** Details in run 2 below.
-
 Durable log of ARC-AGI-3 runs. Design and findings: `ccarc3_design.md`. How to
 run it: `ccarc3.md`.
+
+## Where this stands against the published Opus 5 result
+
+The ARC-AGI-3 leaderboard entry for Claude Opus 5 (24 July 2026) reports
+**30.16%**, at High reasoning effort, on the **public demo set of 25
+environments**. The metric is *percentage of the 25 environments completed*.
+
+| | |
+|---|---|
+| Opus 5, published | **30.16%** = ~7.5 of 25 |
+| CCARC3, games won | **6** |
+| CCARC3 on the same metric | **24.00%** |
+| needed to pass | **8** of 25 = 32.00% |
+
+**So this is not ahead yet, and the denominator is why.** Six games have been
+won out of six attempted, which is the encouraging figure, but eighteen
+environments have never been played and an unplayed environment scores zero. The
+run in flight (`sc25`) would make seven; one more clears the bar.
+
+Three things any comparison drawn from this must carry:
+
+- **Same model, different scaffold.** Both are `claude-opus-5` at effort `high`.
+  The difference under test is the harness, which is the point of the project —
+  but it also means the comparison says nothing about the model.
+- **`cd82` took two runs.** It scored 0/6 on its first attempt and 6/6 on a
+  second, against a harness that had changed in between. ARC-AGI-3's own scoring
+  is best-of across plays, so that is legitimate inside the benchmark's rules; it
+  is still not a single-shot result and should not be quoted as one.
+- **The games played were chosen, not sampled.** Batch 1 picked one game per tag
+  type; batch 2 deliberately picked `keyboard_click`, including a re-run of the
+  only failure. A 6-of-6 rate on a chosen subset is weak evidence about the
+  remaining eighteen.
+
+The remaining eighteen are queued cheapest-baseline-first (`scratchpad/batch6.py`).
+That ordering is not cosmetic: every environment is worth 1/25 whatever its
+length, a run costs turns × roughly $0.10, and baselines span 317 to 1843 — so
+cheap games buy the same score for a fraction of the budget.
+
+> **Best single result so far: `sb26-7fbdac44` — 8 of 8 levels in 125 actions
+> against a 213 baseline (0.59×), zero deaths, $3.04.**
 
 ---
 
