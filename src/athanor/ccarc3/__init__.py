@@ -16,6 +16,7 @@ the SDK or an API key. The seam is a plain dict of the shape
 
 from .grids import (
     DEFAULT_BACKGROUND,
+    PALETTE,
     PALETTE_SIZE,
     Change,
     Object,
@@ -28,6 +29,7 @@ from .grids import (
     flatten_frames,
     logical,
     objects,
+    png,
     render,
 )
 from .client import (
@@ -72,6 +74,8 @@ __all__ = [
     "logical",
     "collapse",
     "cell_boundaries",
+    "png",
+    "PALETTE",
     "objects",
     "counts",
     "flatten_frames",

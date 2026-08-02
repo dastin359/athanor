@@ -32,6 +32,39 @@ run the experiment*. Test lethality early in a level, not at its far end.
 > death is instrumental, not an objective. An agent that fears dying will
 > under-explore, and it will do so exactly where exploring is cheapest.
 
+### 1a. A level may hold a depleting resource, and exhausting it kills you.
+
+Some games give each level a finite budget — energy, time, moves, fuel — and end
+it in `GAME_OVER` when it runs out.
+
+**How it is drawn varies from game to game.** Do not go looking for a specific
+widget. It might be a bar, a row of tokens that disappear one at a time, a
+counter, a colour draining out of something, or a region that shrinks. It may
+not be visually obvious at all. What is constant is the *pattern*, and the
+pattern is what to watch for:
+
+- something on the board changes monotonically, once per action, regardless of
+  what you did;
+- and deaths arrive at a consistent action count rather than at a consistent
+  place.
+
+That second signal is the reliable one, and it needs no rendering at all. So a
+death has two possible causes, calling for opposite responses:
+
+- **Contact with something lethal** — you learned where a hazard is. Record it,
+  with the location.
+- **Resource exhaustion** — you learned nothing about the board and were
+  probably wandering. Recording a "hazard" here is a false rule that will
+  mislead you for the rest of the run.
+
+Before concluding you found a hazard, check *how many actions* you had spent on
+the level. If deaths keep landing near the same count from different places, it
+is the resource, not the board.
+
+If you suspect a depleting resource, find its display: diff a frame against the
+frame one action earlier while standing still, if the game lets you. Whatever
+changes when you did nothing meaningful is a strong candidate.
+
 ## 2. Never make RESET your first action after completing a level.
 
 The server's action counter is zeroed when a level advances. A RESET at that

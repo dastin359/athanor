@@ -9,6 +9,7 @@ never applied" alike. Those two cases are asserted apart deliberately.
 from __future__ import annotations
 
 import json
+import pathlib
 
 import numpy as np
 import pytest
@@ -442,3 +443,24 @@ def test_rulebook_sorts_results_into_verified_refuted_and_untested(tmp_path):
 
 def test_rulebook_load_of_a_missing_file_is_empty(tmp_path):
     assert RuleBook.load(tmp_path / "nope.json").verified == []
+
+
+def test_png_writes_an_image_in_the_official_palette(tmp_path):
+    """The agent can Read the file back and actually look at the board."""
+    from athanor.ccarc3 import PALETTE, png
+    from PIL import Image
+
+    grid = np.arange(16).reshape(4, 4)
+    out = png(grid, tmp_path / "g.png", scale=4)
+    img = Image.open(out).convert("RGB")
+    assert img.size == (16, 16)
+    # cell (0,0) is colour 0 -> white, (3,3) is colour 15 -> purple
+    assert img.getpixel((1, 1)) == (255, 255, 255)
+    assert "#%02X%02X%02X" % img.getpixel((13, 13)) == PALETTE[15]
+
+
+def test_png_creates_missing_parent_directories(tmp_path):
+    from athanor.ccarc3 import png
+
+    out = png([[1, 2]], tmp_path / "deep" / "nested" / "g.png")
+    assert pathlib.Path(out).exists()

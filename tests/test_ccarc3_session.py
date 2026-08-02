@@ -135,3 +135,13 @@ def test_the_rule_book_is_summarised_when_present(ws):
     out = collect_outcome(ws, exit_code=0, timed_out=False)
     assert out["mechanics_recorded"] == 2
     assert out["refutations_recorded"] == 1
+
+
+def test_bypass_permissions_is_downgraded_under_root(ws, monkeypatch):
+    """--dangerously-skip-permissions is refused as root; the run dies empty."""
+    import athanor.ccarc3.session as sess
+
+    monkeypatch.setattr(sess, "resolve_permission_mode", lambda m: "acceptEdits")
+    args = sess.build_cli_args(ws)
+    assert "acceptEdits" in args
+    assert "bypassPermissions" not in args

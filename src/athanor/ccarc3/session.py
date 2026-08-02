@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..cc_harness.runner import resolve_permission_mode
 from .client import GameInfo, list_games
 
 __all__ = ["Ccarc3Config", "build_workspace", "build_cli_args", "run_game"]
@@ -246,6 +247,18 @@ arc.objects(ts[-1].after)                      # connected components
 print(arc.render(ts[-1].after))                # one char per cell
 ```
 
+**Look at the board when the question is about shape.** `arc.png()` writes the
+frame as an image in the real palette, and you can open it with the Read tool
+and see it:
+
+```python
+arc.png(ts[-1].after, "notes/now.png", scale=8)   # then Read notes/now.png
+```
+
+Corridors, enclosures, symmetry and "which thing moved" read instantly as a
+picture and slowly as 64 lines of text. Use the image for layout and the text
+for exact values and diffs — they are complementary, not alternatives.
+
 Rules are checked three ways, never two:
 
 ```python
@@ -310,7 +323,11 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = No
     if config.effort and _supports_flag("--effort"):
         args += ["--effort", config.effort]
     if config.permission_mode:
-        args += ["--permission-mode", config.permission_mode]
+        # bypassPermissions maps to --dangerously-skip-permissions, which the
+        # CLI refuses under root -- and a containerised harness is usually
+        # root. The refusal arrives as a one-line stderr and an empty run,
+        # which is exactly how the first launch here failed.
+        args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
     if system_prompt_file and _supports_flag("--append-system-prompt-file"):
         args += ["--append-system-prompt-file", str(system_prompt_file)]
     args += list(config.extra_cli_args)

@@ -31,6 +31,17 @@ survives games that use a different backdrop.
 
 _CHARS = "0123456789abcdef"
 
+PALETTE = (
+    "#FFFFFF", "#CCCCCC", "#999999", "#666666", "#333333", "#000000",
+    "#E53AA3", "#FF7BCC", "#F93C31", "#1E93FF", "#88D8F1", "#FFDC00",
+    "#FF851B", "#921231", "#4FCC30", "#A356D6",
+)
+"""The official sixteen colours, read out of the SDK's own renderer.
+
+0-5 is a white-to-black greyscale ramp, which is why 5 (black) reads as the
+default backdrop; 6-15 are the chromatic colours.
+"""
+
 __all__ = [
     "PALETTE_SIZE",
     "DEFAULT_BACKGROUND",
@@ -43,6 +54,8 @@ __all__ = [
     "logical",
     "collapse",
     "cell_boundaries",
+    "png",
+    "PALETTE",
     "objects",
 ]
 
@@ -170,6 +183,54 @@ def collapse(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
     keep_cols = np.ones(arr.shape[1], dtype=bool)
     keep_cols[1:] = (arr[:, 1:] != arr[:, :-1]).any(axis=0)
     return arr[:, keep_cols].copy()
+
+
+def png(
+    grid: Sequence[Sequence[int]] | np.ndarray,
+    path: str | "Path",
+    *,
+    scale: int = 8,
+    grid_lines: bool = False,
+) -> str:
+    """Write a grid as a PNG and return the path, so you can *look* at it.
+
+    Reading a 64x64 character grid is a poor way to see spatial structure --
+    corridors, enclosures, symmetry and "which thing moved" all read instantly
+    as an image and slowly as text. You can open the file with the Read tool
+    and view it directly.
+
+    Use it alongside :func:`render`, not instead of it: the image is better for
+    grasping layout, the text better for reading exact cell values and for
+    diffing. When a hypothesis is about *shape*, look; when it is about
+    *coordinates*, read.
+
+    ``scale`` is pixels per cell. ``grid_lines`` overlays faint cell borders,
+    which helps when counting cells but clutters a dense frame.
+    """
+    from pathlib import Path as _Path
+
+    from PIL import Image, ImageDraw
+
+    arr = as_grid(grid)
+    h, w = arr.shape
+    img = Image.new("RGB", (w * scale, h * scale), PALETTE[5])
+    draw = ImageDraw.Draw(img)
+    for y in range(h):
+        for x in range(w):
+            draw.rectangle(
+                [x * scale, y * scale, (x + 1) * scale - 1, (y + 1) * scale - 1],
+                fill=PALETTE[int(arr[y, x])],
+            )
+    if grid_lines and scale >= 4:
+        for x in range(w + 1):
+            draw.line([(x * scale, 0), (x * scale, h * scale)], fill="#444444")
+        for y in range(h + 1):
+            draw.line([(0, y * scale), (w * scale, y * scale)], fill="#444444")
+
+    out = _Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out)
+    return str(out)
 
 
 def cell_boundaries(
