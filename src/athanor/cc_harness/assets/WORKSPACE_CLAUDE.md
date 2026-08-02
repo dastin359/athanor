@@ -241,7 +241,15 @@ a proof; killing it with an out-of-sample extrapolation is not.
 - Do not read anything outside this workspace. The test outputs live in the
   benchmark dataset; reaching for them invalidates the run, and the harness
   checks.
-- Single agent. Do not delegate to sub-agents.
+- **You have the full Claude Code toolset**, including `Task` (sub-agents),
+  `Workflow`, `Skill` and background tasks. Use whatever genuinely helps. A
+  sub-agent that reviews your solution against `hypothesis.md` without seeing
+  your reasoning is a legitimate and well-tested use; so is farming out an
+  expensive sweep. Nothing here asks you to work single-threaded.
+- What you may **not** do is reach outside this run: no web search or fetch, no
+  publishing, no notifications, no scheduling work that outlives the run. Those
+  tools are denied rather than discouraged. Any sub-agent you spawn inherits the
+  same restriction and the same workspace.
 
 ## When context gets compacted
 

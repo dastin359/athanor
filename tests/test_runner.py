@@ -34,14 +34,45 @@ class TestCliArgs:
         assert "--output-format" in args and args[args.index("--output-format") + 1] == "stream-json"
         assert "--verbose" in args
 
-    def test_network_and_delegation_tools_are_denied(self, workspace, tmp_path, full_featured_cli):
+    def test_the_solver_gets_claude_codes_full_tool_surface(self, workspace, tmp_path,
+                                                            full_featured_cli):
+        """"Claude Code as harness" is only honest if the agent gets Claude Code.
+
+        The original allowlist withheld sub-agents, workflows, skills and
+        background tasks — capability the product ships and a real user would
+        have. Passing no --tools/--allowedTools leaves the default surface
+        intact and lets the deny list do the work.
+        """
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        assert "--tools" not in args
+        assert "--allowedTools" not in args
+
+    def test_routes_out_of_the_run_are_denied(self, workspace, tmp_path, full_featured_cli):
+        """Three ways out, all closed: research, network-by-another-door, escape.
+
+        A benchmark that claims no network access has to mean it, and a solver
+        must not be able to emit anything except into its workspace.
+        """
         args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
         denied = args[args.index("--disallowed-tools") + 1]
-        for tool in ("WebSearch", "WebFetch", "Task", "Agent"):
-            assert tool in denied
-        allowed = args[args.index("--allowedTools") + 1]
-        assert "WebSearch" not in allowed
-        assert "Task" not in allowed
+        for tool in ("WebSearch", "WebFetch",                      # research
+                     "SearchMcpRegistry", "ListConnectors",         # network, other door
+                     "Artifact", "SendUserFile", "PushNotification",  # escape
+                     "CronCreate", "ScheduleWakeup"):
+            assert tool in denied, tool
+
+    def test_delegation_and_orchestration_are_available(self, workspace, tmp_path,
+                                                        full_featured_cli):
+        """Task and Workflow are deliberately NOT denied.
+
+        This changes what the variant measures: a solver can now reconstruct
+        the artifact-only reviewer this variant dropped. That is the point —
+        it should be the agent's choice, not the harness's omission.
+        """
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        denied = args[args.index("--disallowed-tools") + 1]
+        for tool in ("Task", "Workflow", "Skill"):
+            assert tool not in denied, tool
 
     def test_system_prompt_goes_by_file_when_supported(self, workspace, tmp_path, full_featured_cli):
         args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")

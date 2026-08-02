@@ -6,15 +6,39 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-#: Built-in tools the solver agent is allowed to use.
+#: Built-in tools the solver may use. Empty means **do not pass ``--tools``** —
+#: the solver gets Claude Code's full default surface, minus the deny list.
 #:
-#: Deliberately excludes WebSearch/WebFetch (ARC requires no external knowledge,
-#: and network answers would contaminate the benchmark) and the Agent/Task tools
-#: (this variant is single-agent by design — no reviewer, no sub-solvers).
-DEFAULT_TOOLS: tuple[str, ...] = ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "TodoWrite")
+#: This is the point of the variant: "Claude Code as harness" is only an honest
+#: test if the agent gets Claude Code, not a hand-picked six-tool subset. The
+#: earlier allowlist (Bash/Read/Write/Edit/Glob/Grep/TodoWrite) withheld
+#: sub-agents, workflows, skills and background tasks — capability the product
+#: actually ships and that a real user would have.
+DEFAULT_TOOLS: tuple[str, ...] = ()
 
-#: Tools denied even if a settings file or future default would grant them.
-DEFAULT_DISALLOWED_TOOLS: tuple[str, ...] = ("WebSearch", "WebFetch", "Task", "Agent")
+#: Denied outright, in three groups. Everything else the product offers is
+#: available to the solver, including ``Task`` (sub-agents) and ``Workflow``.
+#:
+#: 1. **Research.** ARC requires no external knowledge and a network answer
+#:    would contaminate the benchmark outright.
+#: 2. **Reaching the network by another door.** Registry, plugin and connector
+#:    lookups are not "research", but they are outbound calls, and a benchmark
+#:    that claims no network access has to mean it.
+#: 3. **Escaping the run.** Publishing, notifying the user, or scheduling work
+#:    that outlives the run all break the containment the scoring depends on —
+#:    a solver must not be able to emit anything except into its workspace.
+DEFAULT_DISALLOWED_TOOLS: tuple[str, ...] = (
+    # 1 — research
+    "WebSearch", "WebFetch",
+    # 2 — network by another door
+    "SearchMcpRegistry", "SearchPlugins", "SuggestPluginInstall",
+    "SuggestConnectors", "ListConnectors", "ListPlugins",
+    "ListMcpResourcesTool", "ReadMcpResourceTool", "ReadMcpResourceDirTool",
+    # 3 — escaping the run
+    "Artifact", "SendUserFile", "PushNotification",
+    "CronCreate", "CronDelete", "CronList", "ScheduleWakeup",
+    "ShowOnboardingRolePicker",
+)
 
 
 @dataclass
