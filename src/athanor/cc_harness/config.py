@@ -16,6 +16,22 @@ from typing import Any
 #: actually ships and that a real user would have.
 DEFAULT_TOOLS: tuple[str, ...] = ()
 
+#: Tools **pre-approved** so a headless run never stalls on a permission prompt.
+#:
+#: ``--allowedTools`` does two jobs at once: it restricts the surface *and* it
+#: grants permission. Dropping it to open the surface also removed the grant —
+#: `acceptEdits` auto-approves file writes but not arbitrary Bash, so every
+#: `python explore/foo.py` was denied and two runs burned ~$2 each producing
+#: nothing. The surface is opened by omitting ``--tools``; permission is granted
+#: here, explicitly.
+DEFAULT_ALLOWED_TOOLS: tuple[str, ...] = (
+    "Bash", "Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit",
+    "Task", "Workflow", "Skill", "ToolSearch", "Monitor", "SendMessage",
+    "TodoWrite", "TaskCreate", "TaskGet", "TaskList", "TaskOutput",
+    "TaskStop", "TaskUpdate", "EnterWorktree", "ExitWorktree",
+    "ListSkills", "SearchSkills", "SuggestSkills", "ReportFindings",
+)
+
 #: Denied outright, in three groups. Everything else the product offers is
 #: available to the solver, including ``Task`` (sub-agents) and ``Workflow``.
 #:
@@ -89,6 +105,7 @@ class CCRunConfig:
     denies anything not explicitly allowed rather than prompting.
     """
     tools: tuple[str, ...] = DEFAULT_TOOLS
+    allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
     disallowed_tools: tuple[str, ...] = DEFAULT_DISALLOWED_TOOLS
     stable_system_prompt: bool = True
     """Pass `--exclude-dynamic-system-prompt-sections`.
@@ -130,6 +147,7 @@ class CCRunConfig:
         self.best_effort_iterations = max(0, min(int(self.best_effort_iterations), self.max_iterations))
         self.max_test_predictions = max(1, min(2, int(self.max_test_predictions)))
         self.tools = tuple(self.tools)
+        self.allowed_tools = tuple(self.allowed_tools)
         self.disallowed_tools = tuple(self.disallowed_tools)
         self.extra_cli_args = tuple(self.extra_cli_args)
 

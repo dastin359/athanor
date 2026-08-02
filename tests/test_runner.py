@@ -44,8 +44,21 @@ class TestCliArgs:
         intact and lets the deny list do the work.
         """
         args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
-        assert "--tools" not in args
-        assert "--allowedTools" not in args
+        assert "--tools" not in args, "surface must stay unrestricted"
+
+    def test_bash_is_pre_approved_so_a_headless_run_never_stalls(self, workspace, tmp_path,
+                                                                 full_featured_cli):
+        """--allowedTools does two jobs: restrict the surface AND grant permission.
+
+        Dropping it to open the surface also removed the grant. acceptEdits
+        auto-approves file writes but not arbitrary Bash, so every
+        `python explore/foo.py` was denied and two runs burned ~$2 each
+        producing nothing at all.
+        """
+        args = runner.build_cli_args(workspace, system_prompt_file=tmp_path / "sp.md")
+        allowed = args[args.index("--allowedTools") + 1]
+        for tool in ("Bash", "Read", "Write", "Task", "Workflow"):
+            assert tool in allowed, tool
 
     def test_routes_out_of_the_run_are_denied(self, workspace, tmp_path, full_featured_cli):
         """Three ways out, all closed: research, network-by-another-door, escape.

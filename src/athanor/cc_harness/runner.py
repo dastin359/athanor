@@ -105,8 +105,8 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path) -> list[st
         args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
     if config.tools and supports_flag("--tools"):
         args += ["--tools", ",".join(config.tools)]
-    if config.tools:
-        args += ["--allowedTools", ",".join(config.tools)]
+    if config.allowed_tools:
+        args += ["--allowedTools", ",".join(config.allowed_tools)]
     if config.disallowed_tools:
         args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
 
