@@ -1590,3 +1590,34 @@ class TestUnreached:
             "    print('RAISED', 'solution/solve.py' in str(e))\n"
         ))
         assert out.strip() == "RAISED True"
+
+
+class TestBackgroundWaitCeiling:
+    """One authority on when a run ends, not two timers.
+
+    abc82100 delegated to a sub-agent, ended its turn, and the CLI killed the
+    background task at its 600s default — recording 0 iterations and no
+    hypothesis after $6.09. The run's own wall clock is longer and now salvages a
+    train-perfect submission; the shorter timer had no salvage path at all.
+    """
+
+    def test_the_ceiling_is_raised_for_solver_processes(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", raising=False)
+        env = workspace_env()
+        assert env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] == "3600000"
+
+    def test_it_exceeds_the_default_wall_clock_so_the_wall_clock_governs(self):
+        from athanor.cc_harness.config import CCRunConfig
+        ceiling_s = int(workspace_env()["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"]) / 1000
+        assert ceiling_s >= CCRunConfig().wall_clock_timeout_s * 0.5, (
+            "a background ceiling well under the wall clock reintroduces a second, "
+            "worse deadline"
+        )
+
+    def test_an_explicit_setting_still_wins(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "1234")
+        assert workspace_env()["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] == "1234"
+
+    def test_the_dataset_root_is_still_removed(self, monkeypatch):
+        monkeypatch.setenv("ARC_DATA_ROOT", "/somewhere/with/ground/truth")
+        assert "ARC_DATA_ROOT" not in workspace_env()

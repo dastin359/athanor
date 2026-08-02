@@ -329,8 +329,22 @@ def relative_to_cwd(path: Path) -> str:
         return str(path)
 
 
+#: How long the CLI waits for a solver's background tasks before killing them.
+#: The default is 600 s, which is shorter than the run's own wall clock and fails
+#: far worse: `abc82100` delegated to a sub-agent, ended its turn, had the
+#: background task killed at 600 s, and recorded 0 iterations and no hypothesis
+#: after spending $6.09. One run in 109, but the loss is total when it happens.
+#:
+#: Raising it does not make runs longer — `wall_clock_timeout_s` still bounds
+#: them, and a timeout now salvages a train-perfect submission instead of
+#: discarding it. The point is to leave **one** authority on when a run ends
+#: rather than two timers whose shorter one has no salvage path.
+BACKGROUND_WAIT_CEILING_MS = "3600000"
+
+
 def workspace_env() -> dict[str, str]:
     """Environment for a solver process: the dataset root is deliberately removed."""
     env = dict(os.environ)
     env.pop("ARC_DATA_ROOT", None)
+    env.setdefault("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", BACKGROUND_WAIT_CEILING_MS)
     return env
