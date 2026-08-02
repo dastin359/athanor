@@ -1823,16 +1823,42 @@ enough that the orchestrator has nothing to do.
   inside the window.
 - Prefer many short shards to few long ones. A shard that dies loses only its
   own progress, and per-task results are already written as each task completes.
-- Re-check the staged dataset after every restart. One relaunch failed all ten
-  tasks instantly with `FileNotFoundError: Dataset root does not exist`, because
-  the restart had wiped the staged dataset directory. Cost: $0.00 and ten
-  useless records, which is cheap only because it failed loudly.
+- Pass `--dataset-root` and `--out-dir` as **absolute** paths. Every relative
+  path here is a bug waiting for a cwd change.
 
-**One correction to an earlier conclusion.** Output directories were reported as
-lost in these restarts. They were not: a relative `--out-dir` resolves against
-cwd, and these batches were launched from the scratchpad, so the results sat
-there rather than in the repo. Nine task directories and all twelve solver
-transcripts survived, including full `stream.jsonl` up to the moment of death
-for the killed runs. Checking the wrong directory and concluding the data was
-gone is the same error as inferring process liveness from filesystem state — an
-answer read off the artifact that was easiest to look at.
+**What actually persists across a restart, which is the opposite of what I
+assumed.** The scratchpad under `/tmp/claude-0/<session>/` survives a container
+restart intact. The *repository working tree does not*: it is re-cloned, so any
+untracked file in the repo — a staged dataset, a run directory from a relative
+`--out-dir` — is gone. Durability runs the other way round from the intuition
+that `/tmp` is scratch and the repo is permanent.
+
+Verified rather than assumed: the staged dataset in the scratchpad is dated
+09:16 on the first day of the experiment, survived every restart since, and is
+byte-identical to a fresh clone of the upstream dataset. 120 evaluation tasks,
+1000 training tasks, `diff -rq` clean.
+
+**Two corrections to conclusions drawn earlier in this same investigation**, both
+of the same kind and worth recording as such:
+
+1. *Output directories were reported as lost.* They were not. A relative
+   `--out-dir` resolves against cwd, these batches were launched from the
+   scratchpad, and the results sat there. Nine task directories and all twelve
+   solver transcripts survived, including full `stream.jsonl` up to the moment
+   of death for the killed runs.
+
+2. *The staged dataset was reported as wiped by the restart.* It was not. One
+   relaunch did fail all ten tasks instantly with `FileNotFoundError: Dataset
+   root does not exist` — but because that relaunch passed a **relative**
+   `--dataset-root` that resolved against the repository root, where no dataset
+   had ever been, rather than against the scratchpad, where it was sitting the
+   whole time. The error message named a path that had never existed, and I read
+   it as evidence of deletion. Cost of the misdiagnosis: a redundant re-clone of
+   the dataset, and a false claim committed to this log before it was caught.
+
+Both errors have one shape: an artifact was checked in the wrong location, came
+back empty, and the emptiness was read as destruction rather than as a bad path.
+The same shape as inferring process liveness from filesystem state — an answer
+read off whichever artifact was easiest to look at. The corrective is cheap and
+should be automatic: before concluding that something was destroyed, establish
+where it would be if it still existed.
