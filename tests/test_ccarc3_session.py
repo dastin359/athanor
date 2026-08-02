@@ -516,3 +516,11 @@ def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
     assert "NEW PLAY" in d
     assert "gains you exactly nothing" in d, "the usual case must be stated"
     assert "1.0 − raw" in d or "1.0 - raw" in d, "the arithmetic, not a vibe"
+
+
+def test_the_doctrine_says_to_reserve_budget_for_a_replay(ws):
+    """Measured on `tn36`: a replay was worth twice what finishing was worth,
+    and was impossible because exploration had spent the budget it needed."""
+    d = (ws.root / "DOCTRINE.md").read_text()
+    assert "half your action cap" in d
+    assert "one baseline in reserve" in d

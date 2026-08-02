@@ -82,8 +82,29 @@ route your *rules* now imply, which is work you can only do once you genuinely
 understand the game. If you cannot state a better route than the one you took,
 a replay will not help you.
 
-Budget for it before you start: a replay costs roughly one baseline on top of
-whatever exploration cost.
+**Reserve the budget before you need it, or the option is gone.** A replay
+costs roughly one baseline. Your cap is a multiple of the baseline, so:
+
+> **Do not spend more than half your action cap before you understand the
+> game.** Keep one baseline in reserve.
+
+This costs a healthy run nothing — runs that win use about 0.6 of a baseline in
+total, well inside half the cap. It costs a struggling run the only move that
+was still worth making.
+
+Measured on a real run, `tn36`. After overrunning three levels it stood at
+0.442 with five of seven cleared, and:
+
+| option | value |
+|---|---|
+| stop there | 0.442 |
+| finish the last two as it was going | 0.726 (+0.284) |
+| restart and replay cleanly | **1.000 (+0.558)** |
+
+The replay was worth twice as much as finishing — and was **impossible**,
+because 317 actions were needed and 145 remained. The exploration had eaten
+the budget the recovery required. Nothing about the game prevented it; only the
+spending did.
 
 ---
 
