@@ -27,6 +27,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..cc_harness.config import (
+    DEFAULT_ALLOWED_TOOLS,
+    DEFAULT_DISALLOWED_TOOLS,
+)
 from ..cc_harness.runner import resolve_permission_mode
 from .client import GameInfo, list_games
 
@@ -57,6 +61,22 @@ class Ccarc3Config:
 
     wall_clock_timeout_s: float = 7200.0
     permission_mode: str = "bypassPermissions"
+    allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
+    """Pre-approved so a headless run never stalls on a permission prompt.
+
+    ``--allowedTools`` grants permission as well as restricting the surface.
+    Without it, ``acceptEdits`` approves file writes but *not* Bash, so every
+    ``python -c ...`` the solver runs is denied and the run produces nothing.
+    CCARC learned this the expensive way; these are its lists, imported rather
+    than re-derived, because deriving them again is how this bug came back.
+    """
+
+    disallowed_tools: tuple[str, ...] = DEFAULT_DISALLOWED_TOOLS
+    """Denied outright: research, network-by-another-door, escaping the run.
+
+    ARC needs no external knowledge and a network answer would contaminate
+    the benchmark. Everything else Claude Code ships stays available.
+    """
     api_key: str | None = None
     extra_cli_args: tuple[str, ...] = ()
 
@@ -328,6 +348,10 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = No
         # root. The refusal arrives as a one-line stderr and an empty run,
         # which is exactly how the first launch here failed.
         args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
+    if config.allowed_tools:
+        args += ["--allowedTools", ",".join(config.allowed_tools)]
+    if config.disallowed_tools:
+        args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
     if system_prompt_file and _supports_flag("--append-system-prompt-file"):
         args += ["--append-system-prompt-file", str(system_prompt_file)]
     args += list(config.extra_cli_args)

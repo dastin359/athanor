@@ -145,3 +145,18 @@ def test_bypass_permissions_is_downgraded_under_root(ws, monkeypatch):
     args = sess.build_cli_args(ws)
     assert "acceptEdits" in args
     assert "bypassPermissions" not in args
+
+
+def test_bash_is_pre_approved_or_the_run_produces_nothing(ws):
+    """acceptEdits grants writes but not Bash; CCARC burned two runs on this."""
+    args = build_cli_args(ws)
+    assert "--allowedTools" in args
+    allowed = args[args.index("--allowedTools") + 1].split(",")
+    assert "Bash" in allowed and "Read" in allowed and "Write" in allowed
+
+
+def test_network_tools_are_denied_for_benchmark_integrity(ws):
+    args = build_cli_args(ws)
+    assert "--disallowed-tools" in args
+    denied = args[args.index("--disallowed-tools") + 1]
+    assert "WebSearch" in denied or "WebFetch" in denied
