@@ -62,6 +62,43 @@ anything below.
 - *Downscaling frames is the big token saving.* Real frames rarely have uniform
   block structure; `logical()` usually declines to reduce at all.
 
+## What RHAE actually measures
+
+Worth stating, because the mechanism looks like a loophole and probably is not.
+
+Per-level actions are recorded **per play**, plays are scored **best-of**, and
+the games are **deterministic** — all measured. So a solver can explore a game
+expensively, restart, and execute the route it now understands, and only the
+clean play is scored. That reads at first like "the benchmark rewards
+presenting a tidy solution after a messy one".
+
+**The baseline's own definition argues it is deliberate.** `h_l` is the
+upper-median action count *among humans who completed that level*. Those humans
+did not clear a novel puzzle level on a blind first attempt either; they
+fumbled, worked the rule out, and then did it. The baseline is already a
+post-understanding human figure — so comparing a solver's post-understanding
+run against it is the like-for-like comparison, and charging a solver's
+discovery against a human's post-discovery number would be the unfair one.
+
+Read that way, RHAE measures **demonstrated mastery, not discovery
+efficiency**: given that you understand the game, how economically do you
+execute it relative to a human who also understands it?
+
+Three things keep that from collapsing into nothing:
+
+- **Completion is not gameable.** The cap is the weighted fraction of levels
+  actually cleared, and no replay fakes a level you cannot finish.
+- **Understanding is not gameable.** Determinism cuts both ways: replaying a
+  fumbling trace verbatim reproduces the fumbling exactly. The clean route only
+  exists if the rules are genuinely known.
+- **Discovery is not free.** It is charged to `total_actions`, which is reported
+  separately. Not counted against `a_l`, but not unpriced either.
+
+**The open question is whether the published evaluation caps `total_actions`.**
+If it does not, discovery cost is genuinely unpriced and the sharper reading —
+grind arbitrarily, then present clean — holds after all. No way to check that
+has been found short of submitting.
+
 ---
 
 ## 1. What the SDK actually exposes [SDK]
