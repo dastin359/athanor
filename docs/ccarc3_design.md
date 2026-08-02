@@ -33,6 +33,14 @@ anything below.
 | Solvers do not use the rule engine, the forward model, or the planner | [LIVE] **seven consecutive runs, zero calls**, all advertised (§9.8a) |
 | A guard's arming state must persist, or it silently stands down | [LIVE] one occurrence, one lost game, mechanism fully traced |
 
+**Corroborated externally** — by ARC's own technical report, not by this project.
+
+| claim | evidence |
+|---|---|
+| Code-over-the-trace is the right shape for a harness | The report describes a Duke University harness built on the same idea — *"allowing the model to execute arbitrary Python code to selectively retrieve and transform information from its action history"* — noting that *"maintaining a naive rolling window of observations quickly exhausts a model's context budget"*, and that it *"was able to solve all three public environments with action counts comparable to human performance."* CCARC3 arrived at the same design independently, from measuring what solvers actually did |
+| The engine is deterministic and traces re-execute faithfully | *"Known-good recordings are replayed under both win and loss conditions, confirming that the engine can serialize and faithfully re-execute action traces."* Matches the 40/40 frame test here, from the engine's side |
+| **Our wins are not luck** | ARC fuzz-tests every environment: a **1,000,000-step** uninformed-random sweep, with the constraint that *"non-tutorial levels must remain unbeaten under uninformed random play."* A level cleared here was cleared by understanding it |
+
 **Provisional — one observation, or a rank order without a cutpoint.**
 
 | claim | why it is weak |
