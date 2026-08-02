@@ -111,3 +111,50 @@ def test_the_lethal_and_wall_colours_are_distinct_from_the_goals():
 def test_moves_cover_the_four_directions():
     assert sorted(MOVES) == [1, 2, 3, 4]
     assert len(set(MOVES.values())) == 4
+
+
+# --------------------------------------------------------------------------- #
+# planning, end to end against a real engine
+# --------------------------------------------------------------------------- #
+
+
+def test_a_planned_route_actually_clears_a_level(tmp_path):
+    """shortest_path had only synthetic tests. This drives a real engine with it.
+
+    Parse the board out of the 64x64 render, plan with the search, execute the
+    plan blind, and check the level cleared. If the search were wrong the level
+    would not advance -- there is no partial credit here.
+    """
+    import numpy as np
+    from arcengine import ActionInput, GameAction
+
+    from athanor.ccarc3 import shortest_path
+
+    AVATAR, SIZE = 2, 10
+
+    def board(frame):
+        # 10 cells across a 64px viewport: 6px each with a 2px letterbox.
+        return np.asarray(frame)[2:62:6, 2:62:6]
+
+    def locate(b, colour):
+        ys, xs = np.nonzero(b == colour)
+        return (int(ys[0]), int(xs[0])) if len(ys) else None
+
+    game = build_game()
+    frame = game.perform_action(ActionInput(id=GameAction.from_id(0))).model_dump()
+    b = board(frame["frame"][-1])
+    start, goal = locate(b, AVATAR), locate(b, GOAL_COLOUR[0])
+    assert start is not None and goal is not None
+
+    def step(pos, action):
+        dx, dy = MOVES[action]
+        nxt = (pos[0] + dy, pos[1] + dx)
+        return pos if not (0 <= nxt[0] < SIZE and 0 <= nxt[1] < SIZE) else nxt
+
+    route = shortest_path(step, start, goal, actions=(1, 2, 3, 4))
+    assert route is not None
+    assert len(route) == abs(goal[0] - start[0]) + abs(goal[1] - start[1]), "must be optimal"
+
+    for action in route:
+        frame = game.perform_action(ActionInput(id=GameAction.from_id(action))).model_dump()
+    assert frame["levels_completed"] == 1, "executing the plan must clear the level"
