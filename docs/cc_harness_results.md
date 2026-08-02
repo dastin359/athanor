@@ -3023,3 +3023,78 @@ wins came from rivals about *which rule applies* (`d35bdbdc`, `16b78196`) and
 candidate-2 losses from rivals about *boundary behaviour* (`78332cb0`,
 `88e364bc`). `doctrine_3` adds a fifth instance — `matched=[2, 2, 1]`, the only
 run in the six to win on its hedge, and it hedged the selection rule.
+
+---
+
+## Hedging, with an n at last — and a correction to the one claim that survived
+
+Every scored test output across every run this project has ever made, both models:
+
+```
+hedged (2 candidates)  53/73 solved   73%
+single candidate       57/64 solved   89%
+
+of the 73 hedged outputs:
+  won BY candidate 2                13   18%   <- the hedge earned its slot
+  won by candidate 1 (redundant)    40   55%   <- the hedge was spare
+  both candidates lost              20   27%
+```
+
+**The second candidate converts 18% of the time.** Not the dominant mechanism the
+`d35bdbdc` analysis implied, and not the zero it looked like halfway through the
+4.8 batch, when the tempting write-up "4.8 cannot produce a winning rival" was
+one result away from being falsified.
+
+A caveat that matters more than the percentage: **this corpus is an accumulation,
+not a sample.** `d35bdbdc` alone contributes 6 of the 13 candidate-2 wins because
+it was studied seven times. Across *distinct tasks* the count is 8.
+
+### The selection-vs-edge-case claim does not hold
+
+Reading the hypothesis of every task that has ever won on candidate 2:
+
+| task | the rival was about | predicted by "selection wins"? |
+|---|---|---|
+| `d35bdbdc` | which endpoints select the survivors | yes |
+| `16b78196` | one tower per notched side | yes |
+| `faa9f03d` | smaller object in front, or shorter-stretch in front | yes |
+| `8e5c0c38` | which of two symmetry axes | yes |
+| `a6f40cea` | is train 2's defect a rule, or an authoring slip | yes |
+| **`abc82100`** | **what to do with an unmatched dot** | **no — an edge case** |
+| **`800d221b`** | **is the hub centre colour A or B** | **no — one cell** |
+
+Five of seven, not seven of seven. **Edge-case rivals do win**, and one of them is
+as small as a rival gets: a single cell with two possible colours. The claim
+recorded two sections ago as surviving the ablation intact is a tendency, not a
+rule, and it should not have been stated as strongly as it was.
+
+### A better predictor, in the solvers' own words
+
+> `800d221b`: *"the two candidates **exhaust the possibilities** for that cell."*
+> `8e5c0c38`: *"a genuine tie the evidence cannot break"* — two axes, enumerated.
+> `a6f40cea`: the defect is *"either a real rule or a hand-drawing error"* — and
+> this candidate deliberately **fails train 2**, kept because those two readings
+> exhaust it.
+
+Against the losses: `78332cb0` shipped two candidates that were *both transposed*
+— the true answer was never in the candidate space at all, because the solver
+hedged an elaborate ordering question while orientation, the axis it never
+considered, decided the outcome. `88e364bc` had the right axis and lost to a bug
+on the untested branch.
+
+> **A hedge wins when the two candidates exhaust the possibility space — not when
+> the ambiguity is of a particular kind.** `800d221b` won on a one-cell binary
+> because there were only two colours it could be. `78332cb0` lost an elaborate
+> hedge because the answer was outside both readings.
+
+That changes the advice from *"hedge on rules, not boundaries"* to **"hedge where
+you can enumerate the alternatives exhaustively, and be suspicious of a hedge you
+cannot close"**. It is a sharper instruction and a testable one: a solver can ask
+*"do my two candidates cover every possibility for the thing I am unsure about?"*
+and get a real answer, where *"is this a selection rule or an edge case?"* invites
+a judgement call.
+
+The doctrine currently carries the weaker version, landed an hour before this
+analysis. It should be revised, and this is recorded here rather than acted on
+immediately because the claim it replaces was also stated too strongly on first
+sight — twice now, on the same subject.
