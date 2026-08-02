@@ -2177,3 +2177,88 @@ harness currently runs, because it passes all of them.
 
 **Two failures, two mechanisms, n=2.** Recorded as mechanism rather than rate;
 the rates come when the batch does.
+
+---
+
+## Correction to the section above: there is no five-minute threshold
+
+The forensic sweep finished, including two adversarial falsifiers whose brief was
+to kill the conclusion. Both returned `H1_SUPPORTED, refuted: false` — and the
+synthesis then dismantled the *number* the section above was built on. Recording
+the correction rather than editing the claim away, because the error is
+instructive.
+
+**What survives, and it is the part worth acting on.** Nine terminations, all
+external SIGTERM, all graceful, exit 143, zero OOM. Out-of-process background
+work does not count as activity: Claude Code logged
+`session_activity_at_shutdown {refcount: 0, active: {}, oldest_activity_ms: null}`
+at **all nine** shutdowns, including the one with eight solvers alive that were
+writing to disk 1.4 s and transacting through the proxy 4.05 s beforehand. That
+is a mechanism, not a correlation, and it is unchanged.
+
+**What does not survive: the threshold.**
+
+| gap | duration | outcome |
+|---|---|---|
+| 20:02:17 → 20:07:47 | **5.50 min genuine idle** | **survived** |
+| 22:08:33 → 22:12:21 | **3.81 min** | **killed** |
+
+Maximum survived idle exceeds minimum killed idle. No cutpoint separates the
+sets. And within a *single container instance*: epoch 4 sat idle 5.70 min at
+20:31:20 and lived, then idle 5.58 min at 20:40:27 and died — same box, nine
+minutes apart, opposite outcomes at equal idle. Only a stochastic or coarsely
+polled hazard fits. A threshold `T ≤ 222 s` with poll period `P ≥ 227 s`
+reproduces both the kills and the 330 s survival, and nine events cannot separate
+`T` from `P`.
+
+**And the idle numbers themselves are a contaminated proxy.** I measured "idle" as
+a gap in the orchestrator transcript. That is not idleness. Two of the longest
+gaps in the session — 6.52 min and **11.25 min**, the latter longer than five of
+the nine fatal gaps — were the orchestrator *blocked inside long in-process
+`Task` calls*, running 24 and 8 subagent API requests respectively. The CLI's own
+`session_idle_30s` marker never fired during either, and both survived.
+
+This is precisely the confound I flagged before launching the sweep and said I
+could not resolve from the outside: *a gap in my transcript may not mean I was
+idle, it may mean I was blocked inside one long-running tool call.* It was real.
+It resolves in the direction that makes the conclusion **stronger** — reclassify
+those two gaps as busy and they stop being counterexamples — but every
+idle-duration figure in the section above, including the "minimum 3.76 minutes"
+the operational rule was hung on, is **an upper bound of unknown tightness**. The
+tidy "~5 minutes of idle → death" story was a measurement artifact.
+
+**A rival explanation fits the same nine kills and was never separated.** In this
+session "the orchestrator was quiet" and "the human was away" are nearly
+collinear: all 14 gaps over 5 minutes end with a human enqueue, and the
+orchestrator never resumes on its own. Time-since-last-orchestrator-event at kill
+has CV 0.235; **time-since-last-human-message has CV 0.222 — marginally tighter.**
+So "the environment lifecycle follows *client attachment*, with a 4–8 minute
+detach grace" explains the data at least as well, and additionally explains
+something the idle model does not address at all: every boot precedes the next
+human message by 11–202 seconds. No client-connect marker exists on disk to
+discriminate them. My earlier flat assertion — *"yes, it is an idle policy, and
+the answer is the session, not the machine"* — outran the evidence and is
+withdrawn.
+
+**One causal inversion, also mine.** I wrote that eight solvers stopped and the
+box rebooted 64 seconds later. That reverses it. The SIGTERM tore down the
+process tree; the staggered 00:36:28–00:39:11 stops are **last-flush times, not
+death times**. The solvers died *of* the shutdown.
+
+**What this does to the mitigation.** The 150-second heartbeat stands, but not
+for the reason given. It is not "stay inside a threshold" — there is no threshold,
+and no duration is provably safe. It is hazard reduction: fewer and shorter
+quiet windows, fewer chances for a coarse poll to land on one. A more interesting
+possibility, worth testing rather than believing at n=2: **in-process `Task`
+subagents appear to defer reclamation while out-of-process solvers do not.** If
+that holds, the real fix is not polling harder but running the batch *inside* the
+session as subagents — turning the work itself into the keepalive.
+
+**The lesson, which is the same one this log keeps recording.** Every number here
+came from executing something. The error was not in the measurements but in the
+proxy: "gap in the transcript" was substituted for "idle" because it was the
+artifact easiest to look at, and then a threshold was read off it to one decimal
+place. **A quantity measured through an unvalidated proxy is not more reliable for
+being measured precisely** — precision on the wrong variable reads exactly like
+rigour. The adversarial pass was worth its cost purely for catching that, and it
+only caught it because it was pointed at the *survivals* rather than the deaths.
