@@ -559,11 +559,23 @@ class ArcClient:
         baseline, because that number is the doctrine's control law and it was
         previously computable but never shown. A failed run sat at 6.1x on one
         level without anything saying so.
+
+        **Facts on the first line, warnings on their own lines after it.**
+        Interleaving them produced ``<- OVER BASELINE: re-explore rather than
+        grind, wasted=3, FULL RESETS=1``, where two unrelated counters read as
+        the tail of a sentence telling the solver what to do.
         """
+        facts = [
+            f"{self.game_id}: level {self.level}/{self.win_levels or '?'}",
+            f"state={self.state}",
+            f"actions={self.actions_used}",
+        ]
+        warnings: list[str] = []
+
         base = self.baseline_here
         if base:
             ratio = self.level_actions / base
-            pace = f" [{self.level_actions}/{base} on this level = {ratio:.1f}x]"
+            facts.append(f"[{self.level_actions}/{base} on this level = {ratio:.1f}x]")
             # 1.0, not the 2.0 first shipped here. Over 26 level-attempts, 24 of
             # 25 cleared levels finished at or under 0.92x and the median was
             # 0.52x, so crossing 1.0 is already the unusual case. No cutpoint in
@@ -571,16 +583,16 @@ class ArcClient:
             # in between -- and warning at the bottom of that gap costs a re-read
             # while warning at the top costs the hundreds of actions in between.
             if ratio >= 1.0:
-                pace += "  <- OVER BASELINE: re-explore rather than grind"
-        else:
-            pace = ""
-        return (
-            f"{self.game_id}: level {self.level}/{self.win_levels or '?'} "
-            f"state={self.state} actions={self.actions_used}{pace}"
-            f"{f', wasted={self.wasted_actions}' if self.wasted_actions else ''}"
-            f"{f', FULL RESETS={self.full_resets}' if self.full_resets else ''}"
-            f"{self._ineffective()}"
-        )
+                warnings.append("OVER BASELINE: re-explore rather than grind")
+        if self.wasted_actions:
+            facts.append(f"wasted={self.wasted_actions}")
+        if self.full_resets:
+            facts.append(f"FULL RESETS={self.full_resets}")
+        waste = self._ineffective()
+        if waste:
+            warnings.append(waste)
+
+        return " ".join(facts) + "".join(f"\n  <- {w}" for w in warnings)
 
     def _account_effect(
         self, frame: dict[str, Any], name: str, payload: dict[str, Any], *,
@@ -664,7 +676,7 @@ class ArcClient:
         if not self.level_dead:
             return ""
         dead, tried, repeats = self.level_dead, self.level_tried, self.level_repeats
-        note = f"  <- {dead}/{tried} actions on this level changed nothing"
+        note = f"{dead}/{tried} actions on this level changed nothing"
         if repeats:
             note += f" ({repeats} repeated one you had already seen do nothing)"
         return note

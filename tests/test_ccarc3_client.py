@@ -306,6 +306,21 @@ def test_the_waste_tally_survives_a_new_process(monkeypatch, tmp_path):
     assert "4/41 actions on this level changed nothing" in b.status()
 
 
+def test_facts_and_warnings_do_not_run_into_each_other(monkeypatch, tmp_path):
+    """Interleaved, they read as one sentence: `<- OVER BASELINE: re-explore
+    rather than grind, wasted=3, FULL RESETS=1`, where two unrelated counters
+    look like the tail of an instruction."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    c = ArcClient("g", trace_path=tmp_path / "t.jsonl",
+                  info=GameInfo("g", baseline_actions=(10,)))
+    c.level_actions, c.wasted_actions, c.full_resets = 20, 3, 1
+    c.level_tried, c.level_dead = 41, 4
+    head, *warns = c.status().splitlines()
+    assert "wasted=3" in head and "FULL RESETS=1" in head
+    assert all(w.strip().startswith("<-") for w in warns)
+    assert len(warns) == 2, "one line per warning, not one run-on line"
+
+
 def test_status_works_on_a_client_that_has_done_nothing(monkeypatch, tmp_path):
     """status() is the solver's orientation call, and the first thing it does.
 
