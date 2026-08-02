@@ -36,7 +36,7 @@ stops early speed from paying for late failure.
 
 | environment | levels | E_raw | cap | **E** | limited by |
 |---|---|---|---|---|---|
-| `ls20-9607627b` | 7/7 | 0.799 | 1.000 | **0.799** | efficiency — it was replayed |
+| `ls20-9607627b` | 7/7 | 1.150 | 1.000 | **1.000** | completion cap |
 | `ft09-0d8bbf25` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `r11l-495a7899` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `sb26-7fbdac44` | 8/8 | 1.144 | 1.000 | **1.000** | completion cap |
@@ -47,17 +47,17 @@ stops early speed from paying for late failure.
 | | |
 |---|---|
 | Opus 5, published | **40.68%** |
-| CCARC3, 7 environments won, 18 unplayed scored 0 | **26.98%** |
-| mean over environments actually played | 96.37% |
-| still needed to pass | **3.423 environment-units — about three and a half more wins** |
+| CCARC3, 7 environments won, 18 unplayed scored 0 | **27.79%** |
+| mean over environments actually played | 99.24% |
+| still needed to pass | **3.222 environment-units — about three more full wins** |
 
 **Not ahead yet, and the reason is coverage rather than capability.**
 
 | | CCARC3 | Opus 5 |
 |---|---|---|
-| environments scoring ≥99% | **5** | **5** |
+| environments scoring ≥99% | **6** | **5** |
 | environments at 0% | 18 (unplayed) | 3 |
-| aggregate | 26.98% | 40.68% |
+| aggregate | 27.79% | 40.68% |
 
 Opus 5's published distribution is five environments at 100%, then 98.8, 77.8,
 58.3, 56.3, 47.6, 47.6, 44.8, 28.6 and a tail down to zero. **It fully clears
@@ -70,49 +70,44 @@ under the completion cap, so the eighteen remaining games do not all have to be
 cannot be recovered is an environment never attempted, which is exactly what the
 eighteen zeros are.
 
-### The replay ambiguity, resolved against ourselves
+### The replay question, settled by probing the live scorecard
 
-**Nothing in ARC-AGI-3 stops you playing a game twice.** A RESET issued
-immediately after a level advance performs a full *game* reset — same scorecard,
-back to level 0 — which is exactly what happened to `ls20` by accident. So a
-solver could in principle grind out a game, learn the optimal route, replay it
-and score near the cap.
+**Can you replay a whole game to learn its route, and does it cost you?** The
+rubric does not say how multiple playthroughs combine into `a_l`, and this
+section argued both readings before measuring. The measurement:
 
-The rubric does not say how multiple playthroughs combine into `a_l`. Two
-readings:
+```
+RESET, +2 actions        plays=1  actions=[2]     actions_by_level=[[]]   resets=[0]
+RESET mid-level          plays=1  actions=[3]     actions_by_level=[[]]   resets=[1]
+RESET with counter at 0  plays=2  actions=[3, 0]  actions_by_level=[[],[]] resets=[1,0]
++1 action                plays=2  actions=[3, 1]  actions_by_level=[[],[]]
+```
 
-| | `ls20` |
-|---|---|
-| (a) count only the playthrough that finished | **1.000** |
-| (b) count every action ever spent on that level | **0.799** |
+The API keeps, per game: `total_plays`, `actions` **per play**,
+`actions_by_level` **per play** (a list of lists), and `total_actions` as the
+sum across plays. A `RESET` while the counter is non-zero is a *level* reset —
+`plays` unchanged, `resets` incremented. A `RESET` when the counter is zero,
+which is the state immediately after a level advance, **starts a new play**: new
+guid, new `actions` row, new `actions_by_level` row.
 
-**Neither reading is established, and this document has now argued both.**
+**So a one-level game with baseline 7, won in 10 and then replayed and won in 7,
+records `actions_by_level = [[10], [7]]` and `total_actions = 17`, and `a_l` is
+7.** Per-level counts are never summed. The 17 is budget consumed, which is a
+different field answering a different question.
 
-The case for (a): the benchmark takes `Card.high_score = max(scores)` — it
-explicitly scores your *best* play — so scoring that play's actions is the
-natural reading. Grinding is then deterred by the total action budget rather
-than by the denominator.
+Two consequences:
 
-The case for (b): `Card.total_actions = sum(actions)` accumulates across plays,
-and if replaying were free a solver could grind out the route and walk it back
-clean.
-
-**The second argument is weaker than it first looks, and an earlier version of
-this section overstated it.** `total_actions` is a *game-level* total while
-`a_l` is *per level*, and the scorecard exposes no per-level action counts at
-all — so one does not establish the other. On reflection (a) is arguably the
-more likely reading, which is the opposite of what this section asserted an
-hour before.
-
-This project therefore **reports the range, 26.98%–27.79%**, and uses (b) as the
-default because it is the conservative choice for a number that might be
-published — not because it is known to be right. Both are kept in `result.json`
-(`rhae`, `rhae_per_play_reading`); `cumulative=False` gives the other. Under (a)
-`ls20` scores 1.000 and the ≥99% count is 6 against Opus 5's 5; under (b) it is
-0.799 and the count is 5 against 5. `ls20` is the only affected environment.
-
-**Settling it is worth one cheap experiment**: play a one-level game to a win,
-replay it faster, and read the scorecard. That has not been done.
+- **`ls20` scores 1.000, not 0.799.** An earlier version of this section
+  switched to the summed reading and called it conservative. The argument was
+  that `total_actions` accumulates — which conflated a game-level total with a
+  per-level denominator. The server keeps both, separately, and the probe shows
+  which one `a_l` comes from.
+- **Replaying a game is not punished by the score, only by the budget.** A run
+  that wins a long game sloppily can be replayed against a known route to raise
+  that environment toward the 1.15 cap, paying only in actions and money. Not
+  worth it here — `tr87` is the only environment where efficiency binds and
+  repairing it is worth 0.21 points against a new environment's 4.0 — but it is
+  a real lever on a game won badly.
 
 ### What the rubric says about where the remaining margin is
 

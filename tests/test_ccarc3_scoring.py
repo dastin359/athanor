@@ -116,14 +116,16 @@ def test_malformed_input_is_refused_rather_than_scored():
         total_score([1.5])
 
 
-def test_a_replayed_level_is_counted_twice_by_default(tmp_path):
-    """The conservative reading of an ambiguity, and it must be the default.
+def test_a_replayed_level_counts_only_the_play_that_finished(tmp_path):
+    """Measured against the live scorecard, not inferred.
 
-    The rubric says `a_l` is "the agent's action count for completing level l"
-    without saying how multiple playthroughs combine. The SDK sums actions
-    across plays while taking the best score, and that asymmetry exists so that
-    replaying a game to learn its route cannot pay. Counting only the winning
-    playthrough is the flattering reading and would make the benchmark gameable.
+    A RESET taken when the action counter is zero starts a **new play**: the API
+    then reports a new `guid`, a new `actions` row and a new `actions_by_level`
+    row. Per-level actions are kept per play and never summed; `total_actions`
+    is the separate budget figure. Since `Card.high_score = max(scores)` scores
+    the best play, `a_l` is that play's count.
+
+    `cumulative=True` keeps the summed reading available for comparison.
     """
     import json
 
@@ -140,11 +142,10 @@ def test_a_replayed_level_is_counted_twice_by_default(tmp_path):
                 "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
     ts = load(path)
 
-    # 5, not 6: the action that performs the reset is attributed to the level it
-    # was taken *from* (level 1), which is the same rule the rest of the module
-    # uses and the reason the naive grouping is wrong.
-    assert actions_per_level(ts, 2)[0] == 5, "every action ever spent on level 0"
-    assert actions_per_level(ts, 2, cumulative=False)[0] == 3, "the winning play only"
+    assert actions_per_level(ts, 2)[0] == 3, "the play that finished, as the server records it"
+    # 5, not 6, under the summed reading: the action that performs the reset is
+    # attributed to the level it was taken *from*.
+    assert actions_per_level(ts, 2, cumulative=True)[0] == 5, "every action ever spent"
 
 
 def test_the_two_readings_are_the_same_run_without_a_full_reset(tmp_path):
@@ -162,4 +163,4 @@ def test_the_two_readings_are_the_same_run_without_a_full_reset(tmp_path):
                 "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
                 "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
     ts = load(path)
-    assert actions_per_level(ts, 2) == actions_per_level(ts, 2, cumulative=False)
+    assert actions_per_level(ts, 2) == actions_per_level(ts, 2, cumulative=True)

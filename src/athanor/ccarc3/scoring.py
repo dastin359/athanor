@@ -171,7 +171,7 @@ def actions_per_level(
     transitions: Sequence["object"],
     n_levels: int,
     *,
-    cumulative: bool = True,
+    cumulative: bool = False,
 ) -> list[int | None]:
     """Actions used to complete each level, from a ledger. ``None`` if not completed.
 
@@ -189,33 +189,34 @@ def actions_per_level(
     this returns 18 actions for level 0, which is exactly what that solver
     reported for itself; grouping by the recorded level gives 17.
 
-    **``cumulative`` selects between two readings of a genuine ambiguity, and
-    which is correct is NOT established.** The rubric says ``a_l`` is "the
-    agent's action count for completing level l" and its reference
-    implementation takes one integer per level with no notion of plays, so it
-    does not answer the question at all.
+    **Replayed levels are NOT summed, and that is measured, not assumed.**
+    A live probe of the scorecard settles it. The API records, per game:
 
-    Concretely: a one-level game with a human baseline of 7, won in 10 actions,
-    then replayed and won in 7. Is ``a_l`` 7 or 17?
+    ===================  ==================================================
+    ``total_plays``      how many plays this scorecard holds
+    ``actions``          actions **per play**, e.g. ``[3, 1]``
+    ``actions_by_level`` per-level actions **per play**, a list of lists
+    ``total_actions``    the sum across plays — a *budget* figure
+    ===================  ==================================================
 
-    - **7 (``cumulative=False``)** — the benchmark takes ``Card.high_score =
-      max(scores)``, i.e. it explicitly scores your *best* play, so scoring that
-      play's actions is the natural reading. Grinding is then deterred by the
-      total action budget rather than by the denominator.
-    - **17 (``cumulative=True``, the default here)** — ``Card.total_actions =
-      sum(actions)`` sums across plays, and if replaying cost nothing a solver
-      could grind out the route and walk it back clean.
+    A ``RESET`` while the action counter is non-zero is a *level* reset:
+    ``total_plays`` stays put and ``resets`` increments. A ``RESET`` when the
+    counter is zero — which is the state immediately after a level advance —
+    **starts a new play**: a new guid, a new ``actions`` row and a new
+    ``actions_by_level`` row.
 
-    **The second argument is weaker than it first appears**, and this docstring
-    previously overstated it: ``total_actions`` is a *game-level* total, while
-    ``a_l`` is *per level*. The scorecard exposes no per-level action counts at
-    all, so one does not establish the other.
+    So for a one-level game with a human baseline of 7, won in 10 and then
+    replayed and won in 7: ``actions_by_level`` is ``[[10], [7]]`` and
+    ``total_actions`` is 17. Since ``Card.high_score = max(scores)`` scores the
+    *best* play, ``a_l`` is **7**. The 17 is budget spent, not the denominator.
 
-    Cumulative is the default because it is the conservative choice for a number
-    that might be published, not because it is known to be right. On `ls20` —
-    the one run here with a full reset — the readings give **0.799** and
-    **1.000**, so the project total is a range, 26.98%–27.79%. Nothing else in
-    the set is affected.
+    This module briefly defaulted to summing, on the argument that
+    ``total_actions`` accumulates. That argument conflated a game-level total
+    with a per-level denominator; the server keeps both, separately.
+
+    ``cumulative=True`` still gives the summed reading for comparison. On
+    `ls20` — the one run here that was replayed — the two give **1.000** and
+    **0.799**. Nothing else in the set is affected.
 
     Actions spent on abandoned attempts and on failed level retries are included
     either way. They were spent, and "actions used to complete this level" is
@@ -243,12 +244,12 @@ def score_run(
     transitions: Sequence["object"],
     baselines: Sequence[int],
     *,
-    cumulative: bool = True,
+    cumulative: bool = False,
 ) -> EnvironmentScore:
     """RHAE score for one run, straight from its ledger and the game's baselines.
 
-    Defaults to the conservative reading of the replay ambiguity — see
-    :func:`actions_per_level`.
+    Counts the play that finished, which is what the server records and what
+    best-of-plays scoring selects — see :func:`actions_per_level`.
     """
     return score_environment(
         baselines, actions_per_level(transitions, len(baselines), cumulative=cumulative)
