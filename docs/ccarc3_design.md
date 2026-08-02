@@ -270,15 +270,43 @@ burns budget at full rate producing nothing.
 number readable straight off a trace. It is exactly the kind of quiet overhead
 that a pooled success rate would never show.
 
-### 2.5 Score is a count of completed levels [SDK]
+### 2.5 The score field does not exist — and the stock SDK is stale [SDK, LIVE]
 
-`next_level()` is the only thing that touches the score and it adds exactly 1.
-The engine's own `FrameData` renames the field `levels_completed` to say so.
+`next_level()` is the only thing that touches the score and it adds exactly 1,
+so the score *is* a count of completed levels. Both the engine and the live API
+name the field accordingly.
 
-Note the version skew: `arcengine` 0.9.3 sends `levels_completed`, while
-`arc_agi_3` 0.0.1 sends `score`. A reader that knows only one of them records
-zero for every frame produced by the other, silently. `TraceWriter` accepts
-both.
+**The installed `arc_agi_3` 0.0.1 does not.** Verified against the live API, a
+frame comes back with exactly these keys:
+
+```
+action_input  available_actions  frame  full_reset
+game_id  guid  levels_completed  state  win_levels
+```
+
+There is no `score`. But `FrameData.score` is declared `int = Field(0, ...)`, so
+pydantic fills the default and drops the unrecognised `levels_completed`.
+**Anything reading `agent.score` or `frame.score` against the live API gets 0
+forever, silently.** The stock templates survive only because they key `is_done`
+on `state is WIN` rather than on score. Any score-based progress logic is
+already broken before it is written.
+
+`TraceWriter` reads `score` or `levels_completed`, whichever is present. That
+started as defensiveness about an `arcengine` version skew and turns out to be
+load-bearing against the live server.
+
+Two more fields worth using, both per frame and both free:
+
+- **`win_levels`** — the total number of levels in the game. Progress is
+  `levels_completed / win_levels` without a lookup.
+- **`available_actions`** — the actions this game accepts, e.g. `[1, 2, 3, 4]`
+  for `ls20`. This is *authoritative* and strictly better than inferring from
+  the `tags` field in §2.6. Use the tag for planning before a run; use this
+  during one.
+
+The scorecard adds **`actions_by_level`**, which is directly comparable to the
+published `baseline_actions` — so the §2.6 control law ("am I over budget for
+this level?") can be evaluated live rather than reconstructed.
 
 ---
 
@@ -321,13 +349,40 @@ poisons every downstream conclusion invisibly.
 
 ### 4.2 Representation primitives
 
-- `arc3.logical(grid)` — infer the render block size and collapse 64x64 to the
-  logical board. Games are *drawn* at 64x64 but the board is far coarser. This
-  is the single largest token win available, and the agent should not be
-  eyeballing the block size.
-- `arc3.render(grid)` — one char per cell (16 colours -> `0-9a-f`), so a grid is
-  64 lines of 64 chars (~1k tokens) instead of ~6k as bracketed int rows.
+- `arc3.render(grid)` — one char per cell (16 colours -> `0-9a-f`). 4,159
+  characters against 12,416 for bracketed int rows, measured. This is the token
+  win that actually survived contact with real games.
 - `arc3.diff(a, b)`, `arc3.objects(grid)` — changed cells, connected components.
+- `arc3.logical(grid)` / `arc3.collapse(grid)` / `arc3.cell_boundaries(grids)` —
+  downscaling. **Read the correction below before relying on any of them.**
+
+#### Correction: real frames are not coarse boards scaled up [LIVE]
+
+This section previously claimed that collapsing 64x64 to "the logical board" was
+*the single largest token win available*. Measured against a real game
+(`ls20-9607627b`, 50 scripted actions), that is **wrong**:
+
+| | toy 10x10 game | real `ls20` frame |
+|---|---|---|
+| `block_size()` | 2 | 1 |
+| `logical()` | 32x32 | 64x64 (no-op) |
+| `collapse()` | 5x5 | 27x35 |
+| `cell_boundaries()` | 12 x 12 | **28 x 57** |
+
+57 distinct column boundaries out of a possible 64 means adjacent columns almost
+always differ. Real ARC-AGI-3 frames carry genuine pixel-level detail — 9
+distinct colours and 18 connected components in the opening frame alone — rather
+than a coarse board painted in blocks.
+
+So the downscaling family is **not** the headline saving. `block_size()` and
+`logical()` are exact and will simply decline to reduce a real frame, which is
+the correct behaviour and also means they earn little. `collapse()` still halves
+each axis and preserves structure, but destroys metric position, so it is a
+summarising view and not a substitute for the frame.
+
+What survives: `render()`'s 3x, and being selective about *which* frames enter
+context at all (§3). The design's memory tiering matters more than its
+compression, which is the opposite of what this section originally assumed.
 
 ---
 
