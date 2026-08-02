@@ -279,3 +279,40 @@ def test_a_stale_result_is_cleared_when_a_run_starts(tmp_path):
     assert not (again.root / "result.json").exists()
     assert again.resumed, "clearing the result must not discard the run itself"
     assert again.trace_path.read_text().strip()
+
+
+def test_a_resume_does_not_destroy_the_previous_stream(tmp_path, monkeypatch):
+    """run_game opened stream.jsonl with "w". When the ls20 resume started it
+    truncated run 1's stream -- the only record of how the handoff went, which
+    was exactly what needed diagnosing when the resume replayed the game."""
+    import athanor.ccarc3.session as sess
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)
+    (ws.root / "stream.jsonl").write_text('{"run":1}\n')
+
+    monkeypatch.setattr(sess, "build_cli_args", lambda w, **k: ["true"])
+    sess.run_game(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO)
+
+    archived = list(ws.root.glob("stream.*.jsonl"))
+    assert archived, "the previous stream must be kept, not overwritten"
+    assert '{"run":1}' in archived[0].read_text()
+
+
+def test_a_resume_records_what_it_inherited(tmp_path, monkeypatch):
+    """Nothing captured what the client restored, so when a resume preserved the
+    ledger but not the game it could not be reconstructed afterwards."""
+    import athanor.ccarc3.session as sess
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)
+
+    monkeypatch.setattr(sess, "build_cli_args", lambda w, **k: ["true"])
+    sess.run_game(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO)
+
+    snap = json.loads((ws.root / "resume_state.json").read_text())
+    assert snap["resumed"] is True
+    assert snap["state_file_present"] is True
+    assert snap["trace_lines"] == 1

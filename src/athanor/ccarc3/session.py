@@ -443,8 +443,15 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = No
 def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, Any]:
     """Build a workspace and run one solver session against one game."""
     ws = build_workspace(config, info)
+    _record_resume_state(ws)
     args = build_cli_args(ws)
     stream = ws.root / "stream.jsonl"
+    if ws.resumed and stream.exists():
+        # Opening with "w" destroyed run 1's stream when the resume started,
+        # which removed the only record of how the handoff actually went -- and
+        # the handoff is exactly what needed diagnosing. Keep each attempt.
+        n = len(list(ws.root.glob("stream.*.jsonl"))) + 1
+        stream.rename(ws.root / f"stream.{n}.jsonl")
 
     with stream.open("w", encoding="utf-8") as fh:
         proc = subprocess.Popen(
@@ -464,6 +471,37 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
             code, timed_out = -1, True
 
     return collect_outcome(ws, exit_code=code, timed_out=timed_out)
+
+
+def _record_resume_state(ws: Workspace) -> None:
+    """Snapshot what a resume inherited, before the solver can change it.
+
+    A resume once preserved the ledger but not the game -- trace indices
+    continued from 370 while the server replayed levels 0-5 on a fresh
+    scorecard, costing 370 re-spent actions. The mechanism was not
+    reconstructable afterwards because nothing recorded what the client
+    restored at construction time. This does.
+    """
+    state = Path(ws.trace_path).with_suffix(".state.json")
+    snapshot: dict[str, Any] = {
+        "resumed": ws.resumed,
+        "trace_lines": sum(1 for _ in ws.trace_path.open()) if ws.trace_path.exists() else 0,
+        "state_file_present": state.exists(),
+    }
+    if state.exists():
+        try:
+            saved = json.loads(state.read_text(encoding="utf-8"))
+            snapshot |= {
+                "card_id": saved.get("card_id", ""),
+                "level": saved.get("level"),
+                "actions_used": saved.get("actions_used"),
+                "cookies": len(saved.get("cookies") or []),
+            }
+        except (OSError, json.JSONDecodeError) as exc:
+            snapshot["state_file_error"] = f"{type(exc).__name__}: {exc}"
+    (ws.root / "resume_state.json").write_text(
+        json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
