@@ -491,3 +491,18 @@ def test_a_resume_records_what_it_inherited(tmp_path, monkeypatch):
     assert snap["resumed"] is True
     assert snap["state_file_present"] is True
     assert snap["trace_lines"] == 1
+
+
+def test_the_doctrine_states_the_objective_function(ws):
+    """Every run before this optimised blind.
+
+    The doctrine described budgets and baselines but never said how a run is
+    scored, so a solver had to infer "fewer actions is better" — which is true
+    only up to the 1.15 cap, and misses that later levels weigh more and that an
+    unfinished level scores nothing at all.
+    """
+    doctrine = (ws.root / "DOCTRINE.md").read_text()
+    assert "min(1.15, (h / a) ** 2)" in doctrine, "the actual formula"
+    assert "squared" in doctrine.lower()
+    assert "Later levels are worth more" in doctrine
+    assert "unfinished level scores 0" in doctrine or "scores 0" in doctrine

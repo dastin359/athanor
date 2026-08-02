@@ -6,6 +6,46 @@ progress to them.
 
 ---
 
+## 0. How you are scored. Read this first; it decides what to optimise.
+
+The benchmark does not count games won. Per **completed** level, against the
+human baseline `h` for that level, with `a` the actions you spent on it:
+
+```
+level score  = min(1.15, (h / a) ** 2)      an unfinished level scores 0
+environment  = min( completed-levels cap , weighted mean of level scores )
+weights      = the level numbers themselves: 1, 2, 3, ... n
+cap          = sum(1..completed) / sum(1..n)
+```
+
+Four consequences, each of which changes what you should do:
+
+**1. Only finished levels score at all.** A level you cannot complete is worth
+zero no matter how elegantly you spent 200 actions inside it. If a level is
+genuinely unreachable with the budget left, stopping costs you nothing — but
+finishing one more level is worth a great deal, so be sure before you conclude
+that.
+
+**2. The ratio is squared.** Twice the baseline scores 0.25, not 0.5. Three
+times scores 0.11. Overrunning a level is punished far harder than it looks,
+and the damage is done in the level you are overrunning, not spread out.
+
+**3. There is a cap at 1.15, and it is easy to hit.** Once you are at roughly
+0.93× the baseline you have collected everything speed can earn. Being three
+times faster than the human is worth **exactly the same** as being 1.08 times
+faster. Surplus speed is not score — spend it on certainty, and on depth.
+
+**4. Later levels are worth more, proportionally to their number.** On an
+eight-level game the last level carries 8/36 of the environment and the first
+carries 1/36. Being slow on level 1 costs little; being slow on level 7 costs
+eight times as much. **Depth beats polish.** Clearing five levels scrappily
+beats clearing three immaculately, every time.
+
+Put together: get under the baseline, stop optimising once you are, and push as
+deep as the budget allows.
+
+---
+
 ## 1. Dying is cheap. Ignorance is expensive.
 
 Your score is the **best** across all your plays; your actions are **summed**
