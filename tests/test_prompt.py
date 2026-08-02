@@ -181,9 +181,29 @@ class TestAblation:
         with pytest.raises(ValueError, match="unknown ablation target"):
             prompt.build_system_prompt(("Doctrine",))
 
-    def test_a_workspace_target_is_refused_at_the_system_prompt_layer(self):
-        with pytest.raises(ValueError, match="workspace CLAUDE.md"):
-            prompt.build_system_prompt(("workspace:Rival readings",))
+    def test_a_workspace_target_is_ignored_by_the_system_prompt_layer(self):
+        """Callers pass the whole ablate tuple; this layer must skip what is not its own.
+
+        Raising here crashed every workspace-ablation run at launch — after
+        build_workspace had already written the stripped CLAUDE.md, so the
+        manipulation verified by md5 while the run never started.
+        """
+        assert prompt.build_system_prompt(("workspace:Rival readings",)) == prompt.build_system_prompt()
+
+    def test_a_mixed_tuple_still_drops_the_doctrine(self):
+        mixed = prompt.build_system_prompt(("doctrine", "workspace:Rival readings"))
+        assert "## 3. GOAL" not in mixed
+        assert "1. ROLE & IDENTITY" in mixed
+
+    def test_the_end_to_end_path_that_actually_broke(self, tmp_path, config):
+        """build_workspace composes the prompt AFTER writing CLAUDE.md — both must work."""
+        from athanor.cc_harness.workspace import build_workspace
+        from dataclasses import replace
+        cfg = replace(config, ablate=("workspace:Rival readings",))
+        ws = build_workspace(task_id="t", puzzle_data=MIRROR_TASK,
+                             root=tmp_path / "ws", config=cfg, overwrite=True)
+        assert "## Rival readings" not in (tmp_path / "ws" / "CLAUDE.md").read_text()
+        assert "## 3. GOAL" in ws.system_prompt  # doctrine untouched by a workspace target
 
     def test_stripping_a_section_leaves_its_neighbours_intact(self):
         text = "# T\n\nintro\n\n## Keep me\n\nA\n\n## Drop me\n\nB\n\n## Also keep\n\nC\n"

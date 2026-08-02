@@ -137,12 +137,12 @@ def build_system_prompt(ablate: Iterable[str] = ()) -> str:
     prompt without the doctrine, and an ablation study ran for weeks against an
     edited workspace file while every arm received the doctrine verbatim.
     """
-    drop_doctrine, sections = _split_ablations(ablate)
-    if sections:
-        raise ValueError(
-            f"{WORKSPACE_PREFIX}* targets apply to the workspace CLAUDE.md, "
-            "not the system prompt"
-        )
+    # Callers pass the whole `ablate` tuple; ``workspace:*`` entries are this
+    # function's business to ignore, not to reject. Raising on them made the
+    # composed-prompt step blow up on every run that ablated a workspace
+    # section — after build_workspace had already written the stripped
+    # CLAUDE.md, so the manipulation verified while the run never started.
+    drop_doctrine, _sections = _split_ablations(ablate)
     parts = [PROMPT_HEADER.strip(), shared_arc_sections()]
     if not drop_doctrine:
         parts.append(doctrine())
