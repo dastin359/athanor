@@ -86,8 +86,6 @@ def cmd_report(args: argparse.Namespace) -> int:
     record, so anything derivable is derived again here and the stored file
     supplies only what the ledger cannot know — exit code, timeout, rule counts.
     """
-    from .session import ledger_facts
-
     results = _read_runs(Path(args.out_dir))
     if not results:
         print(f"no finished runs under {args.out_dir}")
@@ -99,13 +97,14 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 def _read_runs(root: Path) -> list[dict]:
-    from .session import ledger_facts
+    from .session import ledger_facts, run_cost
 
     out = []
     for p in sorted(root.glob("*/result.json")):
         stored = json.loads(p.read_text(encoding="utf-8"))
         trace = p.parent / "trace.jsonl"
-        out.append({**stored, **ledger_facts(trace)} if trace.exists() else stored)
+        fresh = {**ledger_facts(trace), **run_cost(p.parent / "stream.jsonl")} if trace.exists() else {}
+        out.append({**stored, **fresh})
     return out
 
 
@@ -146,7 +145,8 @@ def _summarise(results: list[dict]) -> None:
     Levels reached against levels available is the comparable figure.
     """
     ok = [r for r in results if "error" not in r]
-    print(f"\n{'game':24}{'levels':>10}{'actions':>9}{'vs base':>9}{'deaths':>8}  flags")
+    print(f"\n{'game':24}{'levels':>10}{'actions':>9}{'vs base':>9}{'deaths':>7}"
+          f"{'turns':>7}{'cost':>8}  flags")
     for r in sorted(ok, key=lambda x: x.get("game_id", "")):
         reached, total = r.get("levels_reached", 0), r.get("levels_total", 0)
         used, base = r.get("actions_used", 0), r.get("baseline_total", 0)
@@ -154,8 +154,8 @@ def _summarise(results: list[dict]) -> None:
         # reset means earlier actions bought progress that was then discarded,
         # and charging them to the result overstates the cost by whatever was
         # replayed. The total is still shown -- it is what the budget paid.
-        cost = r.get("actions_final_playthrough", used)
-        ratio = f"{cost / base:.2f}x" if base else "-"
+        charged = r.get("actions_final_playthrough", used)
+        ratio = f"{charged / base:.2f}x" if base else "-"
         flags = " ".join(
             f
             for f, on in (
@@ -164,14 +164,15 @@ def _summarise(results: list[dict]) -> None:
                 (f"wasted={r.get('wasted_actions')}", r.get("wasted_actions")),
                 (
                     f"FULLRESET={r.get('full_resets')} (ratio is the last "
-                    f"{cost} of {used})",
+                    f"{charged} of {used})",
                     r.get("full_resets"),
                 ),
             )
             if on
         )
+        spend = f"${r['cost_usd']:.2f}" if r.get("cost_usd") else "-"
         print(f"{r.get('game_id',''):24}{f'{reached}/{total}':>10}{used:9}{ratio:>9}"
-              f"{r.get('deaths',0):8}  {flags}")
+              f"{r.get('deaths',0):7}{r.get('turns') or '-':>7}{spend:>8}  {flags}")
 
     failed = [r for r in results if "error" in r]
     for r in failed:

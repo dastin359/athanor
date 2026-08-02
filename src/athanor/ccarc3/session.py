@@ -556,6 +556,40 @@ def ledger_facts(trace_path: Path | str) -> dict[str, Any]:
     }
 
 
+def run_cost(stream_path: Path | str) -> dict[str, Any]:
+    """Turns, cost and wall time, from the stream's final ``result`` event.
+
+    The ledger says what a run *did*; this says what it cost to do it, and the
+    two came apart in a way worth being able to see. `sb26` won eight levels in
+    **35 tool calls** where `cd82` needed 83 for six, and `ls20` cost $13.15
+    against `sb26`'s $3.04. Nothing in `result.json` reported any of that, so
+    the comparison had to be made by hand from the stream twice.
+
+    Returns an empty dict when the stream is missing or has no result event —
+    a killed run has neither, and that is not an error worth raising over.
+    """
+    path = Path(stream_path)
+    if not path.exists():
+        return {}
+    final: dict[str, Any] = {}
+    for line in path.open(encoding="utf-8", errors="ignore"):
+        if '"type":"result"' not in line and '"type": "result"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("type") == "result":
+            final = record
+    if not final:
+        return {}
+    return {
+        "turns": final.get("num_turns"),
+        "cost_usd": final.get("total_cost_usd"),
+        "duration_s": round(final["duration_ms"] / 1000) if final.get("duration_ms") else None,
+    }
+
+
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
     """Read the run's result off disk — never from what the solver claims."""
     outcome = {
@@ -563,6 +597,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         "levels_total": ws.info.levels,
         "baseline_total": ws.info.baseline_total,
         **ledger_facts(ws.trace_path),
+        **run_cost(ws.root / "stream.jsonl"),
         "exit_code": exit_code,
         "timed_out": timed_out,
     }

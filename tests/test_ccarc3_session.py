@@ -189,6 +189,29 @@ def test_a_run_with_no_full_reset_reports_one_playthrough(ws):
     assert out["actions_final_playthrough"] == out["actions_used"] == 2
 
 
+def test_turns_and_cost_are_read_from_the_stream(ws):
+    """The ledger says what a run did; only the stream says what it cost."""
+    from athanor.ccarc3.session import run_cost
+
+    (ws.root / "stream.jsonl").write_text(
+        json.dumps({"type": "assistant"}) + "\n"
+        + json.dumps({"type": "result", "num_turns": 36,
+                      "total_cost_usd": 3.0381, "duration_ms": 732994}) + "\n"
+    )
+    assert run_cost(ws.root / "stream.jsonl") == {
+        "turns": 36, "cost_usd": 3.0381, "duration_s": 733,
+    }
+
+
+def test_a_run_with_no_stream_reports_no_cost_rather_than_failing(ws):
+    """A killed run has no result event, and that is not an error."""
+    from athanor.ccarc3.session import run_cost
+
+    assert run_cost(ws.root / "stream.jsonl") == {}
+    (ws.root / "stream.jsonl").write_text(json.dumps({"type": "assistant"}) + "\n")
+    assert run_cost(ws.root / "stream.jsonl") == {}
+
+
 def test_an_empty_run_collects_without_crashing(ws):
     out = collect_outcome(ws, exit_code=1, timed_out=True)
     assert out["actions_used"] == 0 and out["timed_out"] is True
