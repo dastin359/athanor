@@ -2262,3 +2262,128 @@ place. **A quantity measured through an unvalidated proxy is not more reliable f
 being measured precisely** — precision on the wrong variable reads exactly like
 rigour. The adversarial pass was worth its cost purely for catching that, and it
 only caught it because it was pointed at the *survivals* rather than the deaths.
+
+---
+
+## The ablation was mislabelled: the doctrine was never removed
+
+I put three adversarial agents on a claim before writing it up — that d35bdbdc's
+harness gain runs entirely through candidate-2 quality, and that Opus 4.8 with the
+doctrine scores what Opus 5 with it ablated scores. Two returned before the third
+and both returned **refuted**. The lead finding is not about that claim at all; it
+is about this log's ablation experiment, and it is worse than a wrong conclusion.
+
+**Verified independently, not taken on report.** `system_prompt.md` across all
+five d35bdbdc runs:
+
+```
+acd7143bbe2f419120432661b80276e2  14400B  round6      (doctrine)
+acd7143bbe2f419120432661b80276e2  14400B  replicate   (doctrine)
+acd7143bbe2f419120432661b80276e2  14400B  ablation2   ("ABLATED")
+acd7143bbe2f419120432661b80276e2  14400B  ablation3   ("ABLATED")
+acd7143bbe2f419120432661b80276e2  14400B  arm_a_48    (Opus 4.8)
+```
+
+Byte-identical, including both ablated arms. And line 199 of *ablation2's own
+system prompt* is `CC_SOLVER_DOCTRINE.md`'s rival bullet, verbatim, ending
+*"...and that is what the second candidate is for."* `runner.py:330-331` writes
+that file and `:113-114` passes it via `--append-system-prompt-file`, so it is
+what the model received.
+
+**The doctrine was present in every arm of the doctrine ablation.** What actually
+varied was the *workspace* `CLAUDE.md`, which in the ablated runs lost two
+sections — `## Rival readings` and `## The invariant ledger`, about 60 lines. So
+the real contrast was **"doctrine + workspace rival contract" versus "doctrine
+alone"**, and every statement in this log of the form "the arms without the
+doctrine" is mislabelled.
+
+It gets worse on inspection. The five runs delivered **five different**
+`CLAUDE.md` files (9507 / 13722 / 7439 / 7618 / 14716 bytes, five distinct md5s):
+the two *treatment* runs differ from each other by 88 changed lines — more than
+either differs from its control in spirit — so the treatment arm is two different
+treatments while the control arm is one treatment run twice. "Replicated twice"
+described the label, not the manipulation. `arc.py` came in three versions across
+the five runs, so the two doctrine runs do not even share a toolkit. And
+`result.json`'s recorded config is **byte-identical between `round6` and
+`ablation2`**: the manipulation is not captured in the run record at all and
+cannot be reproduced from it.
+
+**The design could not have produced a significant result before it ran.** Fisher
+exact, one-sided, on the observed perfect separation: 2/2 versus 0/3 gives
+**p = 0.100**; restricted to the same-model comparison, 2/2 versus 0/2 gives
+**p = 0.167**. The minimum design reaching p < 0.05 under *perfect* separation is
+3 v 3. Add that d35bdbdc was singled out for replication *after* `round6` scored
+1.0 — so the discovery run is also serving as confirmation — and that the
+corpus-wide base rate of candidate 2 winning when a hedge is shipped is 9/41,
+with `round6` alone contributing 4 of those 9.
+
+**And the effective n is far below the four wins it appeared to have.** Executing
+all five solutions against ground truth:
+
+```
+run          test0 cand1   test1 cand1   test2 cand1
+round6         9115022c      8f4bb4da      989db8fd
+replicate      9115022c      8f4bb4da      989db8fd
+ablation2      9115022c      8f4bb4da      989db8fd
+ablation3      9115022c      8f4bb4da      989db8fd
+arm_a_48       9115022c      8f4bb4da      989db8fd
+```
+
+**Candidate 1 is bit-identical across all five runs on all three test grids**,
+winning test 2 and losing tests 0 and 1 in 5/5. So the score is the deterministic
+function `1/3 + (2/3)·(candidate 2 wins tests 0 and 1)`, with reachable values
+`{1/3, 2/3, 1}`. My corroborating sentence — *"every run without a correct
+candidate 2 scored 0.33"* — is an arithmetic identity with zero degrees of
+freedom, and I offered it as though it were evidence. Worse, within each run
+tests 0 and 1 are decided by a single unconditional code path, so the "four wins"
+are two correlated draws of one idea.
+
+**The Opus 4.8 arm refutes the mechanism I was about to draw from it.** It shipped
+`num_candidates = [2, 1, 1]` — on test 1, one of only two discriminating outputs,
+it shipped **no hedge at all**. Its failure is non-compliance with the hedging
+mandate, not a poor rival, which is upstream of the candidate-quality step the
+claim named. It also differs from the Opus 5 runs in tool surface (sub-agents
+*forbidden* for Opus 5, *encouraged* for 4.8), harness build, runner version and
+`CLAUDE.md`, with no recorded compute for any Opus 5 run against which "same
+effort" could ever have been checked. One confounded run tying on a three-valued
+scale at its modal value cannot carry "candidate quality is model-capability-bound".
+
+**What survives is better than what I was going to write.** Because candidate 1 is
+invariant across all five runs, **100% of the between-run score variation is
+mechanically attributable to candidate 2** — that part is solid, verified by
+execution, and needs no statistics. And the two winning runs differ from the three
+losing ones in *what kind of rival they spent the slot on*:
+
+- **winners** hedged on a **selection rule** — which objects survive
+  (`_survivors_gray`, `_snake_ends`);
+- **losers** hedged on **edge cases** — uniform-inert, clipped-inert,
+  chain-versus-parallel scheduling.
+
+That is the same shape as `78332cb0` two sections above, where the hedge went to
+*ordering within the line* while the fatal error was *orientation of the line*.
+Both times, the slot was spent on a local variant when the real ambiguity was in
+the rule that chose the framing.
+
+> **A second candidate spent on an edge case is a wasted slot.** The alternative
+> worth shipping is a different answer to "which rule am I applying", not a
+> different answer to "what happens at the boundary". This is a claim about
+> *where* to hedge, it is directionally supported at n=5 on one task plus one
+> corroborating task, and it is the thing to test properly — not the causal story
+> I nearly logged.
+
+**What this costs elsewhere in this log.** Every conclusion drawn from the
+ablation needs re-reading with "doctrine present in all arms" substituted. The
+finding I had promoted as the project's most transferable — that ablated arms
+verified *more* rigorously and used that rigour to kill a correct rival — is not
+about the doctrine's presence. It is about the workspace rival contract, at n=2
+per arm, with p = 0.167, on a task selected after its first win. The observation
+about rigour-applied-to-killing may still be true. It was never tested.
+
+**The process lesson, and it is the one I keep paying for.** Three of this
+session's errors now share a shape: a false dataset deletion, a five-minute
+threshold read off a contaminated proxy, and an ablation that ablated the wrong
+file. In each case an artifact was checked in the wrong place, or a label was
+trusted instead of the bytes. `--append-system-prompt-file` was right there in
+`runner.py`; one `md5sum` across five files would have caught this months of
+conclusions ago. **The experiment I did not verify is the experiment I did not
+run.**
