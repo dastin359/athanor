@@ -205,9 +205,44 @@ def test_records_are_one_json_object_per_line(tmp_path):
     assert [json.loads(line)["i"] for line in lines] == [0, 1]
 
 
-def test_infer_levels_is_a_score_increment_heuristic():
+def test_infer_levels_tracks_score_increments():
     assert infer_levels([0, 0, 1, 1, 2]) == [0, 0, 1, 1, 2]
     assert infer_levels([]) == []
+
+
+def test_writer_reads_levels_completed_as_well_as_score(tmp_path):
+    """arcengine 0.9.3 renamed the field; reading one name silently zeroes the other."""
+    path = tmp_path / "trace.jsonl"
+    frame = _frame(1, [[[1]]])
+    del frame["score"]
+    frame["levels_completed"] = 3
+    TraceWriter(path).append(frame)
+    (t,) = load(path)
+    assert t.score_after == 3
+
+
+def test_actions_after_a_death_are_recorded_as_wasted_not_dropped(tmp_path):
+    """perform_action returns frame=[] while GAME_OVER, but the action still costs."""
+    path = tmp_path / "trace.jsonl"
+    writer = TraceWriter(path)
+    writer.append(_frame(1, [[[1, 1]]], state="NOT_FINISHED"))
+    writer.append(_frame(2, [], state="GAME_OVER"))
+    writer.append(_frame(3, [], state="GAME_OVER"))
+
+    transitions = load(path)
+    assert len(transitions) == 3
+    assert [t.wasted for t in transitions] == [False, True, True]
+    # The board is carried forward, so downstream analysis sees no phantom change.
+    assert not transitions[1].changed
+    assert sum(t.wasted for t in transitions) == 2
+
+
+def test_a_leading_empty_frame_has_nothing_to_carry_and_is_skipped(tmp_path):
+    path = tmp_path / "trace.jsonl"
+    writer = TraceWriter(path)
+    writer.append(_frame(1, []))
+    writer.append(_frame(1, [[[1]]]))
+    assert [t.index for t in load(path)] == [1]
 
 
 # --------------------------------------------------------------------------- #

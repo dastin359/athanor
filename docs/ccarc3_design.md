@@ -172,9 +172,60 @@ Three consequences, and they are load-bearing:
 3. **The level is the natural unit of the experiment loop**, which is
    independent support for the level-boundary gate in §6.1.
 
-Residual, minor: what distinguishes a level reset from a full game restart, and
-what sets `FrameData.full_reset`. Only matters for bookkeeping — it does not
-affect the strategy above.
+**Corroborated independently by the engine source** [SDK]. `ARCBaseGame` treats
+the two as different operations, and `handle_reset` picks between them:
+
+```python
+# arcengine/base_game.py
+def handle_reset(self) -> None:
+    if os.getenv("ONLY_RESET_LEVELS") == "true" and self._state != GameState.WIN:
+        self.level_reset()
+    elif self._action_count == 0 or self._state == GameState.WIN:
+        self.full_reset()
+    else:
+        self.level_reset()
+```
+
+So a mid-game RESET — which is every RESET after a GAME_OVER — takes the
+`level_reset()` branch. And `level_reset()` restores the current level from a
+clean clone while leaving `_score` and `_action_count` untouched, whereas
+`full_reset()` zeroes both, returns to level 0, and sets the `_full_reset` flag
+that surfaces as `FrameData.full_reset`.
+
+That resolves the residual question outright: **`full_reset` on the frame is the
+reliable discriminator** between a level restart and a game restart. There is
+also an `ONLY_RESET_LEVELS` environment switch, so the behaviour is deployment
+configurable — which is presumably why the public games behave as observed.
+
+### 2.4 Actions issued after a death are silently wasted [SDK]
+
+A budget trap worth designing against. `perform_action` short-circuits:
+
+```python
+if action_input.id == GameAction.RESET:
+    self.handle_reset()
+elif self._state == GameState.GAME_OVER or self._state == GameState.WIN:
+    return FrameData(..., frame=[], ...)   # no step, no frames
+```
+
+Any non-RESET action while dead returns an **empty frame** without advancing the
+game — and still costs an action. A solver that does not notice it has died
+burns budget at full rate producing nothing.
+
+`ledger.load()` therefore keeps these records rather than dropping them, flagged
+`Transition.wasted`, so "actions burned between a death and noticing it" is a
+number readable straight off a trace. It is exactly the kind of quiet overhead
+that a pooled success rate would never show.
+
+### 2.5 Score is a count of completed levels [SDK]
+
+`next_level()` is the only thing that touches the score and it adds exactly 1.
+The engine's own `FrameData` renames the field `levels_completed` to say so.
+
+Note the version skew: `arcengine` 0.9.3 sends `levels_completed`, while
+`arc_agi_3` 0.0.1 sends `score`. A reader that knows only one of them records
+zero for every frame produced by the other, silently. `TraceWriter` accepts
+both.
 
 ---
 

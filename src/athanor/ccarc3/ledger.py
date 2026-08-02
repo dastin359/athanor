@@ -98,6 +98,16 @@ class Transition:
     """Whatever was stamped into ``ActionInput.reasoning`` -- the server stores
     and echoes it verbatim, which makes the trace self-describing for free."""
 
+    wasted: bool = False
+    """The action returned no frame and changed nothing, but was still counted.
+
+    ``perform_action`` short-circuits any non-RESET action while the state is
+    GAME_OVER or WIN, returning ``frame=[]`` without stepping the game. The
+    action still costs budget. These are kept rather than dropped precisely
+    because "actions burned after a death, before the solver noticed it had to
+    RESET" is a number worth being able to read off a trace.
+    """
+
     @property
     def score_delta(self) -> int:
         return self.score_after - self.score_before
@@ -153,7 +163,12 @@ class TraceWriter:
             "frames": [
                 np.asarray(g, dtype=np.int16).tolist() for g in frame.get("frame", [])
             ],
-            "score": int(frame.get("score", 0)),
+            # arcengine 0.9.3 renamed `score` to `levels_completed`; arc_agi_3
+            # 0.0.1 still sends `score`. Reading only one of them silently
+            # records zero for every frame the other produced.
+            "score": int(
+                frame.get("score", frame.get("levels_completed", 0)) or 0
+            ),
             "state": str(frame.get("state", "NOT_PLAYED")),
             "full_reset": bool(frame.get("full_reset", False)),
             "available_actions": [
@@ -184,10 +199,15 @@ def load(path: str | Path) -> list[Transition]:
     previous_score = 0
     for rec in _records(path):
         grids = _grids(rec.get("frames", []))
-        if not grids:
-            # An action that returned no frame at all: the SDK drops it rather
-            # than raising, and a ledger that hid it would misalign the index.
-            continue
+        wasted = not grids
+        if wasted:
+            # A non-RESET action issued while GAME_OVER or WIN: the engine
+            # short-circuits and returns frame=[] without stepping. It still
+            # cost budget, so it is recorded, not dropped. With no predecessor
+            # to carry forward there is nothing to represent, so skip only then.
+            if previous is None:
+                continue
+            grids = [previous]
         out.append(
             Transition(
                 index=int(rec["i"]),
@@ -197,6 +217,7 @@ def load(path: str | Path) -> list[Transition]:
                 before=previous,
                 after=grids[-1],
                 intermediate=tuple(grids),
+                wasted=wasted,
                 score_before=previous_score,
                 score_after=int(rec.get("score", 0)),
                 state=str(rec.get("state", "NOT_PLAYED")),
@@ -211,13 +232,20 @@ def load(path: str | Path) -> list[Transition]:
 
 
 def infer_levels(scores: Sequence[int]) -> list[int]:
-    """Heuristic: a score increment marks a level boundary.
+    """A score increment marks a level boundary.
 
-    HEURISTIC, NOT VERIFIED. It holds for locally authored games, where
-    ``next_level`` is what raises the score, but ARC-AGI-3 scores are
-    server-side and a game may award points within a level. Treat the output as
-    a labelling convenience, and prefer an explicit level from the caller when
-    one is available. See ``docs/ccarc3_design.md`` §7.2.
+    Verified against ``arcengine`` 0.9.3: ``next_level()`` is the *only* thing
+    that touches the score, and it adds exactly 1. The score is a count of
+    completed levels, which is why the engine's own ``FrameData`` renamed the
+    field to ``levels_completed``.
+
+    Two caveats before trusting it on the live API. The installed
+    ``arc_agi_3`` 0.0.1 still calls the field ``score`` and types it
+    ``0..254``, so a server-side game could in principle award points within a
+    level; and a level *reset* does not decrement, so replays of a failed level
+    are correctly attributed but a full reset (score back to 0) is not handled
+    here. Prefer an explicit level from the caller when one is available, and
+    watch ``full_reset``. See ``docs/ccarc3_design.md`` §7.
     """
     level = 0
     out: list[int] = []
