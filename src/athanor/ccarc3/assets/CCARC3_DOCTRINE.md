@@ -64,9 +64,22 @@ Before concluding you found a hazard, check *how many actions* you had spent on
 the level. If deaths keep landing near the same count from different places, it
 is the resource, not the board.
 
-If you suspect a depleting resource, find its display: diff a frame against the
-frame one action earlier while standing still, if the game lets you. Whatever
-changes when you did nothing meaningful is a strong candidate.
+**To find its display, use `arc.monotone_rows()`** — rows that change on nearly
+every action whatever you did. The parts of the board that respond to what you
+actually did will not show up; a per-action tick will.
+
+```python
+ts = [t for t in client.transitions()
+      if t.before is not None and not t.board_replaced and not t.wasted]
+arc.monotone_rows((t.before, t.after) for t in ts)
+```
+
+On a real game this returns rows 61 and 62 — the bottom of the frame — where
+colour 11 gives up exactly one cell per action. That is the energy bar, found in
+one call without being told it existed or what it looked like.
+
+A row it returns is a candidate, not a conclusion. Check whether it moves
+*monotonically*: a resource drains one way; a score or a moving object does not.
 
 ## 2. Never make RESET your first action after completing a level.
 

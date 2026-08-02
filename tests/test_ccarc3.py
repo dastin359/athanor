@@ -611,3 +611,38 @@ def test_the_first_transition_has_no_before_and_is_skipped():
 
     r = predict(lambda b, a, p: b, [_tr(0, 0, "RESET", None, [[1]])])
     assert r.skipped == 1
+
+
+def test_monotone_rows_finds_a_display_that_ticks_every_action():
+    """How a depleting resource is found without knowing how it is drawn."""
+    from athanor.ccarc3 import monotone_rows
+
+    pairs = []
+    board = np.zeros((8, 8), dtype=int)
+    board[7, :] = 11                       # a full "energy bar" on the last row
+    for i in range(6):
+        after = board.copy()
+        after[7, i] = 3                    # drains one cell per action
+        after[i % 4, 0] = 2                # the avatar moves about, irregularly
+        pairs.append((board.copy(), after))
+        board = after
+    assert 7 in monotone_rows(pairs)
+
+
+def test_monotone_rows_ignores_rows_that_only_sometimes_change():
+    from athanor.ccarc3 import monotone_rows
+
+    a = np.zeros((4, 4), dtype=int)
+    pairs = []
+    for i in range(10):
+        b = a.copy()
+        if i % 5 == 0:
+            b[2, 2] = 7                    # changes rarely
+        pairs.append((a.copy(), b))
+    assert monotone_rows(pairs) == []
+
+
+def test_monotone_rows_on_nothing_is_empty():
+    from athanor.ccarc3 import monotone_rows
+
+    assert monotone_rows([]) == []
