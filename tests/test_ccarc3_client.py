@@ -220,32 +220,57 @@ def test_pace_is_quiet_while_the_level_is_going_well(paced):
     assert "OVER BASELINE" not in c.status()
 
 
-def test_status_names_an_action_that_has_stopped_doing_anything(stub):
+def test_status_reports_actions_that_changed_nothing(stub):
     """In `status()` because that is the only surface solvers demonstrably read.
 
     Across five runs and 332 commands, every analytical helper this package
     exports was called zero times; `status()` was called 82.
     """
-    c, _, replies = stub
     av = [1, 6]
+    c, _, replies = stub
     replies.append(_frame(frame=[[[9, 9], [9, 9]]], available_actions=av))
     replies.extend(_frame(available_actions=av) for _ in range(7))
     c.act(1)                      # first transition: no predecessor, not evidence
-    c.act(1)                      # 9 -> 1: ACTION1 changes the board
+    c.act(1)                      # 9 -> 1: changes the board
     for _ in range(6):
         c.act(6, x=0, y=0)        # identical frame every time: no effect
     s = c.status()
-    assert "NO EFFECT on this level: ACTION6 0/6" in s
-    assert "ACTION1" not in s, "an action that works must not be listed"
+    assert "6/7 actions on this level changed nothing" in s
+    assert "5 repeated one you had already seen do nothing" in s
 
 
-def test_one_ineffective_probe_is_an_observation_not_waste(stub):
-    """The first click on empty space tells you something. The tenth does not."""
+def test_a_run_where_everything_works_says_nothing_about_it(stub):
+    """Silence is the common case: four wins ran at 845/845, 351/351, 76/76 and
+    69/69. A fifth won while wasting 8 of 114, so waste is not disqualifying --
+    but a clean run must not be nagged."""
     c, _, replies = stub
-    replies.extend(_frame(available_actions=[1, 6]) for _ in range(3))
-    for _ in range(3):
-        c.act(6, x=0, y=0)
-    assert "NO EFFECT" not in c.status()
+    replies.extend(_frame(frame=[[[i, i], [i, i]]]) for i in range(5))
+    for _ in range(5):
+        c.act(1)
+    assert "changed nothing" not in c.status()
+
+
+def test_waste_spread_across_a_working_action_is_still_reported(stub):
+    """The failure this exists for, in miniature.
+
+    A first version looked for an action whose *every* attempt was dead.
+    Replayed against the run that never cleared a level it never fired once in
+    336 actions: ACTION6 was not dead, it was 111/157. The waste hid inside a
+    working action, so the fraction is what gets reported.
+    """
+    c, _, replies = stub
+    av = [6]
+    replies.extend([
+        _frame(frame=[[[1, 1]]], available_actions=av),
+        _frame(frame=[[[2, 2]]], available_actions=av),   # works
+        _frame(frame=[[[2, 2]]], available_actions=av),   # no effect
+        _frame(frame=[[[3, 3]]], available_actions=av),   # works again
+    ])
+    for x in range(4):
+        c.act(6, x=x, y=0)
+    s = c.status()
+    assert "1/3 actions on this level changed nothing" in s
+    assert "repeated" not in s, "distinct coordinates are not a repeat"
 
 
 def test_status_never_raises_because_of_its_own_extras(stub, monkeypatch):

@@ -555,26 +555,60 @@ class ArcClient:
             f"state={self.state} actions={self.actions_used}{pace}"
             f"{f', wasted={self.wasted_actions}' if self.wasted_actions else ''}"
             f"{f', FULL RESETS={self.full_resets}' if self.full_resets else ''}"
-            f"{self._dead_actions()}"
+            f"{self._ineffective()}"
         )
 
-    def _dead_actions(self, *, floor: int = 5) -> str:
-        """Name any available action that has done nothing, repeatedly, here.
+    def _ineffective(self) -> str:
+        """Report actions that changed nothing on this level. Silent when none.
 
-        This lives in ``status()`` rather than in a function of its own on
-        deliberate evidence. Across five runs and 332 solver commands, every
-        analytical helper this package exports -- the rule engine, the forward
-        model, the planner -- was called **zero** times, while ``status()`` was
-        called 82. A signal in a function nobody calls is not a signal.
+        Lives in ``status()`` rather than in a function of its own on deliberate
+        evidence: across five runs and 332 solver commands, every analytical
+        helper this package exports was called **zero** times while ``status()``
+        was called 82. A signal in a function nobody calls is not a signal.
 
-        ``floor`` exists because the first click on empty space is a real
-        observation. Only the repeat is waste.
+        **Why a number and not a verdict.** Waste is rank-ordered with outcome
+        across the six runs on record, and nothing sharper survives contact:
+
+        =========================  =========  ===================
+        run                        effective  repeats per 100
+        =========================  =========  ===================
+        never cleared a level      80%        5.1
+        won, but the hard way      93%        1.8
+        four clean wins            100%       0.0
+        =========================  =========  ===================
+
+        The first draft of this said "the threshold is zero, and that is
+        measured". Four winning runs did change the board on literally every
+        action -- 845/845, 351/351, 76/76, 69/69 -- so it looked settled. The
+        fifth win wasted 8 of 114 and cleared six levels in 121 actions against
+        a 171 baseline. **Waste is compatible with winning**, so this reports
+        the count and lets the solver judge.
+
+        An earlier version looked for an action whose every attempt was dead.
+        Replayed against the failing run it never fired once in 336 actions:
+        ``ACTION6`` was not dead, it was 111/157. The waste hid inside a working
+        action, which is why the fraction is reported rather than a
+        stop-using-this verdict.
+
+        A repeat is not *always* waste either -- a game with hidden state can
+        make a previously-inert action live.
         """
         try:
-            from .rules import effective_actions
-
-            counts = effective_actions(self.transitions(), level=self.level)
+            here = [t for t in self.transitions() if t.level == self.level]
         except Exception:  # noqa: BLE001 -- status() must never be the thing that fails
             return ""
-        dead = [f"{a} 0/{n}" for a, (c, n) in sorted(counts.items()) if c == 0 and n >= floor]
-        return f"  <- NO EFFECT on this level: {', '.join(dead)}" if dead else ""
+        tried = [t for t in here if t.before is not None and not t.board_replaced and not t.wasted]
+        dead = [t for t in tried if not t.changed]
+        if not dead:
+            return ""
+        seen: set[tuple[str, str]] = set()
+        repeats = 0
+        for t in dead:
+            key = (t.action, json.dumps(t.params, sort_keys=True))
+            if key in seen:
+                repeats += 1
+            seen.add(key)
+        note = f"  <- {len(dead)}/{len(tried)} actions on this level changed nothing"
+        if repeats:
+            note += f" ({repeats} repeated one you had already seen do nothing)"
+        return note
