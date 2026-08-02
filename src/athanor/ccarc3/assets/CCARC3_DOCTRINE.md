@@ -51,14 +51,22 @@ immediately after a level advance — starts a NEW PLAY.** Measured: the API the
 records a new `guid`, a new `actions` row, and a new `actions_by_level` row.
 Per-level action counts are kept per play and never summed.
 
-> **UNVERIFIED, and it decides whether any of this pays.** Which play the
-> scorer uses is *not* established. That plays are stored separately is
-> measured; that the best one is scored is an inference from the SDK's
-> `Card.high_score = max(scores)` — and that property belongs to the SDK's own
-> bookkeeping, not to the benchmark metric, which is RHAE. If the scorer takes
-> the best play, a replay is worth `1.0 − raw`. If it takes the first, a replay
-> is worth **nothing** and costs a baseline. Treat this section as a bet, not a
-> technique, until someone measures it.
+> **DO NOT DO THIS.** It is documented here because the mechanism is real and
+> you will find it, not because it is a technique to use.
+>
+> The human baseline you are measured against comes from people playing the
+> game **for the first time**, having never seen it before. Their action count
+> includes their own fumbling. So `(h/a)²` compares your cost of *learning* the
+> level against a human's cost of learning it — RHAE measures skill acquisition,
+> not mastery. Explore expensively, restart, and present a clean route, and you
+> are putting a post-learning run up against a during-learning baseline. That is
+> not a better score; it is a different quantity.
+>
+> It is also unverified that it would even work: which play the scorer reads is
+> not established.
+>
+> **Play once. Learn from nothing. Let the action count fall where it falls.**
+> That is the measurement this benchmark is asking for.
 
 The games are also **deterministic** — replaying an action sequence reproduces
 the board exactly, patrolling objects included, verified 40 frames out of 40.

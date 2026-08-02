@@ -71,44 +71,40 @@ anything below.
 - *Downscaling frames is the big token saving.* Real frames rarely have uniform
   block structure; `logical()` usually declines to reduce at all.
 
-## What RHAE actually measures
+## What RHAE actually measures — skill acquisition, not mastery
 
-Worth stating, because the mechanism looks like a loophole and probably is not.
+**Corrected.** An earlier version of this section argued that RHAE measures
+mastery rather than learning speed, on the grounds that `h_l` came from humans
+who had already worked the game out. That is wrong, and the methodology says so
+in as many words:
 
-Per-level actions are recorded **per play**, plays are scored **best-of**, and
-the games are **deterministic** — all measured. So a solver can explore a game
-expensively, restart, and execute the route it now understands, and only the
-clean play is scored. That reads at first like "the benchmark rewards
-presenting a tidy solution after a messy one".
+> "Human baselines are established through controlled testing where
+> participants play each ARC-AGI-3 game **for the first time (having never seen
+> the game before)**."
+> — [docs.arcprize.org/methodology](https://docs.arcprize.org/methodology)
 
-**The baseline's own definition argues it is deliberate.** `h_l` is the
-upper-median action count *among humans who completed that level*. Those humans
-did not clear a novel puzzle level on a blind first attempt either; they
-fumbled, worked the rule out, and then did it. The baseline is already a
-post-understanding human figure — so comparing a solver's post-understanding
-run against it is the like-for-like comparison, and charging a solver's
-discovery against a human's post-discovery number would be the unfair one.
+The baseline is a **first-time** player's action count. It contains that
+human's own fumbling, wrong turns and discovery. So `(h_l / a_l)²` compares
+*your* cost of learning the level against *a human's* cost of learning the same
+level. RHAE measures **skill-acquisition efficiency**, which is what the
+benchmark's own summary claims: *"Skill-acquisition efficiency over time"*, and
+*"A 100% score means AI agents can beat every game as efficiently as humans."*
 
-Read that way, RHAE measures **demonstrated mastery, not discovery
-efficiency**: given that you understand the game, how economically do you
-execute it relative to a human who also understands it?
+### What that does to the replay strategy
 
-Three things keep that from collapsing into nothing:
+It removes its justification. Explore expensively, restart, then execute a
+clean route, and you are comparing a **post-learning** agent run against a
+**during-learning** human baseline. That is not a like-for-like comparison; it
+is the metric's central quantity replaced with something else.
 
-- **Completion is not gameable.** The cap is the weighted fraction of levels
-  actually cleared, and no replay fakes a level you cannot finish.
-- **Understanding is not gameable.** Determinism cuts both ways: replaying a
-  fumbling trace verbatim reproduces the fumbling exactly. The clean route only
-  exists if the rules are genuinely known.
-- **Discovery is not free.** It is charged to `total_actions`, which is reported
-  separately. Not counted against `a_l`, but not unpriced either.
+Whether the scorer would even reward it is still unmeasured — which play it
+reads is unknown (see the scoreboard above). But the intent is no longer
+ambiguous, and that is sufficient. **Nothing in this project uses it, the
+capability stays behind an explicit call the solver has to choose to make, and
+the doctrine now says not to.**
 
-**The open question is whether the published evaluation caps `total_actions`.**
-If it does not, discovery cost is genuinely unpriced and the sharper reading —
-grind arbitrarily, then present clean — holds after all. No way to check that
-has been found short of submitting.
-
----
+The honest form of the benchmark is the one already being run: one play, learn
+from nothing, and let the action count fall where it falls.
 
 ## 1. What the SDK actually exposes [SDK]
 

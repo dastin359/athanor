@@ -515,7 +515,10 @@ def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
     assert "restart_for_replay()" in d
     assert "NEW PLAY" in d
     assert "gains you exactly nothing" in d, "the usual case must be stated"
-    assert "1.0 − raw" in d or "1.0 - raw" in d, "the arithmetic, not a vibe"
+    # The baseline is a *first-time* human, so a replayed clean run is not a
+    # like-for-like comparison. The doctrine must say so, not merely price it.
+    assert "DO NOT DO THIS" in d
+    assert "for the first time" in d
 
 
 def test_the_doctrine_says_to_reserve_budget_for_a_replay(ws):
