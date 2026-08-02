@@ -1,17 +1,19 @@
 # CCARC3 live status
 
-_updated 19:03:24_
+_updated 19:06:26_
 
 ### tr87-cd924810  (keyboard)
 
-running (last action 107s ago) — level **1/6**, 31/828 actions, 0 deaths
+running (last action 0s ago) — level **3/6**, 125/828 actions, 0 deaths
 
 | level | actions | baseline | ratio |
 |---|---|---|---|
 | 0 | 30 | 54 | 0.6x |
-| 1 ← | 1 | 58 | 0.0x |
+| 1 | 30 | 58 | 0.5x |
+| 2 | 26 | 40 | 0.7x |
+| 3 ← | 39 | 45 | 0.9x |
 
-**cleared 1 level(s): 30 actions vs 54 baseline = 56%**
+**cleared 3 level(s): 86 actions vs 152 baseline = 57%**
 
 ---
 
