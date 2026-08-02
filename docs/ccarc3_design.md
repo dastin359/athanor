@@ -67,8 +67,9 @@ Colours are **0-15 (sixteen)**, not ARC-AGI-2's ten.
 
 `append_frame` writes `json.loads(frame.model_dump_json())` per frame. Disk is
 already JSON, and already includes `action_input`. `pretty_print_3d` is the
-SDK's text rendering: raw `[5, 5, 5, ...]` rows, roughly 6k tokens for a single
-64x64 grid. Unusable in-context at scale; see §4.2.
+SDK's text rendering: raw `[5, 5, 5, ...]` rows, 12,416 characters for a single
+64x64 grid plus a header and two-space indent per grid — and one action returns
+several. Unusable in-context at scale; see §4.2.
 
 ---
 
@@ -150,6 +151,30 @@ will do it on level 1, where exploration is cheapest and most valuable.
 
 A death is also a **labelled negative transition** — the highest-information
 kind — and feeds §5's refutation log nearly for free.
+
+### 2.3 RESET after GAME_OVER restarts the level, not the game [PLAY]
+
+This is what makes the licence in §2.2 usable rather than theoretical.
+
+The obvious worry about exploring by dying is that walk-back cost compounds with
+depth: die on level 4 at action 200 and you would replay all 200. That does not
+happen. **Death costs only the actions already spent inside the current level.**
+
+Three consequences, and they are load-bearing:
+
+1. **Death stays cheap at every depth**, not only on level 1. Exploring by dying
+   is a globally valid strategy, not an opening gambit.
+2. **The cost of a death scales with the current level's traversal length, not
+   its index.** A long level is expensive to die in; a deep but short one is not.
+   So the thing to economise is *distance from the level's start when you run the
+   experiment*, which is directly controllable — test lethality hypotheses early
+   in a level, not at its far end.
+3. **The level is the natural unit of the experiment loop**, which is
+   independent support for the level-boundary gate in §6.1.
+
+Residual, minor: what distinguishes a level reset from a full game restart, and
+what sets `FrameData.full_reset`. Only matters for bookkeeping — it does not
+affect the strategy above.
 
 ---
 
@@ -304,8 +329,10 @@ This belongs in the doctrine explicitly, because every instinct pushes the other
 way: a myopic agent clears L1 in 12 actions and then burns 300 relearning across
 L2-L5.
 
-The corollary from §2.2: front-load cheap deaths. Dying costs no score, and on
-level 1 the walk-back is short.
+The corollary from §2.2 and §2.3: **use deaths as experiments, on every level.**
+Dying costs no score, and RESET replays only the current level, so the price is
+bounded by how far into the level you were. Run lethality experiments near a
+level's start, where that price is near zero.
 
 ---
 
@@ -313,12 +340,11 @@ level 1 the walk-back is short.
 
 Ordered by how much of the above they invalidate if they come out wrong.
 
-1. **After GAME_OVER, does RESET restart the game or the level?** This decides
-   whether "explore by dying" stays cheap past level 1. Dying at L1 step 3 is
-   nearly free; dying at L4 step 200 could cost 200 actions of re-traversal.
-   `full_reset: bool` implies the distinction exists, but the semantics are
-   server-side. **Everything in §6.2 depends on this.**
-2. **Are levels really independent in state?** `score` is cumulative across
+*Resolved:* whether RESET after GAME_OVER restarts the game or the level. It
+restarts **the level** [PLAY] — see §2.3, which is now the basis for §6.2 rather
+than an open risk to it.
+
+1. **Are levels really independent in state?** `score` is cumulative across
    levels; inventory, position conventions or palette may also persist. Cheap to
    check via `full_reset` and score continuity. §3's eviction policy assumes
    independence and should not until this is measured.

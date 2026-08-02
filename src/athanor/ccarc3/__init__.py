@@ -1,0 +1,82 @@
+"""CCARC3 — harness primitives for a Claude-Code-as-agent ARC-AGI-3 solver.
+
+Design: ``docs/ccarc3_design.md``.
+
+The split this package exists to enforce: **the harness ships the converter, the
+solver writes the analysis.** Every run would otherwise re-derive the same
+loader differently, destroying cross-run comparability, and conversion is where
+a silent bug (dropping the intermediate frames of a multi-frame action,
+mis-inferring the render block size) poisons every downstream conclusion
+invisibly.
+
+Nothing here imports ``arc_agi_3``, so all of it is usable and testable without
+the SDK or an API key. The seam is a plain dict of the shape
+``FrameData.model_dump()`` produces.
+"""
+
+from .grids import (
+    DEFAULT_BACKGROUND,
+    PALETTE_SIZE,
+    Change,
+    Object,
+    as_grid,
+    block_size,
+    counts,
+    diff,
+    flatten_frames,
+    logical,
+    objects,
+    render,
+)
+from .ledger import (
+    ACTION_NAMES,
+    TraceWriter,
+    Transition,
+    action_name,
+    infer_levels,
+    load,
+)
+from .rules import (
+    Counts,
+    Outcome,
+    Rule,
+    RuleBook,
+    Survey,
+    VerifyResult,
+    regressions,
+    survey,
+    verify,
+)
+
+__all__ = [
+    # grids
+    "PALETTE_SIZE",
+    "DEFAULT_BACKGROUND",
+    "Change",
+    "Object",
+    "as_grid",
+    "render",
+    "diff",
+    "block_size",
+    "logical",
+    "objects",
+    "counts",
+    "flatten_frames",
+    # ledger
+    "ACTION_NAMES",
+    "Transition",
+    "TraceWriter",
+    "load",
+    "action_name",
+    "infer_levels",
+    # rules
+    "Outcome",
+    "Rule",
+    "Counts",
+    "VerifyResult",
+    "Survey",
+    "verify",
+    "survey",
+    "regressions",
+    "RuleBook",
+]
