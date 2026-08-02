@@ -2550,3 +2550,63 @@ Landing it as a diagnostic, with that framing in the doctrine, and explicitly no
 as a submission gate. A metric that correlates with correctness across a sample
 and overlaps within it is exactly the kind of number this log has twice now
 mistaken for a threshold.
+
+---
+
+## `4e34c42c`: a harness timeout scored zero on work that was not finished
+
+Arm B's first regression, and it is not a reasoning failure. Recorded score 0.00
+on a task the chain-of-thought baseline solves — but the run never reached a
+verdict.
+
+```
+launch 1  $22.32   96 turns   killed by the container SIGTERM at 00:39
+launch 2  $25.99   stop_reason: tool_use, "[Request interrupted by user]"
+          01:25:32 -> 02:25:32  =  exactly 3600 s  =  wall_clock_timeout_s
+                                          total spend on one task: $48.31
+```
+
+The gate ledger at kill time: `accepted: None`, **1 iteration used of 8**, and
+that iteration recorded `all_train_correct: True`. The solver had a train-perfect
+submission in hand and was still working — `solve.py` was rewritten at 02:24:58,
+34 seconds before the timeout — when the harness terminated it. Executing the
+file that happened to be on disk at that instant: train `[True, False]`, and
+**test 1 correct on its second candidate, 0.50**. Neither that nor the earlier
+train-perfect version was ever accepted, so the record says 0.00.
+
+Two things follow, and the second is worse than the first.
+
+**One: this zero belongs to the harness, not to the solver.** Same class as
+`abc82100`, which spent $6.09 and produced nothing after the CLI killed its
+background sub-agent at 600 s. Both runs used the `Agent` tool — the only two of
+21 that did — which is suggestive but does not implicate delegation in *wrong
+answers*. It implicates it in *duration*: a solver that delegates runs longer,
+and long runs are the ones that meet time limits. **$32–48 of this batch's spend
+bought zeros that reflect my timeouts rather than the harness's reasoning.**
+
+**Two, and this is the real finding: it exposes a bug in the fix I shipped an
+hour earlier.** `--resume-incomplete` decided what to skip by asking whether
+`result.json` existed. But a run killed by the wall clock *still gets a
+result.json* — scored 0, `accepted: False` — which is byte-indistinguishable from
+an honest zero. My skip logic would have looked at `4e34c42c`, seen a result, and
+skipped the one run in the batch that most needed resuming.
+
+`resume_task` was already correct: it reads the **gate ledger**, returns early for
+an accepted run or an exhausted budget, and relaunches otherwise. The batch loop
+was asking a cheaper question than the one that mattered. Fixed — the workspace is
+now consulted first and `resume_task` owns the verdict; `result.json` alone only
+decides the case where no workspace survives. Three tests, one named for this
+task.
+
+> **A recovery mechanism keyed on the wrong artifact fails exactly on the runs it
+> exists to recover.** `result.json` records that a run *ended*. Only the gate
+> ledger records whether it *finished*. Those are the same file for every healthy
+> run and different for every interrupted one — so the bug is invisible until the
+> day it matters, which is the day something gets interrupted.
+
+This is the fourth time in one session that an artifact was trusted for a question
+it does not answer: a `FileNotFoundError` read as deletion, a transcript gap read
+as idleness, a run label read as an ablation, and now a result file read as
+completion. The fix is the same each time and it is not "be more careful" — it is
+to ask which artifact is *causally downstream of the thing being asked about*, and
+read that one instead.

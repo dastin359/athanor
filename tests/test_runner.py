@@ -467,7 +467,7 @@ def test_overwrite_and_resume_incomplete_are_contradictory(tmp_path):
         runner.run_batch(["a"], out_dir=tmp_path, overwrite=True, resume_incomplete=True)
 
 
-def test_resume_incomplete_skips_a_task_that_already_has_a_result(tmp_path, monkeypatch):
+def test_resume_incomplete_skips_a_result_whose_workspace_is_gone(tmp_path, monkeypatch):
     dataset = _stub_dataset(tmp_path, ["aaa11111"])
     out_dir = tmp_path / "out"
     (out_dir / "aaa11111").mkdir(parents=True)
@@ -483,8 +483,59 @@ def test_resume_incomplete_skips_a_task_that_already_has_a_result(tmp_path, monk
     )
 
     assert calls == []
-    assert results[0]["batch_skipped"] == "result.json already present"
+    assert results[0]["batch_skipped"] == "result.json present, no workspace to resume"
     assert results[0]["score"]["score"] == 1.0
+
+
+def test_a_timed_out_run_is_resumed_even_though_it_has_a_result(tmp_path, monkeypatch):
+    """The case that motivated this: 4e34c42c.
+
+    The wall-clock timeout killed a solver that had submitted but never accepted.
+    A result.json was still written — score 0, accepted False — which is
+    byte-indistinguishable from an honest zero if the skip keys on the file. Only
+    the gate ledger knows the difference, so resume_task must get the decision.
+    """
+    dataset = _stub_dataset(tmp_path, ["bbb33333"])
+    out_dir = tmp_path / "out"
+    (out_dir / "bbb33333" / "workspace").mkdir(parents=True)
+    (out_dir / "bbb33333" / "result.json").write_text(
+        json.dumps({"task_id": "bbb33333", "accepted": False, "score": {"score": 0.0}}),
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(runner, "run_task", lambda *a, **k: calls.append("run") or {})
+    monkeypatch.setattr(
+        runner, "resume_task", lambda *a, **k: calls.append("resume") or {"task_id": "bbb33333"}
+    )
+
+    runner.run_batch(
+        ["bbb33333"], out_dir=out_dir, dataset_root=dataset,
+        dataset_split="evaluation", resume_incomplete=True,
+    )
+
+    assert calls == ["resume"], "a timed-out run must not be mistaken for a finished one"
+
+
+def test_an_accepted_run_is_skipped_on_resume_tasks_own_verdict(tmp_path, monkeypatch):
+    dataset = _stub_dataset(tmp_path, ["ccc55555"])
+    out_dir = tmp_path / "out"
+    (out_dir / "ccc55555" / "workspace").mkdir(parents=True)
+    calls: list[str] = []
+    monkeypatch.setattr(runner, "run_task", lambda *a, **k: calls.append("run") or {})
+    monkeypatch.setattr(
+        runner,
+        "resume_task",
+        lambda *a, **k: calls.append("resume")
+        or {"task_id": "ccc55555", "resume_skipped": "already accepted"},
+    )
+
+    results = runner.run_batch(
+        ["ccc55555"], out_dir=out_dir, dataset_root=dataset,
+        dataset_split="evaluation", resume_incomplete=True,
+    )
+
+    assert calls == ["resume"]  # consulted, but it declined to relaunch
+    assert results[0]["batch_skipped"] == "already accepted"
 
 
 def test_resume_incomplete_resumes_a_workspace_left_without_a_result(tmp_path, monkeypatch):

@@ -571,12 +571,14 @@ def run_batch(
                 ).stem
                 run_dir = Path(out_dir).resolve() / task_id
 
-            if run_dir is not None and (run_dir / "result.json").is_file():
-                record = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
-                record["batch_skipped"] = "result.json already present"
-                print("  skipped: already complete")
-            elif run_dir is not None and (run_dir / "workspace").is_dir():
-                print("  resuming: workspace present, no result")
+            if run_dir is not None and (run_dir / "workspace").is_dir():
+                # Ask the workspace, not the result file. A run killed by the
+                # wall-clock timeout still gets a result.json written — scored 0,
+                # accepted False — which is indistinguishable from an honest zero
+                # if you key on the file's existence. The gate ledger is the only
+                # thing that knows whether the solver was finished or interrupted,
+                # and resume_task already reads it: it returns early for an
+                # accepted run or an exhausted budget, and relaunches otherwise.
                 record = resume_task(
                     run_dir,
                     config=config,
@@ -584,6 +586,15 @@ def run_batch(
                     dataset_split=dataset_split,
                     event_callback=event_callback,
                 )
+                if record.get("resume_skipped"):
+                    record["batch_skipped"] = record["resume_skipped"]
+                    print(f"  skipped: {record['resume_skipped']}")
+                else:
+                    print("  resumed: budget left and never accepted")
+            elif run_dir is not None and (run_dir / "result.json").is_file():
+                record = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+                record["batch_skipped"] = "result.json present, no workspace to resume"
+                print("  skipped: result present, workspace gone")
             else:
                 record = run_task(
                     task,
