@@ -78,11 +78,22 @@ def cmd_batch(args: argparse.Namespace) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
+    """Summarise finished runs by **re-deriving** from their traces.
+
+    `result.json` is what the run computed at the time, and a later harness fix
+    can make it wrong: every stored `ls20` figure still read 860 actions and
+    zero full resets after full resets became detectable. The trace is the
+    record, so anything derivable is derived again here and the stored file
+    supplies only what the ledger cannot know — exit code, timeout, rule counts.
+    """
+    from .session import ledger_facts
+
     root = Path(args.out_dir)
-    results = [
-        json.loads(p.read_text(encoding="utf-8"))
-        for p in sorted(root.glob("*/result.json"))
-    ]
+    results = []
+    for p in sorted(root.glob("*/result.json")):
+        stored = json.loads(p.read_text(encoding="utf-8"))
+        trace = p.parent / "trace.jsonl"
+        results.append({**stored, **ledger_facts(trace)} if trace.exists() else stored)
     if not results:
         print(f"no finished runs under {root}")
         return 1

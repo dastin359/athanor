@@ -68,6 +68,43 @@ def test_a_failed_run_is_reported_and_excluded_from_totals(tmp_path, capsys):
     assert "2/7 levels reached" in out, "the failed run must not dilute the total"
 
 
+def test_report_re_derives_from_the_trace_and_corrects_a_stale_result(tmp_path, capsys):
+    """`result.json` is what the run computed then; the trace is the record.
+
+    A harness fix can make the stored file wrong after the fact. When full
+    resets became detectable, every stored `ls20` figure still read 860 actions
+    and zero full resets, so the batch summary rated a game won in 490 actions
+    as if it had cost 860.
+    """
+    d = tmp_path / "g"
+    d.mkdir()
+    (d / "result.json").write_text(json.dumps(
+        _result("g", actions_used=999, levels_reached=0, full_resets=0, won=False)))
+    with (d / "trace.jsonl").open("w") as fh:
+        for i, (level, state) in enumerate([(0, "NOT_FINISHED"), (1, "NOT_FINISHED"),
+                                            (0, "NOT_FINISHED"), (1, "WIN")]):
+            fh.write(json.dumps({
+                "i": i, "level": level, "action": "ACTION1", "params": {},
+                "frames": [[[i]]], "score": level, "state": state,
+                "full_reset": False, "available_actions": ["ACTION1"],
+            }) + "\n")
+
+    cli.main(["report", "--out-dir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "999" not in out, "the stale total must not survive"
+    assert "WON" in out and "FULLRESET=1" in out
+    assert "the last 2 of 4" in out
+
+
+def test_report_still_works_for_a_run_whose_trace_is_gone(tmp_path, capsys):
+    """Archived runs keep result.json; falling back beats reporting nothing."""
+    d = tmp_path / "g"
+    d.mkdir()
+    (d / "result.json").write_text(json.dumps(_result("g", actions_used=42)))
+    assert cli.main(["report", "--out-dir", str(tmp_path)]) == 0
+    assert "42" in capsys.readouterr().out
+
+
 def test_report_on_an_empty_directory_says_so(tmp_path, capsys):
     assert cli.main(["report", "--out-dir", str(tmp_path)]) == 1
     assert "no finished runs" in capsys.readouterr().out

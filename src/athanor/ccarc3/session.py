@@ -504,13 +504,21 @@ def _record_resume_state(ws: Workspace) -> None:
     )
 
 
-def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
-    """Read the run's result off disk — never from what the solver claims."""
+def ledger_facts(trace_path: Path | str) -> dict[str, Any]:
+    """Everything about a run that can be re-derived from its ledger.
+
+    Split out from :func:`collect_outcome` so a *finished* run can be re-read
+    later. `result.json` is a derived artefact, and a harness fix can make it
+    wrong after the fact: when full resets became detectable, every stored
+    `ls20` figure was still the pre-fix one — 860 actions, zero full resets, no
+    playthrough split. Deriving from the trace on demand means a fix reaches
+    history too.
+    """
     from .ledger import load
 
-    transitions = load(ws.trace_path) if ws.trace_path.exists() else []
+    path = Path(trace_path)
+    transitions = load(path) if path.exists() else []
     states = [t.state for t in transitions]
-    levels = [t.level for t in transitions]
 
     # A full reset restarts the game inside the same trace, so the ledger holds
     # more than one playthrough and the two honest numbers diverge. `ls20`
@@ -527,24 +535,32 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         default=0,
     )
     final = transitions[last_restart:]
+    resets = sum(1 for t in transitions if t.full_reset)
 
-    outcome = {
-        "game_id": ws.info.game_id,
-        "levels_reached": max(levels, default=0),
-        "levels_total": ws.info.levels,
+    return {
+        "levels_reached": max((t.level for t in transitions), default=0),
         "won": "WIN" in states,
         "actions_used": len(transitions),
-        "baseline_total": ws.info.baseline_total,
         "deaths": sum(
             1
             for prev, cur in zip(["NOT_PLAYED", *states], states)
             if cur == "GAME_OVER" and prev != "GAME_OVER"
         ),
         "wasted_actions": sum(t.wasted for t in transitions),
-        "full_resets": sum(1 for t in transitions if t.full_reset),
-        "playthroughs": sum(1 for t in transitions if t.full_reset) + 1,
+        "full_resets": resets,
+        "playthroughs": resets + 1,
         "actions_final_playthrough": len(final),
         "levels_reached_final_playthrough": max((t.level for t in final), default=0),
+    }
+
+
+def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
+    """Read the run's result off disk — never from what the solver claims."""
+    outcome = {
+        "game_id": ws.info.game_id,
+        "levels_total": ws.info.levels,
+        "baseline_total": ws.info.baseline_total,
+        **ledger_facts(ws.trace_path),
         "exit_code": exit_code,
         "timed_out": timed_out,
     }

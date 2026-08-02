@@ -49,7 +49,7 @@ from .ledger import (
     infer_levels,
     load,
 )
-from .session import Ccarc3Config, build_workspace, run_game
+from .session import Ccarc3Config, build_workspace, ledger_facts, run_game
 from .planning import reachable, shortest_path
 from .rules import (
     Counts,
@@ -98,6 +98,7 @@ __all__ = [
     # session
     "Ccarc3Config",
     "build_workspace",
+    "ledger_facts",
     "run_game",
     # ledger
     "ACTION_NAMES",
