@@ -88,17 +88,54 @@ def cmd_report(args: argparse.Namespace) -> int:
     """
     from .session import ledger_facts
 
-    root = Path(args.out_dir)
-    results = []
+    results = _read_runs(Path(args.out_dir))
+    if not results:
+        print(f"no finished runs under {args.out_dir}")
+        return 1
+    _summarise(results)
+    if getattr(args, "against", None):
+        _compare(_read_runs(Path(args.against)), results, Path(args.against))
+    return 0
+
+
+def _read_runs(root: Path) -> list[dict]:
+    from .session import ledger_facts
+
+    out = []
     for p in sorted(root.glob("*/result.json")):
         stored = json.loads(p.read_text(encoding="utf-8"))
         trace = p.parent / "trace.jsonl"
-        results.append({**stored, **ledger_facts(trace)} if trace.exists() else stored)
-    if not results:
-        print(f"no finished runs under {root}")
-        return 1
-    _summarise(results)
-    return 0
+        out.append({**stored, **ledger_facts(trace)} if trace.exists() else stored)
+    return out
+
+
+def _compare(before: list[dict], after: list[dict], label: Path) -> None:
+    """Pair games present in both directories and show the change.
+
+    Operator tooling, not solver tooling. The same comparison was written by
+    hand three times in one session -- levels, actions, and effectiveness for
+    one game across two batches -- which is the demand signal that justifies it.
+    Nothing here is offered to a solver; §9.8a is about what *they* ignore.
+    """
+    b = {r.get("game_id"): r for r in before if "error" not in r}
+    pairs = [(b[r["game_id"]], r) for r in after
+             if "error" not in r and r.get("game_id") in b]
+    if not pairs:
+        print(f"\nnothing in {label} to compare against.")
+        return
+    print(f"\npaired against {label} — before -> after")
+    print(f"{'game':24}{'levels':>14}{'actions':>16}{'vs base':>16}")
+    for x, y in sorted(pairs, key=lambda p: p[1]["game_id"]):
+        base = y.get("baseline_total") or 0
+        cx = x.get("actions_final_playthrough", x.get("actions_used", 0))
+        cy = y.get("actions_final_playthrough", y.get("actions_used", 0))
+        lv = f"{x.get('levels_reached',0)}->{y.get('levels_reached',0)}/{y.get('levels_total',0)}"
+        act = f"{cx}->{cy}"
+        rat = f"{cx/base:.2f}x->{cy/base:.2f}x" if base else "-"
+        print(f"{y['game_id']:24}{lv:>14}{act:>16}{rat:>16}")
+    only = [r["game_id"] for r in after if "error" not in r and r.get("game_id") not in b]
+    if only:
+        print(f"  not in {label}, so unpaired: {', '.join(sorted(only))}")
 
 
 def _summarise(results: list[dict]) -> None:
@@ -199,6 +236,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
     report = sub.add_parser("report", help="Summarise finished runs from their traces.")
     report.add_argument("--out-dir", default="runs/ccarc3")
+    report.add_argument(
+        "--against",
+        help="an earlier run directory; games in both are shown paired, with deltas",
+    )
     report.set_defaults(func=cmd_report)
 
     trace = sub.add_parser("trace", help="Describe what happened in one run.")

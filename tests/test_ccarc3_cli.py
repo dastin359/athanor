@@ -105,6 +105,42 @@ def test_report_still_works_for_a_run_whose_trace_is_gone(tmp_path, capsys):
     assert "42" in capsys.readouterr().out
 
 
+def _run_dir(root, game, **kw):
+    d = root / game
+    d.mkdir(parents=True)
+    (d / "result.json").write_text(json.dumps(_result(game, **kw)))
+    return d
+
+
+def test_report_pairs_a_game_against_an_earlier_batch(tmp_path, capsys):
+    """The comparison written by hand three times in one session."""
+    old, new = tmp_path / "old", tmp_path / "new"
+    _run_dir(old, "cd82", levels_reached=0, levels_total=6, actions_used=337, baseline_total=171)
+    _run_dir(new, "cd82", levels_reached=6, levels_total=6, actions_used=121,
+             baseline_total=171, won=True)
+    assert cli.main(["report", "--out-dir", str(new), "--against", str(old)]) == 0
+    out = capsys.readouterr().out
+    assert "0->6/6" in out and "337->121" in out
+    assert "1.97x->0.71x" in out
+
+
+def test_a_game_only_in_the_new_batch_is_named_not_dropped(tmp_path, capsys):
+    old, new = tmp_path / "old", tmp_path / "new"
+    _run_dir(old, "cd82")
+    _run_dir(new, "cd82")
+    _run_dir(new, "sb26")
+    cli.main(["report", "--out-dir", str(new), "--against", str(old)])
+    assert "unpaired: sb26" in capsys.readouterr().out
+
+
+def test_comparing_against_a_directory_with_no_overlap_says_so(tmp_path, capsys):
+    old, new = tmp_path / "old", tmp_path / "new"
+    _run_dir(old, "aaaa")
+    _run_dir(new, "bbbb")
+    cli.main(["report", "--out-dir", str(new), "--against", str(old)])
+    assert "nothing in" in capsys.readouterr().out
+
+
 def test_report_on_an_empty_directory_says_so(tmp_path, capsys):
     assert cli.main(["report", "--out-dir", str(tmp_path)]) == 1
     assert "no finished runs" in capsys.readouterr().out
