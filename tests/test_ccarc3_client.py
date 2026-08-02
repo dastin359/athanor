@@ -492,6 +492,45 @@ def test_corrupt_state_falls_back_to_a_fresh_client(monkeypatch, tmp_path):
     assert not c._resumed
 
 
+def test_every_refusal_still_refuses_in_a_fresh_process(monkeypatch, tmp_path):
+    """The check design note §9.9 asks for, and the one that was missing.
+
+    Tests that a refusal *fires* all passed while the RESET guard was silently
+    unarmed on resume, because they built the state in the same process that
+    checked it. This crosses the boundary first. Anything added to the client
+    that arms a refusal and is not persisted fails here rather than in a run.
+    """
+    from athanor.ccarc3 import GateRefusal, LevelGate
+
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+
+    a = ArcClient("g", trace_path=path, max_actions=50, gate=LevelGate(rulebook_path=tmp_path / "r.json"))
+    a.card_id = "card-1"
+    a.available_actions = ("ACTION1",)
+    a.actions_used, a.level = 50, 4      # budget spent
+    a._last_advanced = True              # RESET here is a full game reset
+    a.gate.last_level, a.gate.pending_level = 4, 4   # unacknowledged advance
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path, max_actions=50, gate=LevelGate(rulebook_path=tmp_path / "r.json"))
+    with pytest.raises(ActionRefused, match="FULL GAME RESET"):
+        b.reset()
+    with pytest.raises(ActionRefused, match="budget exhausted"):
+        b.act(1)
+    with pytest.raises(GateRefusal):
+        b.gate.check()
+
+    b.actions_used = 0                   # clear the budget refusal to reach the rest
+    with pytest.raises(ActionRefused, match="not in this game's available_actions"):
+        b.act(3)
+    b.state = "GAME_OVER"
+    b._save_state()
+    c = ArcClient("g", trace_path=path, max_actions=0)
+    with pytest.raises(ActionRefused, match="every non-RESET action is discarded"):
+        c.act(1)
+
+
 def test_closing_clears_the_state_so_the_next_run_starts_clean(stub, tmp_path):
     c, _, _ = stub
     c._save_state()
