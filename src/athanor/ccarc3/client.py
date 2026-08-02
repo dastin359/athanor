@@ -254,6 +254,10 @@ class ArcClient:
                     ],
                     "gate_last_level": self.gate.last_level if self.gate else 0,
                     "gate_pending": self.gate.pending_level if self.gate else None,
+                    "gate_acknowledged": (
+                        {str(k): v for k, v in self.gate.acknowledged.items()}
+                        if self.gate else {}
+                    ),
                 }
             ),
             encoding="utf-8",
@@ -305,11 +309,17 @@ class ArcClient:
         if self.gate is not None:
             self.gate.last_level = int(saved.get("gate_last_level", 0))
             self.gate.pending_level = saved.get("gate_pending")
+            self.gate.acknowledged = {
+                int(k): v for k, v in (saved.get("gate_acknowledged") or {}).items()
+            }
         return True
 
     def __post_init__(self) -> None:
         self._key = _api_key(self.api_key)
         self._opener = new_session()
+        if self.gate is not None:
+            # An acknowledgement must survive the process that made it.
+            self.gate.on_change = self._save_state
         self._writer = TraceWriter(self.trace_path)
         if self._restore_state():
             self._resumed = True

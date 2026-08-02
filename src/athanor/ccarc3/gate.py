@@ -49,6 +49,22 @@ class LevelGate:
     acknowledged: dict[int, str] = field(default_factory=dict)
     last_level: int = 0
     refusals: int = 0
+    on_change: Any = None
+    """Called with no arguments whenever the gate's held/open state changes.
+
+    ``ArcClient`` sets this to its state saver. Without it an acknowledgement is
+    lost the moment the process ends: the client persists after each *action*,
+    so clearing the gate and then exiting leaves ``gate_pending`` still set on
+    disk, and the next process restores a gate that was already satisfied.
+
+    Found by reading what a real solver had to write around it -- a helper whose
+    docstring read "Gate state is per-process; re-clear it after re-importing
+    session." A harness the solver has to work around is a harness bug.
+    """
+
+    def _changed(self) -> None:
+        if self.on_change is not None:
+            self.on_change()
 
     def observe(self, level: int) -> None:
         """Record the level reported by the latest frame."""
@@ -125,6 +141,7 @@ class LevelGate:
 
         self.acknowledged[level] = summary
         self.pending_level = None
+        self._changed()
         return book
 
     @property

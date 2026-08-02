@@ -50,6 +50,7 @@ from .ledger import (
     load,
 )
 from .session import Ccarc3Config, build_workspace, run_game
+from .planning import reachable, shortest_path
 from .rules import (
     Counts,
     PredictionReport,
@@ -111,6 +112,9 @@ __all__ = [
     "Survey",
     "PredictionReport",
     "predict",
+    # planning
+    "shortest_path",
+    "reachable",
     "verify",
     "survey",
     "regressions",

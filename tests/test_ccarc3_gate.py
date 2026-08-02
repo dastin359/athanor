@@ -187,3 +187,30 @@ def test_untested_alone_still_opens_the_gate(tmp_path):
     g.observe(1)
     g.acknowledge("learned only what I do not know", untested=["everything"])
     assert not g.held
+
+
+def test_an_acknowledgement_survives_the_process_that_made_it(monkeypatch, tmp_path):
+    """The solver had to write a helper around this. Its docstring read:
+    "Gate state is per-process; re-clear it after re-importing session."
+
+    The client persists after each *action*, so acknowledging and then exiting
+    left gate_pending set on disk and the next process restored a gate that was
+    already satisfied -- refusing an action for a boundary already recorded.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+
+    gate = LevelGate(tmp_path / "rules.json")
+    c = ArcClient("g", trace_path=path, gate=gate)
+    c.card_id = "c1"
+    gate.observe(1)
+    c._save_state()
+    assert json.loads(c.state_path.read_text())["gate_pending"] == 1
+
+    gate.acknowledge("done", mechanics=["m"])
+    assert json.loads(c.state_path.read_text())["gate_pending"] is None
+
+    gate2 = LevelGate(tmp_path / "rules.json")
+    ArcClient("g", trace_path=path, gate=gate2)
+    assert not gate2.held, "the next process must not re-refuse a recorded boundary"
+    assert gate2.acknowledged == {1: "done"}
