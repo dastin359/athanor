@@ -236,6 +236,14 @@ class ArcClient:
     _opener: Any = field(default=None, repr=False)
     _key: str = field(default="", repr=False)
     _last_advanced: bool = field(default=False, repr=False)
+    """The last action completed a level, so the next RESET is a *full* reset.
+
+    Persisted, and that is the whole point. It defaulted to ``False`` in each new
+    process, and a CC solver takes every action in a new process. A run that
+    ended one action after clearing level 5 resumed with the flag lost, opened
+    with RESET exactly as the workspace guide tells it to, and threw away 370
+    actions of progress — while the refusal built to prevent that stood unarmed.
+    """
     _resumed: bool = field(default=False, repr=False)
 
     @property
@@ -257,6 +265,7 @@ class ArcClient:
                     "full_resets": self.full_resets,
                     "wasted_actions": self.wasted_actions,
                     "level_actions": self.level_actions,
+                    "last_advanced": self._last_advanced,
                     "cookies": [
                         {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
                         for c in self._cookiejar()
@@ -306,6 +315,7 @@ class ArcClient:
         self.full_resets = int(saved.get("full_resets", 0))
         self.wasted_actions = int(saved.get("wasted_actions", 0))
         self.level_actions = int(saved.get("level_actions", 0))
+        self._last_advanced = bool(saved.get("last_advanced", False))
 
         jar = self._cookiejar()
         for c in saved.get("cookies", []):
@@ -477,8 +487,14 @@ class ArcClient:
         )
         self.actions_used += 1
         self.level_actions = 0 if self.level > previous_level else self.level_actions + 1
-        if frame.get("full_reset"):
+        # The server's own flag is not reliable. On the one full reset this
+        # project has recorded, the level went 6 -> 0 and ``full_reset`` came
+        # back **False**, so the counter read zero and the run reported "zero
+        # full resets" while replaying the entire game. A level that goes *down*
+        # is the fact; the flag is a hint.
+        if frame.get("full_reset") or self.level < previous_level:
             self.full_resets += 1
+            self.level_actions = 0
         if not frame.get("frame"):
             self.wasted_actions += 1
         # Set *after* reading, so the flag describes the state the next call

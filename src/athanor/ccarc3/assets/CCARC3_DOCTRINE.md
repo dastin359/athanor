@@ -77,8 +77,15 @@ The condition is invisible — nothing in the frame exposes it. Take any other
 action first. `ArcClient.reset()` refuses this call for you; if you see that
 refusal, it just saved the run.
 
-Check `full_reset` on every frame, not just at startup. It is the only signal
-that you have lost your progress.
+**Do not trust `full_reset` on the frame to tell you it happened.** A run that
+went from level 6 to level 0 in a single RESET received `full_reset: false` on
+that very frame. The reliable signal is the one the server cannot fake: **your
+level went down.** If `client.level` is lower than it was, your progress is
+gone, whatever the flag says.
+
+This has already cost one finished game. A resumed run opened with RESET one
+action after clearing a level, replayed all seven levels, and nothing in the
+harness reported a full reset while it happened.
 
 ### 2a. A level reset is a cheap, legitimate retry.
 

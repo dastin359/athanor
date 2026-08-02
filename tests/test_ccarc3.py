@@ -527,6 +527,29 @@ def test_a_full_reset_also_replaces_the_board(tmp_path):
     assert not a.board_replaced
 
 
+def test_a_full_reset_is_detected_even_when_the_server_denies_it(tmp_path):
+    """The server flag is a hint. The level going down is the fact.
+
+    Taken verbatim from the `ls20` trace: index 369 read level 6, index 370
+    read level 0, and `full_reset` was **False** on it. So `board_replaced` --
+    the check documented as the one a spatial rule wants -- returned False on
+    the single largest board replacement in the whole 860-action trace, and
+    every downstream count of full resets read zero for a run that replayed the
+    entire game.
+    """
+    path = tmp_path / "t.jsonl"
+    w = TraceWriter(path)
+    w.append(_frame(2, [[[1]]], score=5), level=5)
+    w.append(_frame(2, [[[2]]], score=6), level=6)     # cleared level 5
+    lying = _frame(0, [[[9]]], score=0)
+    lying["full_reset"] = False                        # what the server sent
+    w.append(lying, level=0)
+
+    _first, advance, wipe = load(path)
+    assert advance.crosses_level and not advance.full_reset
+    assert wipe.full_reset and wipe.board_replaced, "6 -> 0 is a full reset"
+
+
 def test_the_first_transition_never_counts_as_crossing_a_level(tmp_path):
     """It has no predecessor. Comparing against a level-0 default would flag
     any trace that starts mid-game."""

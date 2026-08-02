@@ -197,24 +197,53 @@ project has produced: **levels 0-5 took 369 actions in run 1 and 369 in the
 replay**, in independent sessions three hours apart. Identical, action for
 action.
 
-### The resume bug
+### The resume bug — diagnosed
 
 `result.json` reports `actions_used: 860` because the ledger spans both
 playthroughs. The honest figure for a complete game is **489**; the other 371
 were the resume re-walking ground already covered.
 
-The resume preserved the *ledger* but not the *game*: trace indices continued
-correctly from 370 and the trace was not wiped, yet the server replayed from
-level 0 on a fresh scorecard. Resumption tests correct in isolation — building a
-client against the archived run-1 state restores the right card, level and
-action count with the trace intact — so the fault is somewhere in the live
-sequence and has not been reproduced.
+The cause is legible in two consecutive lines of the trace:
 
-It was not diagnosable after the fact because `run_game` opened `stream.jsonl`
-with `"w"`, so starting the resume truncated the record of the handoff. Both are
-now fixed: a previous stream is renamed aside, and `run_game` writes
-`resume_state.json` before the solver starts, recording what the client
-restored. The next occurrence will be readable from one file.
+| i | level | action | full_reset |
+|---|---|---|---|
+| 369 | 5 → **6** | ACTION2 | false |
+| 370 | 6 → **0** | **RESET** | **false** |
+
+Run 1 ended one action after clearing level 5. Its final action advanced the
+level, which is the single state in which RESET performs a **full game reset**
+rather than a level reset (§2). The client refuses exactly that call. The
+refusal never fired.
+
+**`_last_advanced`, the flag that arms it, was not persisted.** It lived only in
+memory, and a CC solver takes every action in a new process — so it defaulted to
+`False` the moment the resume started, and the guard stood down.
+
+Three things had to line up, and all three did:
+
+1. The resume prompt *did* tell the solver "Do not RESET to 'start clean'; that
+   discards real progress." It reset anyway, as its first action. This is the
+   project's most-repeated lesson arriving again: **doctrine that stays prose
+   gets ignored, and the version that survives is a function.**
+2. The refusal — the function version — was unarmed across the process
+   boundary that the whole design depends on.
+3. **The server reported `full_reset: false` on a transition that took the game
+   from level 6 to level 0.** So nothing downstream noticed either: the client's
+   counter read zero, and `board_replaced` — documented as *the check a spatial
+   rule wants* — returned `False` on the largest board replacement in an
+   860-action trace.
+
+Fixed at all three layers. `_last_advanced` is saved and restored with the rest
+of the state; a level that goes *down* is treated as a full reset by both the
+client and the ledger regardless of what the server claims; and the per-level
+action counter restarts on one. The server's flag is now a hint, not the fact.
+
+The claim in an earlier draft that the resume opened "a fresh scorecard" was
+wrong — the scorecard was the same one. The game was reset inside it.
+
+Separately, `run_game` had opened `stream.jsonl` with `"w"`, so starting the
+resume truncated the record of the handoff. A previous stream is now renamed
+aside, and `run_game` writes `resume_state.json` before the solver starts.
 
 ---
 

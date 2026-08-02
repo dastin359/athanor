@@ -240,6 +240,52 @@ def test_a_level_past_the_published_baselines_reports_no_pace(paced):
     assert "on this level" not in c.status(), "invented baselines are worse than none"
 
 
+def test_the_reset_trap_stays_armed_across_a_process_boundary(monkeypatch, tmp_path):
+    """The bug that cost a finished run, reconstructed from its trace.
+
+    `ls20` trace index 369 advanced level 5 -> 6; index 370 was a RESET and the
+    level read 0. The refusal exists precisely for that, and could not fire: it
+    is armed by `_last_advanced`, which lived only in memory, and a CC solver
+    takes every action in a new process. 370 actions of progress were replayed.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.card_id, a.level, a.actions_used = "card-1", 6, 370
+    a._last_advanced = True                       # it just cleared a level
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path)
+    assert b._last_advanced, "the flag must survive, or the refusal is decorative"
+    with pytest.raises(ActionRefused, match="FULL GAME RESET"):
+        b.reset()
+
+
+def test_a_level_going_down_is_a_full_reset_whatever_the_server_says(stub):
+    """The server reported `full_reset: False` on a 6 -> 0 transition.
+
+    So a counter that trusts the flag reports "zero full resets" for a run that
+    replayed the entire game — which is exactly what the losing run reported.
+    """
+    c, _, replies = stub
+    replies.extend([_frame(levels_completed=6), _frame(levels_completed=0, full_reset=False)])
+    c.act(1)
+    c.reset(force_full=True)
+    assert c.full_resets == 1
+    assert "FULL RESETS=1" in c.status()
+
+
+def test_a_full_reset_restarts_the_per_level_count(stub):
+    """Level 0 begins again; carrying the old level's tally makes the pace lie."""
+    c, _, replies = stub
+    replies.extend([_frame(), _frame(), _frame(levels_completed=0, full_reset=True)])
+    c.act(1)
+    c.act(1)
+    assert c.level_actions == 2
+    c.reset(force_full=True)
+    assert c.level_actions == 0
+
+
 def test_the_per_level_count_survives_a_new_process(monkeypatch, tmp_path):
     """Every action is a new process, so a counter that lives only in memory
     resets to zero on each one and the ratio reads 1/10 forever."""

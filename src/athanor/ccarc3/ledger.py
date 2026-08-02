@@ -259,7 +259,15 @@ def load(path: str | Path) -> list[Transition]:
                 score_before=previous_score,
                 score_after=int(rec.get("score", 0)),
                 state=str(rec.get("state", "NOT_PLAYED")),
-                full_reset=bool(rec.get("full_reset", False)),
+                # A level that goes *down* is a full reset whatever the server
+                # said. It recorded ``full_reset: False`` on a transition that
+                # took the game from level 6 to level 0 — which meant
+                # ``board_replaced``, documented as the check a spatial rule
+                # wants, returned False on the largest board replacement in the
+                # whole trace. ``crosses_level`` only catches an increase.
+                full_reset=bool(rec.get("full_reset", False)) or (
+                    previous is not None and int(rec.get("level", 0)) < previous_level
+                ),
                 available_actions=tuple(rec.get("available_actions") or ()),
                 hypothesis=rec.get("hypothesis"),
             )

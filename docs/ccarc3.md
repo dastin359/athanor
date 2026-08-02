@@ -125,7 +125,12 @@ These are all measured, and each cost something to learn.
 
 1. **A RESET immediately after a level advance is a full game reset.** Score to
    zero, back to level 0. Any other RESET at that moment is harmless. The client
-   refuses it; `full_reset` on the frame is the only after-the-fact signal.
+   refuses it, and the flag arming that refusal is persisted — it was not, once,
+   and a won game was replayed from level 0 because the guard stood down across
+   a process boundary.
+1b. **`full_reset` on the frame can be `false` when a full reset just
+   happened.** Observed: level 6 → 0 with the flag clear. The client and the
+   ledger both treat *the level going down* as the fact and the flag as a hint.
 2. **Actions issued while dead are billed and discarded.** The client refuses
    them and counts them as `wasted`.
 3. **The API binds a scorecard to the HTTP session, not the API key.** Lose the
