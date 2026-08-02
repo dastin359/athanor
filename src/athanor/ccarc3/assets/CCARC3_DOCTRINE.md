@@ -137,6 +137,26 @@ true knowledge gets destroyed.
 **Vacuous truth is not verification.** A rule that was never applicable has been
 tested by nothing.
 
+### 5a. A forward model beats a pile of predicates.
+
+A predicate says *a* property survived. A `step(before, action, params) -> board`
+that reproduces every recorded board **exactly** says you understand the
+mechanics. That is a much stronger claim, and it is the one to aim at:
+
+```python
+arc.predict(step, client.transitions(), name="my model")
+# -> "my model: 47/48 exact (98%), 3 skipped; first failures at [31]"
+```
+
+Return `None` from `step` for cases you do not model yet — those are skipped,
+not counted wrong. Level boundaries, full resets and wasted actions are skipped
+for you.
+
+**Chase `perfect`, not accuracy.** A model at 98% is not 98% right about the
+mechanics; it is missing one, and `failures` tells you exactly which transition
+to go and look at. The single wrong prediction is worth more than the 47 right
+ones.
+
 ## 6. Budget against the published baseline.
 
 Every game publishes `baseline_actions` — one figure per level, what a

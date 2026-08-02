@@ -317,6 +317,17 @@ arc.verify(r, ts)     # THIS level only. Can refute.
 arc.survey(r, ts)     # every level. Reports where it holds. Cannot refute.
 ```
 
+Stronger than predicates: write a forward model and check it against everything
+recorded.
+
+```python
+arc.predict(step, client.transitions())   # step(before, action, params) -> board
+```
+
+A model that reproduces every recorded board exactly means you understand the
+mechanics. Chase `perfect`, not accuracy — one wrong prediction is worth more
+than fifty right ones, and `failures` says which transition to look at.
+
 `applies` and `holds` are separate on purpose. A rule that did not apply has not
 failed, and treating it as failed is how correct knowledge gets thrown away.
 

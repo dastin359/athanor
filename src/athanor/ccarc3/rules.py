@@ -42,6 +42,8 @@ from .ledger import Transition
 
 __all__ = [
     "Outcome",
+    "predict",
+    "PredictionReport",
     "Rule",
     "Counts",
     "VerifyResult",
@@ -264,6 +266,89 @@ def regressions(
         if result.refuted:
             out.append(result)
     return out
+
+
+@dataclass(frozen=True)
+class PredictionReport:
+    """How a forward model fared against every recorded transition."""
+
+    name: str
+    correct: int = 0
+    wrong: int = 0
+    skipped: int = 0
+    failures: list[int] = field(default_factory=list)
+    """Indices of transitions the model got wrong -- go and look at these."""
+
+    @property
+    def tested(self) -> int:
+        return self.correct + self.wrong
+
+    @property
+    def accuracy(self) -> float:
+        return self.correct / self.tested if self.tested else 0.0
+
+    @property
+    def perfect(self) -> bool:
+        """Every transition it was applicable to, predicted exactly."""
+        return self.wrong == 0 and self.correct > 0
+
+    def __str__(self) -> str:
+        return (
+            f"{self.name}: {self.correct}/{self.tested} exact"
+            f"{f' ({self.accuracy:.0%})' if self.tested else ''}"
+            f", {self.skipped} skipped"
+            f"{f'; first failures at {self.failures[:5]}' if self.failures else ''}"
+        )
+
+
+def predict(
+    step: Callable[[Any, str, dict[str, Any]], Any],
+    transitions: Sequence[Transition],
+    *,
+    name: str = "forward model",
+    level: int | None = None,
+) -> PredictionReport:
+    """Check a forward model of the game against everything recorded.
+
+    ``step(before, action, params)`` should return the predicted next board, or
+    ``None`` to decline (the transition is then skipped, not counted wrong).
+
+    A predicate says *a* property survived. A simulator that reproduces every
+    recorded board exactly says the mechanics are understood, which is a far
+    stronger claim and the one worth aiming at. Solvers reach for this unaided --
+    the first real run on `ls20` wrote its own step function before anything
+    here supported it.
+
+    Boards replaced wholesale (level boundaries, full resets) and wasted actions
+    are skipped automatically: no forward model can or should predict those, and
+    counting them as failures would hide the real ones.
+
+    ``perfect`` is the thing to chase. A model at 95% is not 95% right about the
+    mechanics; it is missing one, and the ``failures`` indices say where.
+    """
+    correct = wrong = skipped = 0
+    failures: list[int] = []
+    for t in transitions:
+        if level is not None and t.level != level:
+            continue
+        if t.before is None or t.board_replaced or t.wasted:
+            skipped += 1
+            continue
+        try:
+            predicted = step(t.before, t.action, t.params)
+        except Exception:  # noqa: BLE001 -- a model that crashes has not predicted
+            predicted = None
+        if predicted is None:
+            skipped += 1
+            continue
+        import numpy as _np
+
+        if _np.array_equal(_np.asarray(predicted), t.after):
+            correct += 1
+        else:
+            wrong += 1
+            failures.append(t.index)
+    return PredictionReport(name, correct, wrong, skipped, failures)
 
 
 @dataclass

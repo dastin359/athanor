@@ -51,11 +51,13 @@ from .ledger import (
 from .session import Ccarc3Config, build_workspace, run_game
 from .rules import (
     Counts,
+    PredictionReport,
     Outcome,
     Rule,
     RuleBook,
     Survey,
     VerifyResult,
+    predict,
     regressions,
     survey,
     verify,
@@ -105,6 +107,8 @@ __all__ = [
     "Counts",
     "VerifyResult",
     "Survey",
+    "PredictionReport",
+    "predict",
     "verify",
     "survey",
     "regressions",

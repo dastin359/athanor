@@ -534,3 +534,80 @@ def test_the_first_transition_never_counts_as_crossing_a_level(tmp_path):
     TraceWriter(path).append(_frame(0, [[[1]]], score=3), level=3)
     (t,) = load(path)
     assert t.before is None and not t.crosses_level and not t.board_replaced
+
+
+# --------------------------------------------------------------------------- #
+# forward models
+# --------------------------------------------------------------------------- #
+
+
+def _tr(index, level, action, before, after, **kw):
+    from athanor.ccarc3.ledger import Transition
+
+    return Transition(
+        index=index, level=level, action=action, params={},
+        before=None if before is None else as_grid(before),
+        after=as_grid(after), intermediate=(as_grid(after),),
+        score_before=0, score_after=0, state="NOT_FINISHED",
+        full_reset=kw.get("full_reset", False), available_actions=(),
+        crosses_level=kw.get("crosses_level", False), wasted=kw.get("wasted", False),
+    )
+
+
+def test_a_perfect_forward_model_is_reported_as_perfect():
+    from athanor.ccarc3 import predict
+
+    ts = [_tr(0, 0, "ACTION1", [[0, 0]], [[1, 0]]),
+          _tr(1, 0, "ACTION1", [[1, 0]], [[2, 0]])]
+    step = lambda b, a, p: np.array([[b[0][0] + 1, 0]])
+    r = predict(step, ts, name="increment")
+    assert r.perfect and r.correct == 2 and r.wrong == 0
+
+
+def test_a_model_that_is_wrong_somewhere_says_where():
+    from athanor.ccarc3 import predict
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]),
+          _tr(7, 0, "ACTION1", [[1]], [[5]])]
+    r = predict(lambda b, a, p: np.array([[b[0][0] + 1]]), ts)
+    assert not r.perfect
+    assert r.failures == [7], "the index is the whole point -- go look at it"
+
+
+def test_declining_to_predict_is_skipped_not_counted_wrong():
+    from athanor.ccarc3 import predict
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]), _tr(1, 0, "ACTION2", [[1]], [[9]])]
+    r = predict(lambda b, a, p: np.array([[b[0][0] + 1]]) if a == "ACTION1" else None, ts)
+    assert (r.correct, r.wrong, r.skipped) == (1, 0, 1)
+
+
+def test_boards_replaced_and_wasted_actions_are_skipped_automatically():
+    """No forward model can predict a level swap; counting it wrong hides real bugs."""
+    from athanor.ccarc3 import predict
+
+    ts = [
+        _tr(0, 0, "ACTION1", [[0]], [[1]]),
+        _tr(1, 1, "ACTION1", [[1]], [[9]], crosses_level=True),
+        _tr(2, 1, "ACTION1", [[9]], [[9]], wasted=True),
+        _tr(3, 0, "ACTION1", [[1]], [[9]], full_reset=True),
+    ]
+    r = predict(lambda b, a, p: np.array([[b[0][0] + 1]]), ts)
+    assert r.correct == 1 and r.wrong == 0 and r.skipped == 3
+
+
+def test_a_model_that_crashes_has_not_predicted():
+    from athanor.ccarc3 import predict
+
+    def boom(b, a, p):
+        raise ZeroDivisionError
+
+    r = predict(boom, [_tr(0, 0, "ACTION1", [[0]], [[1]])])
+    assert r.skipped == 1 and r.wrong == 0
+
+
+def test_the_first_transition_has_no_before_and_is_skipped():
+    from athanor.ccarc3 import predict
+
+    r = predict(lambda b, a, p: b, [_tr(0, 0, "RESET", None, [[1]])])
+    assert r.skipped == 1
