@@ -739,6 +739,46 @@ def test_the_first_transition_has_no_before_so_nothing_can_be_said_about_it():
     assert effective_actions([_tr(0, 0, "RESET", None, [[1]])]) == {}
 
 
+# --------------------------------------------------------------------------- #
+# level_pace — what "normal" costs, measured
+# --------------------------------------------------------------------------- #
+
+
+def test_level_pace_reports_spent_baseline_and_ratio_per_level():
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(11)]
+    ts += [_tr(0, 1, "ACTION1", [[0]], [[1]]) for _ in range(5)]
+    assert level_pace(ts, [22, 20]) == {0: (11, 22, 0.5), 1: (5, 20, 0.25)}
+
+
+def test_level_pace_counts_only_the_final_playthrough():
+    """The bug this exists to prevent, on real numbers.
+
+    Measuring `ls20`'s 860-action trace whole reported level 0 at 1.55x, level
+    2 at 1.84x and level 4 at 1.73x -- three levels apparently run well over
+    baseline by a solver that in fact cleared every one of them under it. The
+    trace holds two playthroughs, so every level was counted twice and every
+    ratio doubled. Split at the full reset, they read 0.77x, 0.92x and 0.86x.
+    """
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(8)]
+    ts.append(_tr(0, 0, "RESET", [[1]], [[0]], full_reset=True))
+    ts += [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(3)]
+    spent, base, ratio = level_pace(ts, [10])[0]
+    assert (spent, base) == (4, 10), "the restart plus 3, not all 12"
+    assert ratio == 0.4
+
+
+def test_a_level_without_a_published_baseline_is_omitted():
+    """Inventing a denominator is worse than reporting nothing."""
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, 9, "ACTION1", [[0]], [[1]])]
+    assert level_pace(ts, [22, 20]) == {}
+
+
 def test_cell_boundaries_rejects_a_single_grid_with_a_useful_message():
     """It takes an iterable of grids; one 2-D array iterates its rows instead.
 

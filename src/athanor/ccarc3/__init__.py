@@ -54,6 +54,7 @@ from .planning import reachable, shortest_path
 from .rules import (
     Counts,
     effective_actions,
+    level_pace,
     PredictionReport,
     Outcome,
     Rule,
@@ -114,6 +115,7 @@ __all__ = [
     "PredictionReport",
     "predict",
     "effective_actions",
+    "level_pace",
     # planning
     "shortest_path",
     "reachable",

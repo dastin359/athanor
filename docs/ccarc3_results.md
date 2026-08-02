@@ -310,6 +310,41 @@ possible saving of hundreds, is the trade. This is the same shape as every other
 finding here — doctrine that stays prose gets ignored, and the version that
 survives is a function.
 
+### What a level costs when you understand it — 26 attempts, five games
+
+Computed from the traces, final playthrough only, after the full-reset fix made
+that split possible.
+
+| | |
+|---|---|
+| levels cleared at **≤ 0.92×** their baseline | **24 of 25** |
+| median cleared level | **0.52×** |
+| attempts above 1.0× | 2 — `tr87` L3 at 3.44× (cleared), `cd82` L0 at 6.13× (never cleared) |
+
+**A solver that understands a level beats the published baseline**, usually by
+about half. That figure is a playthrough by someone who already knows the rules,
+and it still contains their hesitation; a solver executing a verified plan does
+not hesitate. So the baseline is not a par score to aim at — it is a ceiling that
+normal play sits well under, and *reaching* it is already the anomaly.
+
+**There is no threshold to find here, and that is the finding.** The sample is
+empty between 0.92× and 3.44×, so every cutoff in that range separates the data
+identically — one false alarm, one catch. This harness had shipped 2.0×, chosen
+by eye. It has been lowered to 1.0×, not because 1.0 fits better (nothing fits
+better) but because the costs are asymmetric: warning at the bottom of the gap
+costs a re-read, warning at the top costs the hundreds of actions in between.
+
+The relative signal is sharper than the absolute one. `tr87` L3 was 3.44× its
+baseline but **6.2× the median of the levels the same run had already cleared**.
+A game can run above or below baseline throughout — `r11l` never exceeded 0.50×,
+`ls20` reached 0.92× — so the run's own history is the better reference.
+`arc.level_pace()` reports it.
+
+*Caveat on n.* 25 cleared levels is a decent sample; **one** non-cleared level is
+not. The "24 of 25 finish under 1.0×" half is well-sampled and is what the
+doctrine now teaches. Whether the warning reliably *catches* failures rests on a
+single observation and is not established.
+
 ### The click space is easier, not harder
 
 Recorded because it contradicts a prediction stated twice while building this.

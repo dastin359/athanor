@@ -202,23 +202,46 @@ Every game publishes `baseline_actions` — one figure per level, what a
 playthrough costs when the rules are *already known*. Real games range from 171
 to 1843 total.
 
-Use it as a control law: **if you are at several times the baseline for the
-level you are on, your hypothesis is probably wrong.** Stop executing and go
-re-explore. Without this you cannot tell "this level is long" from "I have
-misunderstood this level", and you will spend hundreds of actions on a wrong
-plan.
+**Here is what normal looks like, measured over 26 level-attempts across five
+games:**
+
+| | |
+|---|---|
+| levels cleared at **≤ 0.92×** their baseline | **24 of 25** |
+| median | **0.52×** |
+| attempts that crossed 1.0× | 2 — one cleared at 3.44×, one never cleared at 6.13× |
+
+Finishing a level you understand costs *less* than the published figure, because
+that figure includes a human's own hesitation. So **crossing 1.0× is already
+unusual**, and it happened twice — both times on the levels that independent
+analysis had already flagged as the problem levels.
 
 You do not have to compute this. `client.status()` leads with it:
 
 ```
-g: level 3/6 state=NOT_FINISHED actions=291 [190/55 on this level = 3.5x]  <- WELL OVER BASELINE: re-explore rather than grind
+g: level 3/6 state=NOT_FINISHED actions=291 [190/55 on this level = 3.5x]  <- OVER BASELINE
 ```
 
-Read it. A run that never left level 0 sat at 6.1× that level's baseline for
-hundreds of actions; another spent 344% of a level's baseline executing a wrong
-plan **without wasting a single action** — every move did something, and all of
-them were beside the point. Efficiency is no defence against being wrong, and
-this ratio is the only number that distinguishes the two.
+There is no reliable cutoff to look up: the sample has **nothing between 0.92×
+and 3.44×**, so any threshold in that range separates it identically. Read the
+shape instead — normal is comfortably under 1, and being over it means stop
+executing and go re-explore.
+
+The sharper signal is relative, and `arc.level_pace()` gives it to you free:
+
+```python
+arc.level_pace(client.transitions(), baselines)   # {0: (17, 22, 0.77), ...}
+```
+
+A game may run above or below baseline throughout; a level that runs above *its
+own run* is the real outlier. That 3.44× level was **6.2× the median of the
+levels the same run had already cleared** — far louder relatively than in
+absolute terms.
+
+And note what the 3.44× run was doing: it spent 344% of a level's baseline
+executing a wrong plan **without wasting a single action.** Every move did
+something; all of them were beside the point. Efficiency is no defence against
+being wrong.
 
 ## 7. Trust `available_actions` over everything else.
 

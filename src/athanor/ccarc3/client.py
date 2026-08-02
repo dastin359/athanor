@@ -528,8 +528,14 @@ class ArcClient:
         if base:
             ratio = self.level_actions / base
             pace = f" [{self.level_actions}/{base} on this level = {ratio:.1f}x]"
-            if ratio >= 2.0:
-                pace += "  <- WELL OVER BASELINE: re-explore rather than grind"
+            # 1.0, not the 2.0 first shipped here. Over 26 level-attempts, 24 of
+            # 25 cleared levels finished at or under 0.92x and the median was
+            # 0.52x, so crossing 1.0 is already the unusual case. No cutpoint in
+            # 1.0-3.4 fits the data better than any other -- the sample is empty
+            # in between -- and warning at the bottom of that gap costs a re-read
+            # while warning at the top costs the hundreds of actions in between.
+            if ratio >= 1.0:
+                pace += "  <- OVER BASELINE: re-explore rather than grind"
         else:
             pace = ""
         return (

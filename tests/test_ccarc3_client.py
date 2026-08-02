@@ -200,23 +200,24 @@ def test_status_reports_this_level_against_its_own_baseline(paced):
     assert "5/10 on this level = 0.5x" in c.status()
 
 
-def test_going_well_over_baseline_says_so_in_words(paced):
+def test_going_over_baseline_says_so_in_words(paced):
     """The doctrine said re-explore rather than grind; nothing ever said when.
 
     A run that never left level 0 spent 6.1x that level's baseline, and no
     surface in the harness reported the number while it was happening."""
     c, _ = paced
-    for _ in range(20):
+    for _ in range(10):
         c.act(1)
     s = c.status()
-    assert "= 2.0x" in s and "WELL OVER BASELINE" in s
+    assert "= 1.0x" in s and "OVER BASELINE" in s
 
 
 def test_pace_is_quiet_while_the_level_is_going_well(paced):
+    """Quiet is the common case: 24 of 25 cleared levels finished under 1.0x."""
     c, _ = paced
-    for _ in range(3):
+    for _ in range(9):
         c.act(1)
-    assert "WELL OVER BASELINE" not in c.status()
+    assert "OVER BASELINE" not in c.status()
 
 
 def test_the_per_level_count_restarts_when_the_level_does(paced):
