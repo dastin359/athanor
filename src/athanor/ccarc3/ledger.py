@@ -213,14 +213,35 @@ class TraceWriter:
 
 
 def _records(path: str | Path) -> Iterator[dict[str, Any]]:
+    """Yield ledger records, tolerating a half-written final line.
+
+    **A trace is appended to while it is read.** ``athanor ccarc3 report`` is
+    most useful *during* a batch, which is exactly when the last line may be
+    mid-write -- and this raised ``JSONDecodeError: Unterminated string`` on a
+    live run rather than reporting the 20 complete actions before it.
+
+    Only the **final** line is forgiven. A malformed line anywhere earlier is
+    real corruption, and dropping it silently would quietly shorten a level's
+    action count and change a score; that still raises, and says where.
+    """
     p = Path(path)
     if not p.exists():
         return
     with p.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                yield json.loads(line)
+        lines = fh.readlines()
+    for number, line in enumerate(lines, start=1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            if number == len(lines):
+                return          # a writer is mid-append; everything before is good
+            raise ValueError(
+                f"{p}: line {number} of {len(lines)} is not valid JSON. A bad line "
+                f"in the middle of a trace is corruption, not a partial write."
+            ) from None
 
 
 def load(path: str | Path) -> list[Transition]:

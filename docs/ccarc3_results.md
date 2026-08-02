@@ -85,6 +85,15 @@ run costs turns × roughly $0.10, and baselines span 317 to 1843.
   upper-median action count among humans who completed that level. It is the
   only baseline data available; if the leaderboard used a different figure, every
   number here moves.
+- **The primary evidence for six of the seven environments no longer exists.**
+  On 2026-08-02 a verification subagent in a code-review workflow wrote test
+  fixtures over the live run directories, destroying the traces for `ft09`,
+  `r11l`, `tr87`, `cd82`, `sb26` and `sc25`. Only `ls20` survives, because it had
+  been archived separately. The per-level figures in this document were computed
+  and committed *before* the loss and are what they were, but they can no longer
+  be recomputed from source, and nobody else can check them. Treat every number
+  above for those six as reported rather than reproducible, and re-run the games
+  if the result ever needs to be defended.
 
 > **Best single result so far: `sb26-7fbdac44` — 8 of 8 levels in 125 actions
 > against a 213 baseline (0.59×), zero deaths, $3.04.**

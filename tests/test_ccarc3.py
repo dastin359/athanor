@@ -791,3 +791,26 @@ def test_cell_boundaries_rejects_a_single_grid_with_a_useful_message():
         cell_boundaries(np.zeros((64, 64), dtype=int))
     # wrapped, it works
     assert cell_boundaries([np.zeros((8, 8), dtype=int)]) == ([0], [0])
+
+
+def test_a_trace_being_written_right_now_is_still_readable(tmp_path):
+    """`report` is most useful *during* a batch, which is when the last line is
+    half-written. This raised JSONDecodeError on a live run rather than
+    reporting the complete actions before it."""
+    path = tmp_path / "t.jsonl"
+    good = json.dumps({"i": 0, "level": 0, "action": "RESET", "params": {},
+                       "frames": [[[1]]], "score": 0, "state": "NOT_FINISHED",
+                       "full_reset": False, "available_actions": []})
+    path.write_text(good + "\n" + good.replace('"i": 0', '"i": 1')[:40])
+    assert [t.index for t in load(path)] == [0]
+
+
+def test_a_bad_line_in_the_middle_is_corruption_and_is_refused(tmp_path):
+    """Silently dropping it would shorten a level's action count and change a score."""
+    path = tmp_path / "t.jsonl"
+    good = json.dumps({"i": 0, "level": 0, "action": "RESET", "params": {},
+                       "frames": [[[1]]], "score": 0, "state": "NOT_FINISHED",
+                       "full_reset": False, "available_actions": []})
+    path.write_text(good + "\n{ broken\n" + good + "\n")
+    with pytest.raises(ValueError, match="line 2 of 3"):
+        load(path)
