@@ -1,5 +1,8 @@
 # CCARC3 results
 
+> **`ls20-9607627b`: WON — all 7 levels, 489 actions against a 776 human
+> baseline (63%), zero deaths.** Details in run 2 below.
+
 Durable log of ARC-AGI-3 runs. Design and findings: `ccarc3_design.md`. How to
 run it: `ccarc3.md`.
 
@@ -158,3 +161,57 @@ several games it is not even an available failure mode by wandering.
 
 Residual, one sample only: the scorecard's `states` still read `['GAME_OVER']`
 after the RESET. Do not read `states` as the live state.
+
+---
+
+## Run 2 — `ls20-9607627b` **WON**, 2026-08-02
+
+**All 7 levels cleared in 489 actions against a 776 baseline — 63%. Zero
+deaths, zero wasted actions, zero full resets.**
+
+| level | actions | baseline | ratio |
+|---|---|---|---|
+| 0 | 17 | 22 | 77% |
+| 1 | 59 | 123 | 48% |
+| 2 | 67 | 73 | 92% |
+| 3 | 49 | 84 | 58% |
+| 4 | 83 | 96 | 86% |
+| 5 | 94 | 192 | 49% |
+| **6** | **120** | **186** | **65%** |
+| **total** | **489** | **776** | **63%** |
+
+66 mechanics and 16 refutations recorded. Model `claude-opus-5`, effort `high`.
+
+### The rate was stable, not lucky
+
+Run 1 reached 63% of baseline over levels 0-5 and stopped without attempting
+level 6. Level 6 — the longest, and the one no run had touched — came in at 65%.
+The prediction made when run 1 stopped was "roughly 486 actions for the full
+game at the demonstrated pace". It took **489**.
+
+### An accidental reproducibility check
+
+The resume was supposed to continue from level 6 and instead replayed the game
+from level 0 (see the bug below). That accident is the most useful control this
+project has produced: **levels 0-5 took 369 actions in run 1 and 369 in the
+replay**, in independent sessions three hours apart. Identical, action for
+action.
+
+### The resume bug
+
+`result.json` reports `actions_used: 860` because the ledger spans both
+playthroughs. The honest figure for a complete game is **489**; the other 371
+were the resume re-walking ground already covered.
+
+The resume preserved the *ledger* but not the *game*: trace indices continued
+correctly from 370 and the trace was not wiped, yet the server replayed from
+level 0 on a fresh scorecard. Resumption tests correct in isolation — building a
+client against the archived run-1 state restores the right card, level and
+action count with the trace intact — so the fault is somewhere in the live
+sequence and has not been reproduced.
+
+It was not diagnosable after the fact because `run_game` opened `stream.jsonl`
+with `"w"`, so starting the resume truncated the record of the handoff. Both are
+now fixed: a previous stream is renamed aside, and `run_game` writes
+`resume_state.json` before the solver starts, recording what the client
+restored. The next occurrence will be readable from one file.
