@@ -455,6 +455,75 @@ _DECISION_RE = re.compile(r"^\s*DECISION\s*:\s*(ACCEPT|RETRY)\b", re.IGNORECASE 
 _CONFIDENCE_RE = re.compile(r"^\s*CONFIDENCE\s*:\s*([1-5])\b", re.IGNORECASE | re.MULTILINE)
 
 
+def salvage_unaccepted(workspace: Path) -> dict[str, Any] | None:
+    """Score a train-perfect submission that was never accepted.
+
+    A run killed by the wall clock writes no ``final.json``, so it scores 0.00
+    even with a verified solution sitting in its ledger — the harness discarding
+    paid-for, train-perfect work at the last moment. ``4e34c42c`` lost a whole
+    task that way.
+
+    This is deliberately narrower than :func:`cmd_accept`. It requires a last
+    iteration that ran and reproduced every training pair, so it can never
+    manufacture a score the gate would have refused; and it does **not** require
+    the audit, because a solver that was interrupted cannot be asked for one.
+    The record says plainly who accepted: ``accepted_by: harness-salvage``.
+
+    Returns the salvaged ``final`` payload, or ``None`` if there was nothing to
+    salvage.
+    """
+    state = load_state(workspace)
+    if state.get("accepted"):
+        return None
+    iterations = state.get("iterations") or []
+    if not iterations:
+        return None
+    last = iterations[-1]
+    if last.get("status") != "ok" or not last.get("all_train_correct"):
+        return None
+
+    iteration_dir = workspace / STATE_DIR / "iterations" / str(last.get("iteration"))
+    predictions_path = iteration_dir / "predictions.json"
+    if not predictions_path.is_file():
+        return None
+    predictions = json.loads(predictions_path.read_text(encoding="utf-8"))
+
+    final = {
+        "task_id": state.get("task_id"),
+        "accepted_at": _now(),
+        "accepted_by": "harness-salvage",
+        "salvaged": True,
+        "iteration": last.get("iteration"),
+        "iterations_used": len(iterations),
+        "max_iterations": state.get("max_iterations"),
+        "all_train_correct": True,
+        "train_correct": last.get("train_correct"),
+        "train_total": last.get("train_total"),
+        "train_pixel_accuracy": last.get("train_pixel_accuracy"),
+        "best_effort": False,
+        "confidence": None,
+        "hypothesis": (iteration_dir / "hypothesis.md").read_text(encoding="utf-8")
+        if (iteration_dir / "hypothesis.md").is_file() else "",
+        "code": (iteration_dir / "solve.py").read_text(encoding="utf-8")
+        if (iteration_dir / "solve.py").is_file() else "",
+        "revalidated_at_accept": False,
+        "audit": "",
+        "test": predictions.get("test") or [],
+        "hardcoding_findings": last.get("hardcoding_findings") or [],
+        "verified_invariants": load_invariants(workspace),
+    }
+    (workspace / STATE_DIR / FINAL_FILE).write_text(json.dumps(final, indent=2), encoding="utf-8")
+    state["accepted"] = {
+        "iteration": last.get("iteration"),
+        "at": final["accepted_at"],
+        "best_effort": False,
+        "confidence": None,
+        "salvaged": True,
+    }
+    save_state(workspace, state)
+    return final
+
+
 def cmd_accept(workspace: Path) -> tuple[str, int]:
     state = load_state(workspace)
     if state.get("accepted"):

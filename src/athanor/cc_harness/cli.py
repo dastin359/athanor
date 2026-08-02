@@ -38,7 +38,11 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--max-test-predictions", type=int, default=2, choices=[1, 2])
     parser.add_argument("--max-budget-usd", type=float, default=None, help="Per-task spend cap.")
-    parser.add_argument("--timeout", type=float, default=3600.0, help="Per-task wall-clock limit in seconds.")
+    parser.add_argument(
+        "--timeout", type=float, default=5400.0,
+        help="Per-task wall-clock limit in seconds. On expiry a train-perfect "
+             "submission that was never accepted is salvaged and scored.",
+    )
     parser.add_argument("--solve-timeout", type=float, default=60.0, help="Per-submission solve() limit.")
     parser.add_argument("--no-visual", action="store_true", help="Skip PNG rendering of the grids.")
     parser.add_argument("--no-inline-grids", action="store_true", help="Keep the grids out of the opening prompt.")

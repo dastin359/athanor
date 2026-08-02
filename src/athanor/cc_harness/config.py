@@ -78,7 +78,7 @@ class CCRunConfig:
     """Trailing iterations during which the train-100% requirement is lifted."""
     max_budget_usd: float | None = None
     """Passed to `claude --max-budget-usd`; None leaves spend uncapped."""
-    wall_clock_timeout_s: float = 3600.0
+    wall_clock_timeout_s: float = 5400.0
     solve_timeout_s: float = 60.0
     """Per-submission ceiling on running solve() across all inputs."""
 

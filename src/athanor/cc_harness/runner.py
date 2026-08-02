@@ -363,6 +363,12 @@ def run_task(
         record["usage"] = result_message.get("usage")
         if outcome.get("timed_out"):
             record["error"] = f"wall-clock timeout after {config.wall_clock_timeout_s:.0f}s"
+            # The clock is a budget, not a destructor. If the ledger holds a
+            # train-perfect submission the solver never got to accept, score it
+            # rather than recording a zero for work that was done and verified.
+            from .gate import salvage_unaccepted
+            if salvage_unaccepted(workspace.root) is not None:
+                record["salvaged"] = True
         elif result_message.get("is_error"):
             record["error"] = f"claude reported {result_message.get('subtype')}"
         elif not result_message and not record.get("error"):

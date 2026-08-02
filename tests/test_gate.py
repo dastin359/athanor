@@ -771,3 +771,50 @@ class TestHedgeDiagnostics:
         report, _ = gate.cmd_submit(workspace.root)
         assert "claims about the evidence rather than alternative readings" in report
         assert "rival reading(s) along the way" not in report
+
+
+class TestSalvageUnaccepted:
+    """The wall clock is a budget, not a destructor.
+
+    4e34c42c was killed at 3600s holding a train-perfect submission it never got
+    to accept, and scored 0.00 — the harness discarding verified work at the last
+    moment.
+    """
+
+    def test_a_train_perfect_submission_is_salvaged(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        assert workspace.read_final() is None, "submit alone must not write final"
+
+        final = gate.salvage_unaccepted(workspace.root)
+
+        assert final is not None
+        assert final["accepted_by"] == "harness-salvage"
+        assert final["salvaged"] is True
+        assert final["all_train_correct"] is True
+        assert final["test"], "salvage is pointless without the predictions"
+        assert workspace.read_state()["accepted"]["salvaged"] is True
+
+    def test_salvage_declines_a_run_with_nothing_submitted(self, workspace):
+        assert gate.salvage_unaccepted(workspace.root) is None
+        assert workspace.read_final() is None
+
+    def test_salvage_declines_a_submission_that_fails_training(self, workspace):
+        write_solution(workspace, code=IDENTITY_SOLVE)
+        gate.cmd_submit(workspace.root)
+        assert workspace.read_state()["iterations"][-1]["all_train_correct"] is False
+
+        assert gate.salvage_unaccepted(workspace.root) is None, \
+            "salvage must never manufacture a score the gate would have refused"
+        assert workspace.read_final() is None
+
+    def test_salvage_leaves_an_already_accepted_run_alone(self, workspace):
+        write_solution(workspace)
+        gate.cmd_submit(workspace.root)
+        (workspace.root / "solution" / "audit.md").write_text(AUDIT_ACCEPT, encoding="utf-8")
+        gate.cmd_accept(workspace.root)
+        before = workspace.read_final()
+
+        assert gate.salvage_unaccepted(workspace.root) is None
+        assert workspace.read_final() == before
+        assert "salvaged" not in workspace.read_state()["accepted"]
