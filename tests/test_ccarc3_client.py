@@ -171,6 +171,88 @@ def test_status_surfaces_full_resets_because_they_are_silent_otherwise(stub):
     assert "FULL RESETS=1" in c.status()
 
 
+# --------------------------------------------------------------------------- #
+# pace against the published baseline — the control law, mechanised
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def paced(monkeypatch, tmp_path):
+    """A client that knows its own per-level baselines, as a live one does."""
+    def fake_post(url, payload, key, **kw):
+        if url.endswith("/scorecard/open"):
+            return {"card_id": "card-1"}
+        reply = _frame(**getattr(fake_post, "next", {}))
+        name = url.rsplit("/", 1)[-1]
+        reply["action_input"] = {"id": 0 if name == "RESET" else int(name.removeprefix("ACTION"))}
+        return reply
+
+    monkeypatch.setattr(client_mod, "_post", fake_post)
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    info = GameInfo("g1", baseline_actions=(10, 20))
+    return ArcClient("g1", trace_path=tmp_path / "t.jsonl", info=info).open(), fake_post
+
+
+def test_status_reports_this_level_against_its_own_baseline(paced):
+    c, _ = paced
+    for _ in range(5):
+        c.act(1)
+    assert "5/10 on this level = 0.5x" in c.status()
+
+
+def test_going_well_over_baseline_says_so_in_words(paced):
+    """The doctrine said re-explore rather than grind; nothing ever said when.
+
+    A run that never left level 0 spent 6.1x that level's baseline, and no
+    surface in the harness reported the number while it was happening."""
+    c, _ = paced
+    for _ in range(20):
+        c.act(1)
+    s = c.status()
+    assert "= 2.0x" in s and "WELL OVER BASELINE" in s
+
+
+def test_pace_is_quiet_while_the_level_is_going_well(paced):
+    c, _ = paced
+    for _ in range(3):
+        c.act(1)
+    assert "WELL OVER BASELINE" not in c.status()
+
+
+def test_the_per_level_count_restarts_when_the_level_does(paced):
+    """Cumulative actions cannot be compared to a per-level baseline."""
+    c, post = paced
+    for _ in range(4):
+        c.act(1)
+    post.next = {"levels_completed": 1}
+    c.act(1)
+    assert c.level_actions == 0 and c.actions_used == 5
+    post.next = {"levels_completed": 1}
+    c.act(1)
+    assert c.level_actions == 1
+    assert "1/20 on this level" in c.status(), "the baseline is level 1's now"
+
+
+def test_a_level_past_the_published_baselines_reports_no_pace(paced):
+    c, post = paced
+    post.next = {"levels_completed": 9}
+    c.act(1)
+    assert "on this level" not in c.status(), "invented baselines are worse than none"
+
+
+def test_the_per_level_count_survives_a_new_process(monkeypatch, tmp_path):
+    """Every action is a new process, so a counter that lives only in memory
+    resets to zero on each one and the ratio reads 1/10 forever."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.card_id, a.actions_used, a.level_actions = "card-1", 30, 17
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path)
+    assert b.level_actions == 17
+
+
 def test_a_stale_trace_is_never_inherited(monkeypatch, tmp_path):
     monkeypatch.setenv("ARC_API_KEY", "k")
     path = tmp_path / "t.jsonl"

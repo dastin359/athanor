@@ -53,6 +53,7 @@ from .session import Ccarc3Config, build_workspace, run_game
 from .planning import reachable, shortest_path
 from .rules import (
     Counts,
+    effective_actions,
     PredictionReport,
     Outcome,
     Rule,
@@ -112,6 +113,7 @@ __all__ = [
     "Survey",
     "PredictionReport",
     "predict",
+    "effective_actions",
     # planning
     "shortest_path",
     "reachable",

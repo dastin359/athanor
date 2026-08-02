@@ -224,6 +224,14 @@ class ArcClient:
     full_resets: int = 0
     wasted_actions: int = 0
     close_error: str = ""
+    level_actions: int = 0
+    """Actions spent on the current level, reset when it advances.
+
+    Exists so :meth:`status` can report the ratio against this level's
+    published baseline. A run that never left level 0 burned 6.1x that
+    level's baseline while the doctrine's own control law -- re-explore
+    rather than grind -- sat unmechanised and unread.
+    """
     _writer: TraceWriter | None = field(default=None, repr=False)
     _opener: Any = field(default=None, repr=False)
     _key: str = field(default="", repr=False)
@@ -248,6 +256,7 @@ class ArcClient:
                     "available_actions": list(self.available_actions),
                     "full_resets": self.full_resets,
                     "wasted_actions": self.wasted_actions,
+                    "level_actions": self.level_actions,
                     "cookies": [
                         {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
                         for c in self._cookiejar()
@@ -296,6 +305,7 @@ class ArcClient:
         self.available_actions = tuple(saved.get("available_actions") or ())
         self.full_resets = int(saved.get("full_resets", 0))
         self.wasted_actions = int(saved.get("wasted_actions", 0))
+        self.level_actions = int(saved.get("level_actions", 0))
 
         jar = self._cookiejar()
         for c in saved.get("cookies", []):
@@ -466,6 +476,7 @@ class ArcClient:
             action_name(a) for a in (frame.get("available_actions") or ())
         )
         self.actions_used += 1
+        self.level_actions = 0 if self.level > previous_level else self.level_actions + 1
         if frame.get("full_reset"):
             self.full_resets += 1
         if not frame.get("frame"):
@@ -490,9 +501,21 @@ class ArcClient:
         return load(self.trace_path)
 
     def status(self) -> str:
-        """A one-line, honest progress report."""
+        """A one-line, honest progress report.
+
+        Leads with the ratio of actions spent on this level against its published
+        baseline, because that number is the doctrine's control law and it was
+        previously computable but never shown. A failed run sat at 6.1x on one
+        level without anything saying so.
+        """
         base = self.baseline_here
-        pace = f", baseline for this level {base}" if base else ""
+        if base:
+            ratio = self.level_actions / base
+            pace = f" [{self.level_actions}/{base} on this level = {ratio:.1f}x]"
+            if ratio >= 2.0:
+                pace += "  <- WELL OVER BASELINE: re-explore rather than grind"
+        else:
+            pace = ""
         return (
             f"{self.game_id}: level {self.level}/{self.win_levels or '?'} "
             f"state={self.state} actions={self.actions_used}{pace}"

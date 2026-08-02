@@ -201,6 +201,18 @@ re-explore. Without this you cannot tell "this level is long" from "I have
 misunderstood this level", and you will spend hundreds of actions on a wrong
 plan.
 
+You do not have to compute this. `client.status()` leads with it:
+
+```
+g: level 3/6 state=NOT_FINISHED actions=291 [190/55 on this level = 3.5x]  <- WELL OVER BASELINE: re-explore rather than grind
+```
+
+Read it. A run that never left level 0 sat at 6.1× that level's baseline for
+hundreds of actions; another spent 344% of a level's baseline executing a wrong
+plan **without wasting a single action** — every move did something, and all of
+them were beside the point. Efficiency is no defence against being wrong, and
+this ratio is the only number that distinguishes the two.
+
 ## 7. Trust `available_actions` over everything else.
 
 Each frame tells you exactly which actions this game accepts. It is
@@ -209,6 +221,28 @@ the frame already told you it is not available.
 
 `win_levels` tells you how many levels the game has. There is no `score` field —
 the server sends `levels_completed`. Anything reading `score` gets 0 forever.
+
+### 7a. Available is not the same as effective.
+
+The frame says what the game *accepts*. It does not say what has an *effect*,
+and on some games the gap is enormous: a run that never cleared a level spent
+**one action in five changing nothing at all** — 46 of its 157 clicks landed on
+dead ground — while every winning run in the same batch wasted none.
+
+Reading the gap is free, because it comes off the ledger rather than the game:
+
+```python
+arc.effective_actions(client.transitions(), level=client.level)
+# {'ACTION1': (12, 12), 'ACTION6': (0, 31)}   <- stop paying for ACTION6
+```
+
+`(changed, tried)`. Anything reading `0/n` for more than a handful of n is
+either the wrong modality or the wrong target. The two most efficient wins on
+record used exactly **one** action type each; the one total failure spread
+itself across seven.
+
+This does not mean an action that changed nothing is useless — a click on empty
+space is a real observation the first time. It means the *second* one is not.
 
 ## 8. Write code to analyse; do not eyeball frames.
 

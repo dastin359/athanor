@@ -648,6 +648,74 @@ def test_monotone_rows_on_nothing_is_empty():
     assert monotone_rows([]) == []
 
 
+# --------------------------------------------------------------------------- #
+# effective_actions — available is not the same as effective
+# --------------------------------------------------------------------------- #
+
+
+def test_effective_actions_separates_the_no_ops_from_the_ones_that_work():
+    """The failed run's signature: some available actions do nothing at all.
+
+    ``available_actions`` said seven were accepted; one in five actions changed
+    no cell. This is the read that would have shown it, and it costs no actions.
+    """
+    from athanor.ccarc3 import effective_actions
+
+    ts = [
+        _tr(0, 0, "ACTION1", [[0]], [[1]]),
+        _tr(1, 0, "ACTION1", [[1]], [[2]]),
+        _tr(2, 0, "ACTION6", [[2]], [[2]]),
+        _tr(3, 0, "ACTION6", [[2]], [[2]]),
+        _tr(4, 0, "ACTION6", [[2]], [[2]]),
+    ]
+    assert effective_actions(ts) == {"ACTION1": (2, 2), "ACTION6": (0, 3)}
+
+
+def test_a_level_swap_would_make_every_action_look_effective():
+    """A board replacement changes ~every cell, so counting it credits the
+
+    action that happened to be in flight when the level ended. On `ls20` that
+    single transition was enough to make a refuted rule read 13/1."""
+    from athanor.ccarc3 import effective_actions
+
+    ts = [
+        _tr(0, 0, "ACTION6", [[0]], [[0]]),
+        _tr(1, 1, "ACTION6", [[0]], [[9]], crosses_level=True),
+        _tr(2, 0, "ACTION6", [[9]], [[0]], full_reset=True),
+    ]
+    assert effective_actions(ts) == {"ACTION6": (0, 1)}, "only the in-level one counts"
+
+
+def test_actions_burned_after_a_death_are_not_evidence_about_the_action():
+    """A wasted action never reached the game; it says nothing about the action."""
+    from athanor.ccarc3 import effective_actions
+
+    ts = [
+        _tr(0, 0, "ACTION3", [[0]], [[1]]),
+        _tr(1, 0, "ACTION3", [[1]], [[1]], wasted=True),
+    ]
+    assert effective_actions(ts) == {"ACTION3": (1, 1)}
+
+
+def test_effective_actions_can_be_asked_about_one_level():
+    """Which actions matter is level-scoped, like every other rule here."""
+    from athanor.ccarc3 import effective_actions
+
+    ts = [
+        _tr(0, 0, "ACTION1", [[0]], [[1]]),
+        _tr(1, 1, "ACTION1", [[1]], [[1]]),
+        _tr(2, 1, "ACTION2", [[1]], [[5]]),
+    ]
+    assert effective_actions(ts, level=0) == {"ACTION1": (1, 1)}
+    assert effective_actions(ts, level=1) == {"ACTION1": (0, 1), "ACTION2": (1, 1)}
+
+
+def test_the_first_transition_has_no_before_so_nothing_can_be_said_about_it():
+    from athanor.ccarc3 import effective_actions
+
+    assert effective_actions([_tr(0, 0, "RESET", None, [[1]])]) == {}
+
+
 def test_cell_boundaries_rejects_a_single_grid_with_a_useful_message():
     """It takes an iterable of grids; one 2-D array iterates its rows instead.
 

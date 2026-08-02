@@ -286,7 +286,7 @@ from session import client, gate, arc
 client.reset()                  # start
 client.act(1)                   # ACTION1..5,7 take no arguments
 client.act(6, x=10, y=20)       # ACTION6 is a click; x,y in [0,63]
-client.status()                 # level, state, actions used, baseline
+client.status()                 # level, state, and pace against this level's baseline
 client.transitions()            # everything recorded so far
 ```
 
@@ -306,7 +306,7 @@ questions of it in code rather than reading frames by eye:
 
 ```python
 ts = client.transitions()
-{{t.action for t in ts if t.changed}}            # which actions do anything
+arc.effective_actions(ts, level=client.level)  # {{'ACTION6': (0, 31)}} -> stop clicking
 arc.diff(ts[-1].before, ts[-1].after)          # what just changed
 arc.objects(ts[-1].after)                      # connected components
 print(arc.render(ts[-1].after))                # one char per cell
