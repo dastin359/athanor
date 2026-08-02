@@ -181,3 +181,26 @@ def test_ccarc3_is_reachable_from_the_athanor_cli():
     assert args.command == "ccarc3"
     assert args.ccarc3_command == "run"
     assert args.game == "g"
+
+
+def test_levels_and_actions_describe_the_same_playthrough(tmp_path, capsys):
+    """Pairing max-over-all-playthroughs levels with final-playthrough actions
+    credits a run with progress a full reset destroyed, at the price of the
+    progress that survived — the flattering half of each."""
+    d = tmp_path / "g"
+    d.mkdir()
+    (d / "result.json").write_text(json.dumps(_result("g", levels_total=6)))
+    with (d / "trace.jsonl").open("w") as fh:
+        # reaches level 3, is wiped back to 0, then only gets to level 1
+        for i, level in enumerate([0, 1, 2, 3, 0, 1]):
+            fh.write(json.dumps({
+                "i": i, "level": level, "action": "ACTION1", "params": {},
+                "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                "full_reset": False, "available_actions": ["ACTION1"],
+            }) + "\n")
+
+    cli.main(["report", "--out-dir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "1/6" in out, "the surviving playthrough reached level 1, not 3"
+    assert "3/6" not in out, "the discarded playthrough's levels must not be credited"
+    assert "FULLRESET=1" in out

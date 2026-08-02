@@ -138,7 +138,10 @@ def _compare(before: list[dict], after: list[dict], label: Path) -> None:
         base = y.get("baseline_total") or 0
         cx = x.get("actions_final_playthrough", x.get("actions_used", 0))
         cy = y.get("actions_final_playthrough", y.get("actions_used", 0))
-        lv = f"{x.get('levels_reached',0)}->{y.get('levels_reached',0)}/{y.get('levels_total',0)}"
+        # Same rule as _summarise: levels and actions must describe one playthrough.
+        lx = x.get("levels_reached_final_playthrough", x.get("levels_reached", 0))
+        ly = y.get("levels_reached_final_playthrough", y.get("levels_reached", 0))
+        lv = f"{lx}->{ly}/{y.get('levels_total',0)}"
         act = f"{cx}->{cy}"
         rat = f"{cx/base:.2f}x->{cy/base:.2f}x" if base else "-"
         print(f"{y['game_id']:24}{lv:>14}{act:>16}{rat:>16}")
@@ -158,7 +161,7 @@ def _summarise(results: list[dict]) -> None:
     print(f"\n{'game':24}{'levels':>10}{'actions':>9}{'vs base':>9}{'deaths':>7}"
           f"{'turns':>7}{'cost':>8}  flags")
     for r in sorted(ok, key=lambda x: x.get("game_id", "")):
-        reached, total = r.get("levels_reached", 0), r.get("levels_total", 0)
+        total = r.get("levels_total", 0)
         used, base = r.get("actions_used", 0), r.get("baseline_total", 0)
         # Against the baseline, only the final playthrough is comparable: a full
         # reset means earlier actions bought progress that was then discarded,
@@ -166,6 +169,13 @@ def _summarise(results: list[dict]) -> None:
         # replayed. The total is still shown -- it is what the budget paid.
         charged = r.get("actions_final_playthrough", used)
         ratio = f"{charged / base:.2f}x" if base else "-"
+        # **Levels must come from the same playthrough as the actions.** Pairing
+        # `levels_reached` (the maximum over *every* playthrough) with a cost
+        # restricted to the final one credits a run with progress a full reset
+        # destroyed, at the price of the progress that survived -- the flattering
+        # half of each. `ledger_facts` has computed the right figure since full
+        # resets became detectable and nothing read it.
+        reached = r.get("levels_reached_final_playthrough", r.get("levels_reached", 0))
         flags = " ".join(
             f
             for f, on in (
@@ -188,7 +198,9 @@ def _summarise(results: list[dict]) -> None:
     for r in failed:
         print(f"{r['game_id']:24}{'ERROR':>10}  {r['error'][:60]}")
 
-    solved = sum(r.get("levels_reached", 0) for r in ok)
+    solved = sum(
+        r.get("levels_reached_final_playthrough", r.get("levels_reached", 0)) for r in ok
+    )
     avail = sum(r.get("levels_total", 0) for r in ok)
     print(f"\n{len(ok)} runs, {solved}/{avail} levels reached, "
           f"{sum(1 for r in ok if r.get('won'))} games won.")
