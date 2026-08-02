@@ -370,8 +370,9 @@ gate.acknowledge(
 ```
 
 Keep `refuted` and `untested` apart. Something you never tried is not something
-you disproved, and filing it as a refutation makes you stop asking. This is the
-same distinction `arc.unreached()` exists for.
+you disproved, and filing it as a refutation makes you stop asking. It is the
+same distinction the three-valued outcome makes: `NOT_APPLICABLE` is not
+`VIOLATED`.
 
 Carry mechanics, not rules. The next level shares this game's logic but not its
 arrangement, so a concrete rule will often be false there while the idea behind

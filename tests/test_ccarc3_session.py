@@ -47,6 +47,38 @@ def test_the_generated_session_is_prewired_to_this_game(ws):
     assert "(22, 123, 73)" in src, "baselines must reach the solver"
 
 
+def test_the_generated_files_are_valid_after_template_substitution(ws):
+    """Both files come out of `.format()`, so a literal brace must be doubled.
+
+    Getting that wrong does not fail loudly -- `session.py` stops importing, or
+    `CLAUDE.md` ships `{{'ACTION6': (0, 31)}}` as the solver's worked example.
+    Every run built from the template is affected and no unit test of the
+    modules themselves would notice.
+    """
+    compile((ws.root / "session.py").read_text(), "session.py", "exec")
+    md = (ws.root / "CLAUDE.md").read_text()
+    assert "{{" not in md and "}}" not in md
+    assert "{'ACTION6': (0, 31)}" in md, "the dict example must survive as a dict"
+
+
+def test_the_worked_examples_name_things_that_exist(ws):
+    """A CLAUDE.md example is API documentation the solver will run verbatim.
+
+    `arc.level_pace(client.transitions(), baselines)` shipped in the doctrine
+    and `baselines` is not defined anywhere in a solver's namespace.
+    """
+    import re
+
+    from athanor.ccarc3 import ArcClient
+    from athanor.ccarc3 import __all__ as exported
+
+    text = (ws.root / "CLAUDE.md").read_text() + (ws.root / "DOCTRINE.md").read_text()
+    for attr in set(re.findall(r"\bclient\.(\w+)\(", text)):
+        assert hasattr(ArcClient, attr), f"CLAUDE.md calls client.{attr}(), which does not exist"
+    for name in set(re.findall(r"\barc\.(\w+)\(", text)):
+        assert name in exported, f"CLAUDE.md calls arc.{name}(), which is not exported"
+
+
 def test_the_workspace_puts_athanor_on_the_path(ws):
     assert "athanor" in ws.env["PYTHONPATH"] or ws.env["PYTHONPATH"].endswith("src")
 
