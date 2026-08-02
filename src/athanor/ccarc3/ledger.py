@@ -98,6 +98,23 @@ class Transition:
     """Whatever was stamped into ``ActionInput.reasoning`` -- the server stores
     and echoes it verbatim, which makes the trace self-describing for free."""
 
+    crosses_level: bool = False
+    """This action ended a level, so ``before`` and ``after`` are different boards.
+
+    Such a transition is not a transition *within* a game state: the whole board
+    is replaced. A movement rule checked across one sees the avatar "teleport"
+    and reports a violation that never happened -- and by §5.4 an
+    applicable-and-violated result is the highest-signal event there is, so a
+    false one is the most damaging kind of error this ledger can produce.
+
+    Found exactly that way: "ACTION1 moves the cursor up" held 7/7 on level 0 and
+    showed 13/1 on level 1, and the single violation was the level boundary, with
+    1467 cells changed at once.
+
+    Rules about movement, adjacency or anything else spatial should exclude these
+    in their ``applies``.
+    """
+
     wasted: bool = False
     """The action returned no frame and changed nothing, but was still counted.
 
@@ -197,6 +214,7 @@ def load(path: str | Path) -> list[Transition]:
     out: list[Transition] = []
     previous: np.ndarray | None = None
     previous_score = 0
+    previous_level = 0
     for rec in _records(path):
         grids = _grids(rec.get("frames", []))
         wasted = not grids
@@ -218,6 +236,7 @@ def load(path: str | Path) -> list[Transition]:
                 after=grids[-1],
                 intermediate=tuple(grids),
                 wasted=wasted,
+                crosses_level=int(rec.get("level", 0)) > previous_level,
                 score_before=previous_score,
                 score_after=int(rec.get("score", 0)),
                 state=str(rec.get("state", "NOT_PLAYED")),
@@ -228,6 +247,7 @@ def load(path: str | Path) -> list[Transition]:
         )
         previous = grids[-1]
         previous_score = int(rec.get("score", 0))
+        previous_level = int(rec.get("level", 0))
     return out
 
 

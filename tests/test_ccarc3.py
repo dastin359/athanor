@@ -464,3 +464,44 @@ def test_png_creates_missing_parent_directories(tmp_path):
 
     out = png([[1, 2]], tmp_path / "deep" / "nested" / "g.png")
     assert pathlib.Path(out).exists()
+
+
+def test_a_level_boundary_transition_is_flagged(tmp_path):
+    """`before` and `after` straddle two different boards there.
+
+    A movement rule checked across one sees the avatar teleport and reports a
+    violation that never happened -- and an applicable-and-violated result is
+    supposed to be the highest-signal event in a run, so a false one is the
+    most damaging error the ledger can produce. Found on a real ls20 trace:
+    "ACTION1 moves the cursor up" held 7/7 on level 0 and showed 13/1 on level
+    1, and the single violation was the boundary, 1467 cells changing at once.
+    """
+    path = tmp_path / "t.jsonl"
+    w = TraceWriter(path)
+    w.append(_frame(1, [[[1]]], score=0), level=0)
+    w.append(_frame(1, [[[2]]], score=1), level=1)   # this action ended level 0
+    w.append(_frame(1, [[[3]]], score=1), level=1)
+
+    a, b, c = load(path)
+    assert [t.crosses_level for t in (a, b, c)] == [False, True, False]
+
+
+def test_excluding_boundaries_is_what_a_spatial_rule_must_do(tmp_path):
+    from athanor.ccarc3 import Rule, survey
+
+    path = tmp_path / "t.jsonl"
+    w = TraceWriter(path)
+    w.append(_frame(1, [[[1, 1]]], score=0), level=0)
+    w.append(_frame(1, [[[9, 9]]], score=1), level=1)  # boundary: board replaced
+    w.append(_frame(1, [[[9, 9]]], score=1), level=1)
+
+    ts = load(path)
+    naive = Rule(name="board never changes wholesale",
+                 applies=lambda t: t.before is not None,
+                 holds=lambda t: not t.changed, scope="game")
+    careful = Rule(name="same, boundaries excluded",
+                   applies=lambda t: t.before is not None and not t.crosses_level,
+                   holds=lambda t: not t.changed, scope="game")
+
+    assert survey(naive, ts).levels_violated == [1]
+    assert survey(careful, ts).levels_violated == []

@@ -119,6 +119,17 @@ reads "applicable from L1 onward, never violated where applicable", which is
 strong. Use `verify` when you want a verdict, and only against the level the
 rule is about.
 
+**Exclude level boundaries from spatial rules.** The action that completes a
+level returns the *next* level's board, so `before` and `after` are different
+boards entirely. A movement rule checked across one sees the avatar teleport and
+reports a violation that never happened. Every transition carries
+`t.crosses_level`; put `not t.crosses_level` in the `applies` of any rule about
+position, movement or adjacency.
+
+This is not hypothetical: on a real run, "ACTION1 moves the cursor up" held 7/7
+on level 0 and showed 13 holds and 1 violation on level 1. The violation was the
+boundary. Excluded, the rule is 28/0 across both levels.
+
 Never conclude a rule is dead because it failed on an earlier level. That is how
 true knowledge gets destroyed.
 
