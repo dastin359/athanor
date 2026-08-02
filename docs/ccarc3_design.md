@@ -26,6 +26,7 @@ anything below.
 |---|---|
 | The games are deterministic — a recorded action sequence replays frame-for-frame | [LIVE] 40/40 identical on `ls20`, including its patrolling items |
 | A RESET with the action counter at zero starts a **new play**; per-level actions are recorded per play and never summed | [LIVE] scorecard probe: `plays` 1→2, new guid, new `actions_by_level` row |
+| The leaderboard metric is RHAE, not the SDK's `sum(high_score)` | [LIVE] **7 of the 25 published Opus 5 scores land exactly on RHAE completion-cap fractions** — 47.6% = 10/21 (twice), 77.8% = 28/36, 28.6% = 6/21, 8.3% = 3/36, 3.6% = 1/28, 1.8% = 1/55. A levels-completed metric cannot produce them |
 | Score is best-of across plays, actions are summed. Dying costs no score. | [SDK] read from source; the whole doctrine turns on it |
 | RESET as the first action after a level advance discards the entire game | [LIVE] observed, and it cost a won game (§9.9) |
 | A solver that understands a level finishes it under the published baseline | [LIVE] 24 of 25 cleared levels at ≤0.92×, median 0.52× |
@@ -42,6 +43,14 @@ anything below.
 | Deaths are unreachable by wandering on some games | 4 games probed with a random policy |
 
 **Not established, and stated here because the tempting reading is wrong.**
+
+- **Which play the scorer uses.** That plays are stored separately, each with
+  its own `actions_by_level`, is measured. That the *best* one is scored is an
+  inference from `Card.high_score = max(scores)` — a property of the SDK's
+  client-side bookkeeping, not of RHAE. The whole explore-then-replay strategy
+  turns on it: best-play makes a replay worth `1.0 − raw`, first-play makes it
+  worth nothing. **Nothing in this project relies on the strategy**, and it
+  should stay that way until this is measured.
 
 - **That the harness changes caused any measured improvement.** `cd82` went from
   0/6 in 337 actions to 6/6 in 121 across a harness change — and the winning run
