@@ -166,6 +166,29 @@ mechanics; it is missing one, and `failures` tells you exactly which transition
 to go and look at. The single wrong prediction is worth more than the 47 right
 ones.
 
+### 5b. Verification is cheap here. Planning is what costs you.
+
+On a static puzzle you cannot test a hypothesis without spending your one
+answer, so most of the work is convincing yourself you are right. **Here, testing
+is acting**: one action tells you, for the price of one action. That inverts what
+is scarce.
+
+So do not spend long proving a mechanic you could confirm in two moves. Spend the
+effort on the question that actually costs actions — *given what I already
+believe, what is the shortest route?*
+
+```python
+arc.shortest_path(step, start, goal)     # step(state, action) -> state
+arc.reachable(step, start)               # is it even reachable, or did I misread?
+```
+
+It searches over a **step function**, not a grid, so launchers, teleports and
+wrap-around work as long as your model has them. The route is optimal *for your
+model* — check the model with `arc.predict()` before trusting a route from it.
+
+An unexpectedly small `reachable()` set usually means your model puts a wall
+where there is none.
+
 ## 6. Budget against the published baseline.
 
 Every game publishes `baseline_actions` — one figure per level, what a

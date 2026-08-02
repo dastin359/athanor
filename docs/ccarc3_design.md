@@ -692,7 +692,35 @@ The general form: **whatever your system treats as its strongest evidence needs
 the strictest guard against manufacturing it.** A weak signal that misfires is
 noise. A strong signal that misfires sends you somewhere specific and wrong.
 
-### 9.7 Only a real agent finds the interface bugs
+### 9.7 Measure which of your abstractions the solver actually used
+
+Across a 370-action run the solver used `Rule`, `verify` and `survey` **zero**
+times. All three were documented in the workspace it was given. §5 is the most
+carefully-reasoned part of this design and it went untouched.
+
+What it wrote by hand instead, in its own scratch directory: domain parsers, a
+forward simulator, and breadth-first search — twice, the second time after
+discovering launchers made its grid version wrong.
+
+The reason is structural, and it is the single most useful thing this build
+taught. On ARC-AGI-2 a hypothesis cannot be tested without spending the one
+submission, so verification machinery *is* the game. On ARC-AGI-3 **testing is
+acting**: one action settles a question for the price of one action. Verification
+becomes cheap and **planning becomes expensive** — the hard question stops being
+"is my rule correct" and becomes "given rules I already believe, what is the
+shortest route".
+
+§5 stays: it is cheap, correct, and the three-valued distinction is still the
+right one when a rule *is* worth checking. But it is no longer the centre of
+gravity, and presenting it as such sent the solver's attention to the wrong
+place.
+
+The general lesson is cheap to apply and was available all along: **grep the
+trace for your own API**. An abstraction with zero uses is a design error, not a
+solver error — the same shape as ARC-AGI-2's finding that the iteration budget
+was inert because `check()` was free.
+
+### 9.8 Only a real agent finds the interface bugs
 
 Every offline test passed while the harness was unusable, three separate times
 and for three unrelated reasons. The tests were not wrong; they were written by

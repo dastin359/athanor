@@ -328,6 +328,14 @@ A model that reproduces every recorded board exactly means you understand the
 mechanics. Chase `perfect`, not accuracy — one wrong prediction is worth more
 than fifty right ones, and `failures` says which transition to look at.
 
+Routing costs more than verifying here — testing a belief is one action, but
+walking a bad route is many:
+
+```python
+arc.shortest_path(step, start, goal)   # fewest actions, over your step function
+arc.reachable(step, start)             # reachable at all, or did I misread the board?
+```
+
 `applies` and `holds` are separate on purpose. A rule that did not apply has not
 failed, and treating it as failed is how correct knowledge gets thrown away.
 
