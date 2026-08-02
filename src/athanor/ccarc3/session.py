@@ -182,6 +182,12 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     root.mkdir(parents=True, exist_ok=True)
     (root / "notes").mkdir(exist_ok=True)
 
+    # result.json describes a *finished* run. Leaving the previous one in place
+    # while a new one is in flight means `report` presents a stale outcome as
+    # final, and anything watching the directory sees a run that has not started
+    # as already complete. It is rewritten by collect_outcome at the end.
+    (root / "result.json").unlink(missing_ok=True)
+
     trace = root / "trace.jsonl"
     if config.fresh:
         for stale in (trace, trace.with_suffix(".state.json"), root / "rules.json"):

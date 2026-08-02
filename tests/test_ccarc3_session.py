@@ -264,3 +264,18 @@ def test_the_workspace_puts_an_interpreter_with_numpy_first_on_path(ws):
     import subprocess
     r = subprocess.run([python, "-c", "import numpy"], capture_output=True)
     assert r.returncode == 0, "the default interpreter must have numpy"
+
+
+def test_a_stale_result_is_cleared_when_a_run_starts(tmp_path):
+    """result.json describes a finished run. A resume that leaves the previous
+    one in place makes `report` present a stale outcome as final, and makes a
+    watcher see a not-yet-started run as already complete."""
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    (ws.root / "result.json").write_text(json.dumps({"levels_reached": 99}))
+    _seed(ws.root)
+
+    again = build_workspace(cfg, INFO)
+    assert not (again.root / "result.json").exists()
+    assert again.resumed, "clearing the result must not discard the run itself"
+    assert again.trace_path.read_text().strip()
