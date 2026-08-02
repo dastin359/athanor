@@ -35,6 +35,7 @@ __all__ = [
     "train_samples",
     "test_samples",
     "verify",
+    "unreached",
     "refute",
     "sweep",
     "check",
@@ -1445,6 +1446,152 @@ def _png_via_harness_python(grid: Grid, path: str | os.PathLike[str], cell: int)
 def _pairs() -> Iterable[tuple[Grid, Grid]]:
     for sample in train_samples:
         yield sample["input"], sample["output"]
+
+
+def _executable_lines(source: str, filename: str) -> set[int]:
+    """Line numbers inside function bodies of ``source``.
+
+    Module-level lines are excluded on purpose: imports, constants and ``def``
+    headers all run at import time, so counting them would report every function
+    header as unreached and bury the signal.
+    """
+    import types
+
+    top = compile(source, filename, "exec")
+    lines: set[int] = set()
+    stack = [top]
+    seen: set[int] = set()
+    while stack:
+        code = stack.pop()
+        if id(code) in seen:
+            continue
+        seen.add(id(code))
+        for const in code.co_consts:
+            if isinstance(const, types.CodeType):
+                stack.append(const)
+        if code is top:
+            continue
+        for _start, _end, lineno in code.co_lines():
+            if lineno is not None and lineno != code.co_firstlineno:
+                lines.add(lineno)
+    return lines
+
+
+def unreached(solve_fn=None, *, verbose: bool = True) -> dict:
+    """Report the lines of your solution that no training pair ever executes.
+
+    Training is the only thing standing behind your solution, and it can only
+    vouch for code it runs. Every line this prints is a line ``check()`` and
+    ``gate.py submit`` were blind to — most often a branch written for a case the
+    examples do not contain, which is exactly the case a test input might be::
+
+        from arc import unreached
+        unreached()
+
+    Worth running before you accept, and worth running twice if you shipped a
+    second candidate. A hedge exists *because* the training pairs cannot
+    discriminate it, so the alternative reading is code training cannot reach
+    almost by definition — and it ships with whatever bugs it has.
+
+    **Scope: the whole file the function lives in**, not just that function's own
+    body — which is what you want for ``solution/solve.py``, where the helpers are
+    part of the solution, and worth knowing if you pass a function from an
+    ``explore/`` script, where the rest of the file is scaffolding. The report
+    names the file it measured. Module-level lines are excluded either way: they
+    run at import, so counting them would flag every ``def`` as unreached.
+
+    Returns ``{"unreached": [...], "executed": n, "executable": n, "path": str,
+    "errors": [...]}``.
+    """
+    import copy
+    import sys
+    from pathlib import Path
+
+    if solve_fn is None:
+        solve_fn = load_solution()
+
+    origin = getattr(solve_fn, "__code__", None)
+    if origin is None:
+        raise TypeError(f"unreached() needs a Python function, not {type(solve_fn).__name__}")
+    filename = origin.co_filename
+    if filename.startswith("<") and filename.endswith(">"):
+        # `python -c "..."` gives <string>, a REPL gives <stdin>. There is no
+        # file to read line numbers out of, and the fix is to move the function
+        # somewhere durable rather than to guess.
+        raise RuntimeError(
+            f"unreached() cannot measure a function defined in {filename} — there is no "
+            "source file. Put solve() in solution/solve.py and call unreached() with no "
+            "arguments, or define it in an explore/ script and pass it from there."
+        )
+    path = Path(filename).resolve()
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"cannot read the solution source at {path}: {exc}") from None
+
+    executable = _executable_lines(source, str(path))
+    target = str(path)
+    executed: set[int] = set()
+
+    def _local(frame, event, arg):
+        if event == "line":
+            executed.add(frame.f_lineno)
+        return _local
+
+    def _global(frame, event, arg):
+        if frame.f_code.co_filename == target:
+            executed.add(frame.f_lineno)
+            return _local
+        return None
+
+    errors: list[str] = []
+    previous = sys.gettrace()
+    sys.settrace(_global)
+    try:
+        for sample in train_samples:
+            try:
+                solve_fn(copy.deepcopy(sample["input"]))
+            except Exception as exc:  # noqa: BLE001 - a crash still leaves coverage worth reading
+                errors.append(f"{type(exc).__name__}: {exc}")
+    finally:
+        sys.settrace(previous)
+
+    missing = sorted(executable - executed)
+    text = source.splitlines()
+    result = {
+        "unreached": missing,
+        "executed": len(executable & executed),
+        "executable": len(executable),
+        "path": str(path),
+        "errors": errors,
+    }
+
+    if verbose:
+        for err in errors:
+            print(f"! solve raised on a training input: {err}")
+        if not executable:
+            print("no function bodies found in the solution — nothing to measure")
+        elif not missing:
+            print(
+                f"every one of the {len(executable)} lines in {path.name} runs on the "
+                "training pairs. Training reaches all of your code."
+            )
+        else:
+            pct = 100.0 * len(executable & executed) / len(executable)
+            print(
+                f"{len(missing)} of {len(executable)} lines in {path.name} never run on any "
+                f"training pair ({pct:.0f}% reached).\n"
+                "Training cannot vouch for these:"
+            )
+            for lineno in missing:
+                body = text[lineno - 1].rstrip() if lineno - 1 < len(text) else ""
+                print(f"  {lineno:>4}  {body}")
+            print(
+                "\nThese lines are not wrong. They are untested — a test input that reaches "
+                "one is running code no example has ever exercised."
+            )
+
+    return result
 
 
 if __name__ == "__main__":  # `python arc.py` prints a quick orientation dump

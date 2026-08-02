@@ -1511,3 +1511,82 @@ class TestExploreModule:
         )
         assert result.returncode == 0, result.stderr
         assert "RAISED True" in result.stdout
+
+
+class TestUnreached:
+    """Training can only vouch for code it runs.
+
+    From 88e364bc: the solver found a real ambiguity, hedged correctly, and the
+    strict reading was right — but a bug on a branch no training pair executes
+    discarded the answer. The hedge branch is, by construction, the code
+    train-100% cannot reach.
+    """
+
+    def _run(self, workspace, script: str) -> str:
+        import subprocess
+        import sys as _sys
+        (workspace.root / "explore" / "_cov.py").write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [_sys.executable, "explore/_cov.py"],
+            cwd=workspace.root, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout
+
+    def test_a_branch_no_training_pair_takes_is_named(self, workspace):
+        out = self._run(workspace, (
+            "import sys, os\n"
+            "sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
+            "import arc\n"
+            "def solve(grid):\n"
+            "    if len(grid) > 9999:\n"
+            "        return []          # unreachable from any training input\n"
+            "    return [row[::-1] for row in grid]\n"
+            "r = arc.unreached(solve, verbose=False)\n"
+            "print('UNREACHED', len(r['unreached']), r['executed'], r['executable'])\n"
+        ))
+        marker, n, executed, executable = out.strip().split()
+        assert marker == "UNREACHED"
+        assert int(n) == 1, "the dead branch should be the one unreached line"
+        assert int(executed) < int(executable)
+
+    def test_a_fully_exercised_solution_reports_nothing(self, workspace):
+        out = self._run(workspace, (
+            "import sys, os\n"
+            "sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
+            "import arc\n"
+            "def solve(grid):\n"
+            "    return [row[::-1] for row in grid]\n"
+            "print('UNREACHED', len(arc.unreached(solve, verbose=False)['unreached']))\n"
+        ))
+        assert out.strip() == "UNREACHED 0"
+
+    def test_a_raising_solution_still_reports_coverage_and_restores_the_tracer(self, workspace):
+        out = self._run(workspace, (
+            "import sys, os\n"
+            "sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
+            "import arc\n"
+            "def solve(grid):\n"
+            "    raise ValueError('deliberate')\n"
+            "r = arc.unreached(solve, verbose=False)\n"
+            "print('ERRORS', len(r['errors']), 'TRACE', sys.gettrace() is None)\n"
+        ))
+        errs, n, trace, restored = out.strip().split()
+        assert errs == "ERRORS" and int(n) >= 1
+        assert trace == "TRACE" and restored == "True", "settrace must be restored"
+
+    def test_a_function_with_no_source_file_says_what_to_do_instead(self, workspace):
+        """`python -c` one-liners are encouraged, and their functions have no file."""
+        out = self._run(workspace, (
+            "import sys, os\n"
+            "sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
+            "import arc\n"
+            "ns = {}\n"
+            "exec('def s(g):\\n    return g\\n', ns)\n"
+            "try:\n"
+            "    arc.unreached(ns['s'])\n"
+            "    print('NO_RAISE')\n"
+            "except RuntimeError as e:\n"
+            "    print('RAISED', 'solution/solve.py' in str(e))\n"
+        ))
+        assert out.strip() == "RAISED True"
