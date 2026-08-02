@@ -555,4 +555,26 @@ class ArcClient:
             f"state={self.state} actions={self.actions_used}{pace}"
             f"{f', wasted={self.wasted_actions}' if self.wasted_actions else ''}"
             f"{f', FULL RESETS={self.full_resets}' if self.full_resets else ''}"
+            f"{self._dead_actions()}"
         )
+
+    def _dead_actions(self, *, floor: int = 5) -> str:
+        """Name any available action that has done nothing, repeatedly, here.
+
+        This lives in ``status()`` rather than in a function of its own on
+        deliberate evidence. Across five runs and 332 solver commands, every
+        analytical helper this package exports -- the rule engine, the forward
+        model, the planner -- was called **zero** times, while ``status()`` was
+        called 82. A signal in a function nobody calls is not a signal.
+
+        ``floor`` exists because the first click on empty space is a real
+        observation. Only the repeat is waste.
+        """
+        try:
+            from .rules import effective_actions
+
+            counts = effective_actions(self.transitions(), level=self.level)
+        except Exception:  # noqa: BLE001 -- status() must never be the thing that fails
+            return ""
+        dead = [f"{a} 0/{n}" for a, (c, n) in sorted(counts.items()) if c == 0 and n >= floor]
+        return f"  <- NO EFFECT on this level: {', '.join(dead)}" if dead else ""

@@ -732,6 +732,62 @@ and the third by driving a real game with a scripted policy. **Run the thing
 before trusting it**, and treat the first real run as an experiment about the
 harness rather than about the model.
 
+### 9.8a What solvers actually called — the measurement, done properly
+
+§9.8 says run the thing before trusting it. §9.7 says measure which of your
+abstractions the solver used. Here is that measurement over five runs, and it is
+the most uncomfortable result in this document.
+
+**Method matters, because the obvious method is wrong.** Grepping the stream for
+`verify(` reports 65 hits across all five runs and means nothing: the stream
+contains tool *results*, so every `Read DOCTRINE.md` echoes the doctrine's own
+examples back into it. Parsing `tool_use` blocks and reading only the *inputs*
+gives what the solver actually executed. The two answers are not close.
+
+Across **332 Bash commands** in five runs, every workspace advertising all of
+these in both `CLAUDE.md` and `DOCTRINE.md`:
+
+| called | times |
+|---|---|
+| `client.status()` | 82 |
+| `arc.diff()` | 39 |
+| `arc.render()` | 27 |
+| `arc.png()` | 20 |
+| `arc.objects()` | 4 |
+
+| never called, in any run | |
+|---|---|
+| `Rule`, `verify()`, `survey()`, `regressions()` | the entire three-valued rule engine |
+| `predict()` | the forward model |
+| `shortest_path()`, `reachable()` | the planner |
+| `monotone_rows()`, `logical()`, `collapse()`, `block_size()` | |
+
+**Four of those five runs won.** §5 — the longest and most-argued section of this
+design note, the three-valued predicate core the `rules` module opens by calling
+"the single most important constraint in this module" — has never been exercised
+by a solver. Not once did any run construct a `Rule`.
+
+Three claims elsewhere in this project are corrected by it:
+
+- `planning.py` was built because "a solver hand-rolled BFS twice". It did — and
+  it kept hand-rolling it. Supplying the tool did not cause adoption.
+- `monotone_rows()` is described as having found `ls20`'s energy bar unaided.
+  That was a **scripted probe of mine**, not a solver. No solver has called it.
+- `predict()` was described as something "solvers reach for unaided". They wrote
+  their own step functions; they did not call this.
+
+What the used five have in common is that they answer *what do I see right now*
+— status, diff, render, png, objects. What the unused ones have in common is
+that they answer *what do I believe, and does it hold up*. A solver working a
+live game apparently does the second in its head and only outsources the first.
+
+**The lesson for the harness is not "delete the rule engine" at n=5.** It is
+about placement: `status()` is called 82 times and a new `arc.*` function has
+been called zero times, so anything the harness genuinely needs a solver to see
+belongs *in a call it already makes*. That is why the pace ratio and the
+no-effect warning went into `status()` rather than shipping as the functions
+they started as, and why `pace()` is a client method.
+
 ### 9.9 A refusal is only as durable as the state that arms it
 
 §9.1 and §9.3 have an intersection, and it is the worst place in the design to

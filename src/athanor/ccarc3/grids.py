@@ -254,6 +254,11 @@ def monotone_rows(
     gives up exactly one cell per action. That is the energy bar, found without
     being told it existed or what it looked like.
 
+    That verification was a **scripted probe**, not a solver using this. No
+    solver has ever called it: five runs, 332 commands, zero (design note
+    §9.8a). Worth knowing before citing this as evidence that the harness
+    helped anyone.
+
     A row here is a candidate, not a conclusion. Check whether it moves
     *monotonically*: a resource drains one way, whereas a score or a moving
     object does not.

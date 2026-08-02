@@ -6,6 +6,15 @@ wrote in its own scratch space, it had hand-rolled breadth-first search **twice*
 understood that some cells launch the avatar across the board rather than moving
 it one square.
 
+**And it did not adopt this.** Over five runs and 332 solver commands, measured
+from `tool_use` inputs rather than from the stream (design note §9.8a),
+``shortest_path`` and ``reachable`` were called **zero** times. Solvers went on
+writing their own search. Recorded here rather than quietly left out, because
+"a solver needed X" is the argument that built this file and it turns out not to
+imply "a solver will use the X you supply". The same measurement found the rule
+engine, the forward model and the display-finder equally untouched; what did get
+used was the five calls that answer *what do I see right now*.
+
 That is the more interesting half of a finding about where the difficulty
 actually sits. The design's most carefully-reasoned component is §5's
 three-valued rule checking, and across a 370-action run the solver used

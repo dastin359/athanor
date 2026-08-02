@@ -388,9 +388,14 @@ def predict(
 
     A predicate says *a* property survived. A simulator that reproduces every
     recorded board exactly says the mechanics are understood, which is a far
-    stronger claim and the one worth aiming at. Solvers reach for this unaided --
-    the first real run on `ls20` wrote its own step function before anything
-    here supported it.
+    stronger claim and the one worth aiming at.
+
+    **Measured caveat, recorded because it undercuts the case for this function.**
+    Solvers write step functions unaided -- the first real run on `ls20` wrote
+    one before anything here supported it -- but across five runs and 332
+    commands, **not one of them ever called this**. They kept their models in
+    their own code. Nothing in `rules` has been used by a solver; see design
+    note §9.8a. Offering an abstraction is not the same as it being adopted.
 
     Boards replaced wholesale (level boundaries, full resets) and wasted actions
     are skipped automatically: no forward model can or should predict those, and

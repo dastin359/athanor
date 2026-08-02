@@ -220,6 +220,42 @@ def test_pace_is_quiet_while_the_level_is_going_well(paced):
     assert "OVER BASELINE" not in c.status()
 
 
+def test_status_names_an_action_that_has_stopped_doing_anything(stub):
+    """In `status()` because that is the only surface solvers demonstrably read.
+
+    Across five runs and 332 commands, every analytical helper this package
+    exports was called zero times; `status()` was called 82.
+    """
+    c, _, replies = stub
+    av = [1, 6]
+    replies.append(_frame(frame=[[[9, 9], [9, 9]]], available_actions=av))
+    replies.extend(_frame(available_actions=av) for _ in range(7))
+    c.act(1)                      # first transition: no predecessor, not evidence
+    c.act(1)                      # 9 -> 1: ACTION1 changes the board
+    for _ in range(6):
+        c.act(6, x=0, y=0)        # identical frame every time: no effect
+    s = c.status()
+    assert "NO EFFECT on this level: ACTION6 0/6" in s
+    assert "ACTION1" not in s, "an action that works must not be listed"
+
+
+def test_one_ineffective_probe_is_an_observation_not_waste(stub):
+    """The first click on empty space tells you something. The tenth does not."""
+    c, _, replies = stub
+    replies.extend(_frame(available_actions=[1, 6]) for _ in range(3))
+    for _ in range(3):
+        c.act(6, x=0, y=0)
+    assert "NO EFFECT" not in c.status()
+
+
+def test_status_never_raises_because_of_its_own_extras(stub, monkeypatch):
+    """status() is the solver's orientation call; it must not be what breaks."""
+    monkeypatch.setattr(
+        type(stub[0]), "transitions", lambda self: (_ for _ in ()).throw(OSError("gone"))
+    )
+    assert "level" in stub[0].status()
+
+
 def test_pace_reads_the_baselines_off_the_client(paced):
     """A bare `level_pace(ts, baselines)` names something the solver has not got."""
     c, post = paced
