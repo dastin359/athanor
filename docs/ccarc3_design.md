@@ -620,7 +620,42 @@ the response body, and urllib discards it unless you read it off the exception
 before the handle closes. Once surfaced, the actual message — `game <id> not
 found` — pointed straight at the bug in one step.
 
-### 9.5 Only a real agent finds the interface bugs
+### 9.5 Advice that survives contact should become a function
+
+The doctrine started as prose. Three pieces of it turned out to be mechanisable,
+and each became better as code than as instruction:
+
+| doctrine line | became | what it bought |
+|---|---|---|
+| "failure is not refutation unless applicable" | three-valued `Rule` | the solver cannot collapse the cases by accident |
+| "watch for something ticking once per action" | `monotone_rows()` | found `ls20`'s energy bar in one call, unaided |
+| "understand the mechanics" | `predict()` | a testable claim instead of a feeling |
+
+The `monotone_rows()` case is the clearest. As prose it asked the solver to
+notice a subtle statistical pattern across a hundred frames while also playing
+the game. As a function it is one call that returns rows 61 and 62 — the energy
+bar — without being told it existed or what it looked like.
+
+The rule that emerges: **write the doctrine first, try it on real data, and
+promote whatever survives into the toolkit.** Prose that cannot be mechanised is
+usually prose about judgement, which is what the doctrine should be left holding.
+
+### 9.6 The most damaging bug is a false positive in your best signal
+
+§5.4 designates one event as the highest-signal thing in a run: a game-scoped
+mechanic that is *applicable and violated*. That designation is what made a
+false one so expensive.
+
+The ledger labelled level-boundary transitions like any other, so a movement
+rule checked across a boundary saw the avatar teleport and reported exactly that
+event. `"ACTION1 moves the cursor up"` read 7/0 on level 0 and 13/1 on level 1;
+the single violation was the board being swapped wholesale, 1467 cells at once.
+
+The general form: **whatever your system treats as its strongest evidence needs
+the strictest guard against manufacturing it.** A weak signal that misfires is
+noise. A strong signal that misfires sends you somewhere specific and wrong.
+
+### 9.7 Only a real agent finds the interface bugs
 
 Every offline test passed while the harness was unusable, three separate times
 and for three unrelated reasons. The tests were not wrong; they were written by
