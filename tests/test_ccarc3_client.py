@@ -8,6 +8,8 @@ dead is billed but never executed.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from athanor.ccarc3 import ActionRefused, ArcClient, GameInfo
@@ -288,3 +290,91 @@ def test_an_uncapped_client_is_the_default(stub):
     for _ in range(5):
         c.act(1)
     assert c.actions_used == 5
+
+
+# --------------------------------------------------------------------------- #
+# cross-process resumption — what makes the client usable by a CC solver at all
+# --------------------------------------------------------------------------- #
+
+
+def test_a_new_process_resumes_the_same_game(monkeypatch, tmp_path):
+    """A CC solver drives this with one-shot `python -c`, so every action is a
+    new process. Without resumption each one opened a fresh scorecard and wiped
+    the trace, and no run could get past its first action."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+
+    a = ArcClient("g", trace_path=path)
+    a.card_id, a.guid, a.actions_used, a.level = "card-1", "guid-9", 12, 3
+    a.available_actions = ("ACTION1",)
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path)
+    assert b._resumed
+    assert (b.card_id, b.guid, b.actions_used, b.level) == ("card-1", "guid-9", 12, 3)
+    assert b.available_actions == ("ACTION1",)
+
+
+def test_resuming_does_not_open_a_second_scorecard(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    opened = []
+
+    def fake_post(url, payload, key, **kw):
+        opened.append(url)
+        return {"card_id": "new-card"}
+
+    monkeypatch.setattr(client_mod, "_post", fake_post)
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.card_id = "card-1"
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path).open()
+    assert b.card_id == "card-1", "resume must keep the in-flight game"
+    assert not opened, "opening a second scorecard abandons the run"
+
+
+def test_a_resumed_client_does_not_wipe_the_trace(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.actions_used = 1
+    a._save_state()
+    path.write_text('{"i":0,"action":"RESET","frames":[[[1]]],"score":0,"level":0}\n')
+
+    ArcClient("g", trace_path=path)
+    assert path.read_text().strip(), "the trace is the record; resuming must keep it"
+
+
+def test_state_from_a_different_game_is_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("game-a", trace_path=path)
+    a.card_id = "card-1"
+    a._save_state()
+    b = ArcClient("game-b", trace_path=path)
+    assert not b._resumed and b.card_id == ""
+
+
+def test_corrupt_state_falls_back_to_a_fresh_client(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    path.with_suffix(".state.json").write_text("{not json")
+    c = ArcClient("g", trace_path=path)
+    assert not c._resumed
+
+
+def test_closing_clears_the_state_so_the_next_run_starts_clean(stub, tmp_path):
+    c, _, _ = stub
+    c._save_state()
+    assert c.state_path.exists()
+    c.close()
+    assert not c.state_path.exists()
+
+
+def test_state_is_written_after_every_action(stub):
+    c, _, replies = stub
+    replies.append(_frame(levels_completed=1))
+    c.act(1)
+    saved = json.loads(c.state_path.read_text())
+    assert saved["actions_used"] == 1 and saved["level"] == 1

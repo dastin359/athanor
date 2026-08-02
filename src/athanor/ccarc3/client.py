@@ -228,10 +228,94 @@ class ArcClient:
     _opener: Any = field(default=None, repr=False)
     _key: str = field(default="", repr=False)
     _last_advanced: bool = field(default=False, repr=False)
+    _resumed: bool = field(default=False, repr=False)
+
+    @property
+    def state_path(self) -> Path:
+        return Path(self.trace_path).with_suffix(".state.json")
+
+    def _save_state(self) -> None:
+        self.state_path.write_text(
+            json.dumps(
+                {
+                    "game_id": self.game_id,
+                    "card_id": self.card_id,
+                    "guid": self.guid,
+                    "actions_used": self.actions_used,
+                    "level": self.level,
+                    "win_levels": self.win_levels,
+                    "state": self.state,
+                    "available_actions": list(self.available_actions),
+                    "full_resets": self.full_resets,
+                    "wasted_actions": self.wasted_actions,
+                    "cookies": [
+                        {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+                        for c in self._cookiejar()
+                    ],
+                    "gate_last_level": self.gate.last_level if self.gate else 0,
+                    "gate_pending": self.gate.pending_level if self.gate else None,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _cookiejar(self):
+        for h in self._opener.handlers:
+            if isinstance(h, urllib.request.HTTPCookieProcessor):
+                return h.cookiejar
+        return []
+
+    def _restore_state(self) -> bool:
+        """Resume a game left by an earlier process. Returns True if resumed.
+
+        **This is what makes the client usable by a Claude Code solver at all.**
+        An agent drives it with one-shot ``python -c`` commands, so a new process
+        starts for every single action. Without resumption each command built a
+        fresh client, which deleted the trace and opened a brand new scorecard --
+        the game restarted every time and no run could ever get past action one.
+        """
+        if not self.state_path.exists():
+            return False
+        try:
+            saved = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        if saved.get("game_id") != self.game_id:
+            return False
+
+        self.card_id = saved.get("card_id", "")
+        self.guid = saved.get("guid", "")
+        self.actions_used = int(saved.get("actions_used", 0))
+        self.level = int(saved.get("level", 0))
+        self.win_levels = int(saved.get("win_levels", 0))
+        self.state = saved.get("state", "NOT_PLAYED")
+        self.available_actions = tuple(saved.get("available_actions") or ())
+        self.full_resets = int(saved.get("full_resets", 0))
+        self.wasted_actions = int(saved.get("wasted_actions", 0))
+
+        jar = self._cookiejar()
+        for c in saved.get("cookies", []):
+            jar.set_cookie(
+                http.cookiejar.Cookie(
+                    0, c["name"], c["value"], None, False,
+                    c["domain"], True, c["domain"].startswith("."),
+                    c["path"], True, False, None, True, None, None, {},
+                )
+            )
+        if self.gate is not None:
+            self.gate.last_level = int(saved.get("gate_last_level", 0))
+            self.gate.pending_level = saved.get("gate_pending")
+        return True
 
     def __post_init__(self) -> None:
         self._key = _api_key(self.api_key)
         self._opener = new_session()
+        self._writer = TraceWriter(self.trace_path)
+        if self._restore_state():
+            self._resumed = True
+            self._writer._index = self.actions_used
+            return
+
         path = Path(self.trace_path)
         if path.exists():
             # An append-only ledger silently welds runs together and makes
@@ -243,9 +327,17 @@ class ArcClient:
     # -- lifecycle ------------------------------------------------------- #
 
     def open(self) -> "ArcClient":
+        """Open a scorecard, or keep the one a previous process opened.
+
+        Re-opening on resume would abandon the in-flight game and start scoring
+        from zero, which is precisely the bug this class exists to avoid.
+        """
+        if self._resumed and self.card_id:
+            return self
         card = _post(f"{self.root}/api/scorecard/open", {"tags": list(self.tags)},
                      self._key, opener=self._opener)
         self.card_id = card["card_id"]
+        self._save_state()
         return self
 
     def close(self) -> dict[str, Any]:
@@ -263,6 +355,7 @@ class ArcClient:
         if not self.card_id:
             return {}
         card_id, self.card_id = self.card_id, ""
+        self.state_path.unlink(missing_ok=True)
         try:
             return _post(f"{self.root}/api/scorecard/close", {"card_id": card_id},
                          self._key, opener=self._opener)
@@ -376,6 +469,9 @@ class ArcClient:
 
         assert self._writer is not None
         self._writer.append(frame, level=self.level)
+        # Persist after every action: the next action usually arrives in a
+        # different process, and anything not on disk is gone.
+        self._save_state()
         return frame
 
     def transitions(self):
