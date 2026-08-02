@@ -43,21 +43,22 @@ stops early speed from paying for late failure.
 | `cd82-fb555c5d` | 6/6 | 1.108 | 1.000 | **1.000** | completion cap |
 | `sc25-635fd71a` | 6/6 | 1.040 | 1.000 | **1.000** | completion cap |
 | `tr87-cd924810` | 6/6 | 0.947 | 1.000 | **0.947** | efficiency, level 3 |
+| `tn36-ef4dde99` | **6/7** | 0.449 | 0.750 | **0.449** | efficiency — hit its action cap |
 
 | | |
 |---|---|
 | Opus 5, published | **40.68%** |
-| CCARC3, 7 environments won, 18 unplayed scored 0 | **27.79%** |
-| mean over environments actually played | 99.24% |
-| still needed to pass | **3.222 environment-units — about three more full wins** |
+| CCARC3, 8 environments scored, 17 unplayed scored 0 | **29.58%** |
+| mean over environments actually played | 92.45% |
+| still needed to pass | **2.773 environment-units — under three more full wins** |
 
 **Not ahead yet, and the reason is coverage rather than capability.**
 
 | | CCARC3 | Opus 5 |
 |---|---|---|
 | environments scoring ≥99% | **6** | **5** |
-| environments at 0% | 18 (unplayed) | 3 |
-| aggregate | 27.79% | 40.68% |
+| environments at 0% | 17 (unplayed) | 3 |
+| aggregate | 29.58% | 40.68% |
 
 Opus 5's published distribution is five environments at 100%, then 98.8, 77.8,
 58.3, 56.3, 47.6, 47.6, 44.8, 28.6 and a tail down to zero. **It fully clears
@@ -69,6 +70,33 @@ under the completion cap, so the eighteen remaining games do not all have to be
 *wins* to close it: a run that clears four of six levels still scores. What
 cannot be recovered is an environment never attempted, which is exactly what the
 eighteen zeros are.
+
+### `tn36-ef4dde99` — the first partial credit, and the first cap hit
+
+**6 of 7 levels, 631 actions against a 634 cap, RHAE 0.449.** The first run in
+this project not to win, and the first to be stopped by its own budget rather
+than by finishing.
+
+| level | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| ratio | 0.53× | **2.57×** | 0.35× | **1.52×** | 0.70× | **5.62×** | 0.47× |
+| score | 1.15 | 0.15 | 1.15 | 0.43 | 1.15 | 0.03 | 0.00 |
+
+The pattern is alternating, not degrading: levels 0, 2, 4 and 6 were all cleared
+well under baseline while 1, 3 and 5 blew out. Level 5 alone cost 5.62× its
+baseline and scores 0.03 — and carries weight 6 of 28, so it does most of the
+damage on its own.
+
+**It also cost $39.78** — 155 turns, nearly four times the previous most
+expensive run and thirteen times `sb26`, which won eight levels for $3.04. The
+cost model holds (turns × context) but the context grew: this run averaged
+$0.26 a turn against the $0.084–0.121 of the earlier set. **A struggling run is
+not merely slower, it is superlinearly dearer**, because the accumulated
+conversation is what gets re-read every turn.
+
+Partial credit is doing real work here: 0.449 of an environment from a game
+that was never won, worth +1.8 points on the benchmark. Under a
+games-won metric it would have scored zero.
 
 ### The replay question, settled by probing the live scorecard
 
