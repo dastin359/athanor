@@ -250,6 +250,11 @@ client.status()                 # level, state, actions used, baseline
 client.transitions()            # everything recorded so far
 ```
 
+**The game persists across commands.** Each `python -c ...` is a new process,
+and the client resumes the same game, scorecard and action count from disk. You
+do not need to hold one long-running script open, and you must not try to start
+over — importing `session` again continues where you left off.
+
 `client` refuses moves that are known to destroy runs — acting while dead, a
 RESET immediately after a level advance, actions this game does not accept. A
 refusal costs no budget and is telling you something.
