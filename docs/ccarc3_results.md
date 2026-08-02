@@ -298,6 +298,12 @@ holds, the harness is systematically weak on more than half the set. The next
 batch should be drawn from `keyboard_click` games specifically, to confirm or
 kill it.
 
+> **Killed.** `cd82` was re-run in batch 2 and won 6/6 in 121 actions while
+> using six action types. A wide action space is evidently survivable on the
+> very game that produced the hypothesis. What remains true is the *correlation*
+> between wasted actions and failure — see batch 2 — not the explanation offered
+> for it here.
+
 ### What it argues the harness should do
 
 The doctrine already says to trust `available_actions` over the tags. That is
@@ -344,6 +350,62 @@ A game can run above or below baseline throughout — `r11l` never exceeded 0.50
 not. The "24 of 25 finish under 1.0×" half is well-sampled and is what the
 doctrine now teaches. Whether the warning reliably *catches* failures rests on a
 single observation and is not established.
+
+---
+
+## Batch 2 — `cd82` re-run, 2026-08-02 *(batch in progress)*
+
+Drawn from `keyboard_click` games to **test** the wide-action-space hypothesis
+rather than confirm it, since 13 of the 25 public games carry that tag and the
+hypothesis rested on one game. `cd82` itself was re-run as the only paired
+measurement available.
+
+### `cd82-fb555c5d` — **WON 6/6 in 121 actions**, having previously cleared none in 337
+
+| level | actions | baseline | ratio |
+|---|---|---|---|
+| 0 | 24 | 55 | 0.44× |
+| 1 | 8 | 8 | 1.00× |
+| 2 | 42 | 41 | 1.02× |
+| 3 | 14 | 21 | 0.67× |
+| 4 | 16 | 23 | 0.70× |
+| 5 | 16 | 23 | 0.70× |
+| **total** | **120** | **171** | **0.70×** |
+
+Zero deaths, zero wasted actions, zero full resets. 28 mechanics, 8 refutations.
+Level 0 alone had taken **6.13×** its baseline in the losing run; here it took
+0.44×.
+
+**This does not establish that the harness changes caused it, and the run's own
+telemetry is why.** Between the two runs the harness gained
+`effective_actions()`, the pace ratio in `status()`, and the doctrine sections
+describing both. Counting what the winning solver actually executed:
+
+| call | times in 83 tool blocks |
+|---|---|
+| `client.act()` | 91 |
+| `arc.render()` | 64 |
+| `client.status()` | 44 |
+| `arc.png()` | 8 |
+| `arc.diff()` | 6 |
+| **`arc.effective_actions()`** | **2** |
+| `predict`, `Rule`, `verify`, `shortest_path` | 0 |
+
+So the new function was used — twice. That is real but thin, and `status()`
+being read 44 times means the pace line was in front of it constantly without
+any way to tell what it did. Run-to-run variance on this benchmark is also
+uncharacterised: the one estimate available (`ls20` replaying levels 0–5 in
+exactly 369 actions twice) came from **replaying a route already known**, which
+is the lowest-variance case imaginable and says little about a novel
+exploration. A 14× improvement on level 0 is far outside anything variance has
+been shown to produce here, but "far outside" is not a measurement.
+
+The run also carried the pre-§2 doctrine — its workspace was built minutes
+before that correction landed — so batch 2 is not byte-identical across its
+games.
+
+**Sixth consecutive run in which the rule engine, forward model and planner were
+never called.** See §9.8a of the design note.
 
 ### The click space is easier, not harder
 
