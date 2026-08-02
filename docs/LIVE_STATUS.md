@@ -1,10 +1,20 @@
 # CCARC3 live status
 
-_updated 18:17:51_
+_updated 18:20:53_
+
+### r11l-495a7899  (click)
+
+running (last action 56s ago) — level **0/6**, 1/466 actions, 0 deaths
+
+| level | actions | baseline | ratio |
+|---|---|---|---|
+| 0 ← | 1 | 22 | 0.0x |
+
+---
 
 ### ft09-0d8bbf25  (untagged)
 
-running (last action 101s ago) — level **5/6**, 63/416 actions, 0 deaths
+**WON** — level **6/6**, 76/416 actions, 0 deaths
 
 | level | actions | baseline | ratio |
 |---|---|---|---|
@@ -13,9 +23,10 @@ running (last action 101s ago) — level **5/6**, 63/416 actions, 0 deaths
 | 2 | 14 | 23 | 0.6x |
 | 3 | 16 | 28 | 0.6x |
 | 4 | 21 | 65 | 0.3x |
-| 5 ← | 1 | 37 | 0.0x |
+| 5 | 13 | 37 | 0.4x |
+| 6 | 1 | ? | ? |
 
-**cleared 5 level(s): 62 actions vs 171 baseline = 36%**
+**cleared 6 level(s): 75 actions vs 208 baseline = 36%**
 
 ---
 
