@@ -78,6 +78,13 @@ On a real game this returns rows 61 and 62 — the bottom of the frame — where
 colour 11 gives up exactly one cell per action. That is the energy bar, found in
 one call without being told it existed or what it looked like.
 
+**The resource is per level and refills at the boundary.** Measured on a real
+game: the bar holds exactly the same amount at the first frame of every level.
+So running low is not a reason to rush the *game* — it is a reason to stop
+wandering on *this* level. And it is why testing risky things early in a level
+costs least: you have the full budget then, and clearing the level buys a fresh
+one.
+
 A row it returns is a candidate, not a conclusion. Check whether it moves
 *monotonically*: a resource drains one way; a score or a moving object does not.
 

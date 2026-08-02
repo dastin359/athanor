@@ -513,12 +513,27 @@ level's start, where that price is near zero.
 
 **Still open, in the order they would hurt:**
 
-1. **Are levels really independent in state?** Inventory, position conventions
-   or palette may persist across a boundary. §3's eviction policy assumes
-   independence and should not until this is measured. Cheap to check now that
-   a real trace spans levels: compare the first frame of level N against the
-   last of level N-1.
-2. **Does a RESET after GAME_OVER open a new `Card` play row or continue the
+1. ~~**Are levels really independent in state?**~~ **Answered** [LIVE], from a
+   real four-level `ls20` trace:
+
+   - **The board is 64-76% identical across a boundary.** What changes is the
+     playfield; what persists is chrome — panels, borders, the resource display.
+     So a boundary transition is not a total replacement, but the part a spatial
+     rule cares about *is* replaced, and `board_replaced` is still the right
+     guard.
+   - **The per-level resource resets exactly.** Row 61 holds 42 yellow cells at
+     the first frame of every one of levels 0-4, and fewer at each level's last
+     frame. So the energy budget is per level, refilled at the boundary — which
+     is what makes §6.2's "explore early in a level" advice correct rather than
+     merely plausible.
+   - **A new colour appears at level 2** (14, green) and persists thereafter.
+     Levels escalating by introducing roughly one new element is not just an
+     assumption about the benchmark; it is visible in the palette.
+
+   §3's eviction policy assumed independence and is close enough: frames may
+   leave context at a boundary, because the playfield is genuinely new.
+
+2. **Does a RESET after GAME_OVER open a new `Card` play row2. **Does a RESET after GAME_OVER open a new `Card` play row or continue the
    current one?** The scorecard exposes `total_plays`, `actions_by_level` and a
    per-play `levels_completed` list, so this is now directly observable from a
    run that dies at least once — it just has not been read yet.
