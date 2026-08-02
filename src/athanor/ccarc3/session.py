@@ -311,9 +311,14 @@ call:
 gate.acknowledge(
     "what level N established",
     mechanics=["game-scoped beliefs worth carrying forward"],
-    refuted=["things ruled out"],
+    refuted=["tested and found false"],
+    untested=["never exercised — nothing known either way"],
 )
 ```
+
+Keep `refuted` and `untested` apart. Something you never tried is not something
+you disproved, and filing it as a refutation makes you stop asking. This is the
+same distinction `arc.unreached()` exists for.
 
 Carry mechanics, not rules. The next level shares this game's logic but not its
 arrangement, so a concrete rule will often be false there while the idea behind

@@ -81,13 +81,27 @@ class LevelGate:
         *,
         mechanics: list[str] | None = None,
         refuted: list[str] | None = None,
+        untested: list[str] | None = None,
         book: RuleBook | None = None,
     ) -> RuleBook:
         """Record what the finished level established, and clear the gate.
 
-        ``mechanics`` are the game-scoped beliefs worth carrying forward;
-        ``refuted`` the things ruled out, which are cheaper to carry than
-        positive rules and transfer at least as well.
+        Three lists, because there are three states and collapsing any two of
+        them loses the distinction the whole design rests on:
+
+        - ``mechanics`` — game-scoped beliefs worth carrying forward, as priors
+          about what to test first on the next level.
+        - ``refuted`` — tested and found false. Cheaper to carry than positive
+          rules and transfers at least as well.
+        - ``untested`` — never exercised, so nothing is known either way.
+
+        The third exists because a real solver put *"actions that would move
+        into a wall were never tested yet"* into ``refuted``, having nowhere
+        else to put it. That is exactly the confusion ``arc.unreached()`` was
+        written to prevent on ARC-AGI-2: a branch that never ran is not a branch
+        that passed, and a claim never exercised is not a claim disproved.
+        Filing it as a refutation would make the solver stop asking, which is
+        the opposite of what an untested question deserves.
         """
         if self.pending_level is None:
             raise GateRefusal("nothing pending; the gate is not holding anything")
@@ -100,7 +114,9 @@ class LevelGate:
             book.verified.append({"rule": m, "scope": "game", "level": level - 1, "note": summary})
         for r in refuted or []:
             book.refuted.append({"rule": r, "scope": "game", "level": level - 1, "note": summary})
-        if not (mechanics or refuted):
+        for u in untested or []:
+            book.open_questions.append(f"level {level - 1}: UNTESTED — {u}")
+        if not (mechanics or refuted or untested):
             # A level can genuinely teach nothing portable, and saying so is a
             # real answer. It is recorded as an open question rather than
             # silently dropped, so a run that keeps producing them is visible.

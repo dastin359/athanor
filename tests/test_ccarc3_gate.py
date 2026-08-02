@@ -158,3 +158,32 @@ def test_a_client_without_a_gate_is_unaffected(monkeypatch, tmp_path):
     c.act(1)
     c.act(2)  # no gate, no refusal
     assert c.level == 1
+
+
+def test_untested_is_recorded_apart_from_refuted(tmp_path):
+    """A real solver filed "never tested yet" under refuted, having nowhere else.
+
+    Tested-and-false and never-exercised are different states; collapsing them
+    makes a solver stop asking about an open question. Same reason
+    arc.unreached() exists on ARC-AGI-2.
+    """
+    path = tmp_path / "rules.json"
+    g = LevelGate(path)
+    g.observe(1)
+    g.acknowledge(
+        "level 0 done",
+        mechanics=["ACTION1 moves up"],
+        refuted=["ACTION5 is available"],
+        untested=["what happens when moving into a wall"],
+    )
+    book = RuleBook.load(path)
+    assert [r["rule"] for r in book.refuted] == ["ACTION5 is available"]
+    assert any("UNTESTED" in q and "into a wall" in q for q in book.open_questions)
+    assert not any("into a wall" in r["rule"] for r in book.refuted)
+
+
+def test_untested_alone_still_opens_the_gate(tmp_path):
+    g = LevelGate(tmp_path / "rules.json")
+    g.observe(1)
+    g.acknowledge("learned only what I do not know", untested=["everything"])
+    assert not g.held
