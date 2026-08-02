@@ -534,21 +534,30 @@ level's start, where that price is near zero.
    §3's eviction policy assumed independence and is close enough: frames may
    leave context at a boundary, because the playfield is genuinely new.
 
-2. **Partially answered** [LIVE]. Reading the scorecard of a live 5-level run:
+2. ~~**Does a RESET after GAME_OVER open a new `Card` play row?**~~ **Answered
+   [LIVE]. No.** A scripted probe of `r11l-495a7899` died at action 38 having
+   completed level 1. Across the death and the RESET that followed it:
 
-   - `total_plays: 1`. RESET alone does **not** open a new play row -- the run
-     issued three and stayed on one play. Whether a post-GAME_OVER RESET does is
-     still open, and needs a run that actually dies; this one had zero deaths.
-   - **The opening RESET is not billed.** The ledger holds 3 RESETs and 283
-     other actions; the server reports `resets: [2]` and `total_actions: 285`.
-     The RESET that starts the game is free, and every later one costs. §1.3
-     said "RESET is itself a counted action" on the strength of the SDK code --
-     true of subsequent resets, wrong about the first. `max_actions` counts all
-     of them, so the harness cap is conservative by exactly one action.
-   - **`actions_by_level` is cumulative at completion**, not per level:
-     `[17, 76, 143, 192, 275]`. Differencing gives `17, 59, 67, 49, 83`, which
-     matches the per-level counts derived from the trace exactly. The ledger and
-     the server agree, which is worth knowing before trusting either alone.
+   | | before RESET | after RESET |
+   |---|---|---|
+   | `total_plays` | 1 | **1** |
+   | `levels_completed` | — | **[1]** |
+   | `full_reset` on the frame | — | **not set** |
+
+   Three things follow. A play row belongs to a *scorecard*, not to a life, so
+   `Card.scores` and `Card.actions` are per-play and dying inside a play adds no
+   entry. The RESET was a **level** reset — §2.3 replicated on a second game and
+   a different tag. And **the completed level survived the death**, which is the
+   direct confirmation of §2.2's central claim that dying costs progress
+   nothing.
+
+   Also established while probing: deaths are genuinely reachable on some games
+   (38 random clicks sufficed on `r11l`) and apparently not on others — 71
+   random actions each on `cd82`, `ft09` and `sb26` produced none.
+
+   Residual: the scorecard's `states` still read `['GAME_OVER']` after the
+   RESET. One sample, not worth a conclusion — but do not read `states` as the
+   live state.
 
 3. **How is a depleting per-level resource represented?** Confirmed to exist
    [PLAY], and confirmed to vary between games, so the doctrine deliberately

@@ -125,3 +125,36 @@ the whole game is played.
 Still open: whether a post-`GAME_OVER` RESET opens a new scorecard play row.
 Neither run has died, and on `ls20` dying by exhaustion appears impossible, so
 this needs a different game.
+
+---
+
+## Probe — what a death actually costs, 2026-08-02
+
+Scripted, no model. Random legal actions on four games until something died.
+
+| game | tag | actions | outcome |
+|---|---|---|---|
+| `cd82-fb555c5d` | keyboard_click | 71 | no death |
+| `ft09-0d8bbf25` | — | 71 | no death |
+| `r11l-495a7899` | click | 38 | **GAME_OVER**, on level 1 |
+| `sb26-7fbdac44` | keyboard_click | 71 | no death |
+
+`r11l` answers the last open question in the design note. Across the death and
+the RESET that followed: `total_plays` stayed **1**, `levels_completed` stayed
+**[1]**, and `full_reset` was **not set**.
+
+- **A post-`GAME_OVER` RESET does not open a new play row.** A play belongs to a
+  scorecard, not to a life, so `Card.scores` and `Card.actions` are per-play and
+  dying inside one adds no entry.
+- **It is a level reset** — §2.3 replicated on a second game and a different tag.
+- **The completed level survived the death.** This is the direct confirmation of
+  the doctrine's central claim: dying costs no progress, so it is a legitimate
+  experiment.
+
+Deaths are reachable on some games and evidently not on others. `ls20` cycles
+its bar rather than killing; three of four probed games survived 71 random
+actions. So "avoid GAME_OVER" is not merely wrong as a terminal goal — on
+several games it is not even an available failure mode by wandering.
+
+Residual, one sample only: the scorecard's `states` still read `['GAME_OVER']`
+after the RESET. Do not read `states` as the live state.
