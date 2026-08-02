@@ -227,10 +227,11 @@ and 3.44×**, so any threshold in that range separates it identically. Read the
 shape instead — normal is comfortably under 1, and being over it means stop
 executing and go re-explore.
 
-The sharper signal is relative, and `arc.level_pace()` gives it to you free:
+The sharper signal is relative, and `client.pace()` gives it to you free:
 
 ```python
-arc.level_pace(client.transitions(), baselines)   # {0: (17, 22, 0.77), ...}
+client.pace()      # {0: (17, 22, 0.77), 1: (59, 123, 0.48), ...}
+                   # {level: (spent, baseline, ratio)}
 ```
 
 A game may run above or below baseline throughout; a level that runs above *its

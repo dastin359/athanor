@@ -287,6 +287,7 @@ client.reset()                  # start
 client.act(1)                   # ACTION1..5,7 take no arguments
 client.act(6, x=10, y=20)       # ACTION6 is a click; x,y in [0,63]
 client.status()                 # level, state, and pace against this level's baseline
+client.pace()                   # {{level: (spent, baseline, ratio)}} for every level
 client.transitions()            # everything recorded so far
 ```
 

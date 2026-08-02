@@ -220,6 +220,23 @@ def test_pace_is_quiet_while_the_level_is_going_well(paced):
     assert "OVER BASELINE" not in c.status()
 
 
+def test_pace_reads_the_baselines_off_the_client(paced):
+    """A bare `level_pace(ts, baselines)` names something the solver has not got."""
+    c, post = paced
+    for _ in range(4):
+        c.act(1)
+    post.next = {"levels_completed": 1}
+    c.act(1)
+    post.next = {"levels_completed": 1}
+    c.act(1)
+    assert c.pace() == {0: (4, 10, 0.4), 1: (2, 20, 0.1)}
+
+
+def test_pace_without_a_game_info_is_empty_rather_than_wrong(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    assert ArcClient("g", trace_path=tmp_path / "t.jsonl").pace() == {}
+
+
 def test_the_per_level_count_restarts_when_the_level_does(paced):
     """Cumulative actions cannot be compared to a per-level baseline."""
     c, post = paced

@@ -516,6 +516,18 @@ class ArcClient:
 
         return load(self.trace_path)
 
+    def pace(self) -> dict[int, tuple[int, int, float]]:
+        """Per level: ``{level: (spent, baseline, ratio)}``. Costs no actions.
+
+        A method rather than a bare function the solver has to feed baselines
+        into, because the baselines live on ``info`` and an example that says
+        ``level_pace(ts, baselines)`` names something that does not exist in
+        the solver's namespace.
+        """
+        from .rules import level_pace
+
+        return level_pace(self.transitions(), self.info.baseline_actions if self.info else ())
+
     def status(self) -> str:
         """A one-line, honest progress report.
 
