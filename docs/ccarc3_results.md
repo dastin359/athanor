@@ -3,6 +3,29 @@
 Durable log of ARC-AGI-3 runs. Design and findings: `ccarc3_design.md`. How to
 run it: `ccarc3.md`.
 
+## Read this before quoting any number here
+
+**These are public-set scores, and ARC states outright that public-set scores
+are not a measure of progress.** From the ARC-AGI-3 technical report:
+
+> "Because it is impossible to ensure that system designers don't use the
+> public environments as part of their work, and because the public set is
+> materially easier than the private set, **we will never report public set
+> scores of any system on the official leaderboard.** The public set is to be
+> used strictly as a demonstration of what ARC-AGI-3 is – evaluating on it is
+> **emphatically not** a valid measure of progress towards AGI."
+
+They also demonstrate why: *"we are releasing an open-source 'harness' which
+scores 100% on all public environments, **using human replay**."* A recorded
+route replayed on a known environment scores 100%, so any public-set figure is
+uninterpretable without knowing how much prior knowledge went into it.
+
+So everything below is a **harness-development signal** — it tells us whether a
+change helps, on a fixed set, against a fixed reference. It is not a benchmark
+claim and cannot be turned into one. The comparison against Opus 5's published
+public-demo numbers is like-for-like in the sense that both are public-set and
+neither is leaderboard-eligible.
+
 ## Where this stands against the published Opus 5 result
 
 The ARC-AGI-3 leaderboard entry for Claude Opus 5 (24 July 2026) reports
