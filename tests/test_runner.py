@@ -440,3 +440,89 @@ class TestOutcomeCollection:
         assert outcome["accepted"] is False
         assert outcome["iterations_used"] == 1
         assert outcome["score"]["scored"] is False
+
+
+# ---------------------------------------------------------------------------
+# Restartable batches. The host recycles the container when the orchestrating
+# session goes quiet, which can land mid-batch; a relaunch should cost the
+# remaining work, not the whole shard.
+
+
+def _stub_dataset(tmp_path, task_ids):
+    root = tmp_path / "ds" / "data" / "evaluation"
+    root.mkdir(parents=True)
+    grid = {"train": [{"input": [[1]], "output": [[2]]}], "test": [{"input": [[1]], "output": [[2]]}]}
+    for task_id in task_ids:
+        (root / f"{task_id}.json").write_text(json.dumps(grid), encoding="utf-8")
+    return str(tmp_path / "ds")
+
+
+def _spy_on_dispatch(monkeypatch, calls):
+    monkeypatch.setattr(runner, "run_task", lambda *a, **k: calls.append("run") or {"task_id": "x"})
+    monkeypatch.setattr(runner, "resume_task", lambda *a, **k: calls.append("resume") or {"task_id": "x"})
+
+
+def test_overwrite_and_resume_incomplete_are_contradictory(tmp_path):
+    with pytest.raises(ValueError):
+        runner.run_batch(["a"], out_dir=tmp_path, overwrite=True, resume_incomplete=True)
+
+
+def test_resume_incomplete_skips_a_task_that_already_has_a_result(tmp_path, monkeypatch):
+    dataset = _stub_dataset(tmp_path, ["aaa11111"])
+    out_dir = tmp_path / "out"
+    (out_dir / "aaa11111").mkdir(parents=True)
+    (out_dir / "aaa11111" / "result.json").write_text(
+        json.dumps({"task_id": "aaa11111", "score": {"score": 1.0}}), encoding="utf-8"
+    )
+    calls: list[str] = []
+    _spy_on_dispatch(monkeypatch, calls)
+
+    results = runner.run_batch(
+        ["aaa11111"], out_dir=out_dir, dataset_root=dataset,
+        dataset_split="evaluation", resume_incomplete=True,
+    )
+
+    assert calls == []
+    assert results[0]["batch_skipped"] == "result.json already present"
+    assert results[0]["score"]["score"] == 1.0
+
+
+def test_resume_incomplete_resumes_a_workspace_left_without_a_result(tmp_path, monkeypatch):
+    dataset = _stub_dataset(tmp_path, ["bbb22222"])
+    out_dir = tmp_path / "out"
+    (out_dir / "bbb22222" / "workspace").mkdir(parents=True)
+    calls: list[str] = []
+    _spy_on_dispatch(monkeypatch, calls)
+
+    runner.run_batch(
+        ["bbb22222"], out_dir=out_dir, dataset_root=dataset,
+        dataset_split="evaluation", resume_incomplete=True,
+    )
+
+    assert calls == ["resume"]
+
+
+def test_resume_incomplete_still_runs_an_untouched_task(tmp_path, monkeypatch):
+    dataset = _stub_dataset(tmp_path, ["ccc33333"])
+    calls: list[str] = []
+    _spy_on_dispatch(monkeypatch, calls)
+
+    runner.run_batch(
+        ["ccc33333"], out_dir=tmp_path / "out", dataset_root=dataset,
+        dataset_split="evaluation", resume_incomplete=True,
+    )
+
+    assert calls == ["run"]
+
+
+def test_batch_without_the_flag_is_unchanged(tmp_path, monkeypatch):
+    dataset = _stub_dataset(tmp_path, ["ddd44444"])
+    out_dir = tmp_path / "out"
+    (out_dir / "ddd44444").mkdir(parents=True)
+    (out_dir / "ddd44444" / "result.json").write_text(json.dumps({"task_id": "ddd44444"}), encoding="utf-8")
+    calls: list[str] = []
+    _spy_on_dispatch(monkeypatch, calls)
+
+    runner.run_batch(["ddd44444"], out_dir=out_dir, dataset_root=dataset, dataset_split="evaluation")
+
+    assert calls == ["run"]

@@ -540,6 +540,7 @@ def run_batch(
     dataset_split: str = "public_eval",
     event_callback: EventCallback | None = None,
     overwrite: bool = False,
+    resume_incomplete: bool = False,
     on_task_done: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Solve tasks one after another.
@@ -547,20 +548,52 @@ def run_batch(
     Sequential on purpose: Athanor's cost figures assume a batch that shares the
     provider-side prompt cache, and interleaved runs make per-task cost
     attribution unreadable.
+
+    With ``resume_incomplete`` the batch becomes restartable after the process
+    dies under it, which on some hosts it will. A task that already has a
+    ``result.json`` is left alone; a task with a workspace but no result — the
+    shape a killed solver leaves behind — is handed to :func:`resume_task`, which
+    inherits its iteration ledger and spends only the budget that is left. Only
+    genuinely untouched tasks are run from scratch. Relaunching the same shard
+    command therefore costs the remaining work rather than the whole shard.
     """
+    if overwrite and resume_incomplete:
+        raise ValueError("overwrite and resume_incomplete are contradictory: pick one")
+
     results: list[dict[str, Any]] = []
     for index, task in enumerate(tasks, start=1):
         print(f"[{index}/{len(tasks)}] {task}")
         try:
-            record = run_task(
-                task,
-                out_dir=out_dir,
-                config=config,
-                dataset_root=dataset_root,
-                dataset_split=dataset_split,
-                event_callback=event_callback,
-                overwrite=overwrite,
-            )
+            run_dir = None
+            if resume_incomplete:
+                task_id = Path(
+                    resolve_task_path(task=task, split=dataset_split, dataset_root=dataset_root)
+                ).stem
+                run_dir = Path(out_dir).resolve() / task_id
+
+            if run_dir is not None and (run_dir / "result.json").is_file():
+                record = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+                record["batch_skipped"] = "result.json already present"
+                print("  skipped: already complete")
+            elif run_dir is not None and (run_dir / "workspace").is_dir():
+                print("  resuming: workspace present, no result")
+                record = resume_task(
+                    run_dir,
+                    config=config,
+                    dataset_root=dataset_root,
+                    dataset_split=dataset_split,
+                    event_callback=event_callback,
+                )
+            else:
+                record = run_task(
+                    task,
+                    out_dir=out_dir,
+                    config=config,
+                    dataset_root=dataset_root,
+                    dataset_split=dataset_split,
+                    event_callback=event_callback,
+                    overwrite=overwrite,
+                )
         except Exception as exc:  # noqa: BLE001 - one bad task must not end the batch
             record = {"task_id": task, "error": f"{type(exc).__name__}: {exc}"}
         results.append(record)

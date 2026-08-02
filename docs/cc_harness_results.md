@@ -1973,6 +1973,18 @@ cadence is sufficient and costs almost nothing; polling "to check on progress" i
 not the point, and the check need not even be useful. Staying audible is the
 point.
 
+**And assume the mitigation will eventually fail.** Prevention keyed on my own
+behaviour is one missed beat from useless, so `athanor cc batch` now takes
+`--resume-incomplete`: a task with a `result.json` is skipped, a task with a
+workspace but no result — exactly what a killed solver leaves — is handed to the
+existing `resume_task`, and only untouched tasks start from scratch. Relaunching
+the identical shard command after a death costs the remaining work rather than
+the whole shard. This leans on a property athanor already had: **the workspace is
+the state**, so a resumed solver inherits the iteration ledger, the verified
+invariants and `NOTES.md`, and spends only the budget that is left. The recovery
+mechanism was already built; all that was missing was for the batch loop to
+notice it could use it.
+
 *Methodology note: this ledger came out of a fan-out over six evidence angles
 with adversarial falsifiers, rather than a single investigation. The single most
 valuable move was the one that ignored its brief — an agent assigned to inspect

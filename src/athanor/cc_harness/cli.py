@@ -157,6 +157,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
         dataset_split=args.split,
         event_callback=None if args.quiet else default_event_printer,
         overwrite=args.overwrite,
+        resume_incomplete=args.resume_incomplete,
         on_task_done=_print_task_result,
     )
 
@@ -260,6 +261,15 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     batch.add_argument("--tasks", nargs="*", default=[], help="Task ids.")
     batch.add_argument("--all", action="store_true", help="Every task in the split.")
     batch.add_argument("--limit", type=int, default=None, help="Cap the number of tasks.")
+    batch.add_argument(
+        "--resume-incomplete",
+        action="store_true",
+        help=(
+            "Make the batch restartable: skip tasks that already have a result, "
+            "resume tasks whose solver was killed mid-run, and only start the rest. "
+            "Cannot be combined with --overwrite."
+        ),
+    )
     _add_common_arguments(batch)
     batch.set_defaults(func=cmd_batch)
 
