@@ -18,6 +18,7 @@ What the solver owns: which action to take, and why.
 
 from __future__ import annotations
 
+import hashlib
 import http.cookiejar
 import json
 import os
@@ -232,6 +233,18 @@ class ArcClient:
     level's baseline while the doctrine's own control law -- re-explore
     rather than grind -- sat unmechanised and unread.
     """
+    level_tried: int = 0
+    level_dead: int = 0
+    level_repeats: int = 0
+    """Actions on this level that were tried, changed nothing, and were repeats.
+
+    Maintained per action rather than derived, because deriving meant parsing
+    the whole trace inside ``status()`` -- 654 ms on a real 860-action game,
+    called 82 times in one run. See :meth:`_account_effect`.
+    """
+
+    _dead_keys: list[str] = field(default_factory=list, repr=False)
+    _last_frame_key: str = field(default="", repr=False)
     _writer: TraceWriter | None = field(default=None, repr=False)
     _opener: Any = field(default=None, repr=False)
     _key: str = field(default="", repr=False)
@@ -266,6 +279,11 @@ class ArcClient:
                     "wasted_actions": self.wasted_actions,
                     "level_actions": self.level_actions,
                     "last_advanced": self._last_advanced,
+                    "level_tried": self.level_tried,
+                    "level_dead": self.level_dead,
+                    "level_repeats": self.level_repeats,
+                    "dead_keys": self._dead_keys,
+                    "last_frame_key": self._last_frame_key,
                     "cookies": [
                         {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
                         for c in self._cookiejar()
@@ -316,6 +334,11 @@ class ArcClient:
         self.wasted_actions = int(saved.get("wasted_actions", 0))
         self.level_actions = int(saved.get("level_actions", 0))
         self._last_advanced = bool(saved.get("last_advanced", False))
+        self.level_tried = int(saved.get("level_tried", 0))
+        self.level_dead = int(saved.get("level_dead", 0))
+        self.level_repeats = int(saved.get("level_repeats", 0))
+        self._dead_keys = list(saved.get("dead_keys") or [])
+        self._last_frame_key = saved.get("last_frame_key", "")
 
         jar = self._cookiejar()
         for c in saved.get("cookies", []):
@@ -497,6 +520,7 @@ class ArcClient:
             self.level_actions = 0
         if not frame.get("frame"):
             self.wasted_actions += 1
+        self._account_effect(frame, name, payload, board_replaced=self.level != previous_level)
         # Set *after* reading, so the flag describes the state the next call
         # will act in -- which is exactly when the RESET trap fires.
         self._last_advanced = self.level > previous_level
@@ -558,6 +582,44 @@ class ArcClient:
             f"{self._ineffective()}"
         )
 
+    def _account_effect(
+        self, frame: dict[str, Any], name: str, payload: dict[str, Any], *,
+        board_replaced: bool,
+    ) -> None:
+        """Tally, in O(1), whether this action changed anything on this level.
+
+        Counted here rather than derived in :meth:`status` because deriving it
+        meant parsing the whole trace, and on a real 860-action game that is
+        **654 ms** -- against 10 ms to merely read the file, so the cost is
+        decoding 14 MB of frames. ``status()`` is the most-called method in the
+        harness (82 times in one run), which would have added ~54 s of pure
+        parsing to a run for a two-number summary.
+
+        Memoising would not help: every action arrives in a new process (§9.1),
+        so a per-process cache never gets a second hit. Persisted counters are
+        the same shape ``level_actions`` and ``full_resets`` already use.
+        """
+        grids = frame.get("frame") or []
+        if not grids:
+            return                                    # wasted: never reached the game
+        key = hashlib.blake2b(
+            json.dumps(grids[-1], separators=(",", ":")).encode(), digest_size=16
+        ).hexdigest()
+        previous, self._last_frame_key = self._last_frame_key, key
+        if board_replaced or not previous:
+            self.level_tried = self.level_dead = self.level_repeats = 0
+            self._dead_keys = []
+            return
+        self.level_tried += 1
+        if key != previous:
+            return
+        self.level_dead += 1
+        what = f"{name}:{payload.get('x')},{payload.get('y')}" if name == "ACTION6" else name
+        if what in self._dead_keys:
+            self.level_repeats += 1
+        else:
+            self._dead_keys.append(what)
+
     def _ineffective(self) -> str:
         """Report actions that changed nothing on this level. Silent when none.
 
@@ -593,22 +655,10 @@ class ArcClient:
         A repeat is not *always* waste either -- a game with hidden state can
         make a previously-inert action live.
         """
-        try:
-            here = [t for t in self.transitions() if t.level == self.level]
-        except Exception:  # noqa: BLE001 -- status() must never be the thing that fails
+        if not self.level_dead:
             return ""
-        tried = [t for t in here if t.before is not None and not t.board_replaced and not t.wasted]
-        dead = [t for t in tried if not t.changed]
-        if not dead:
-            return ""
-        seen: set[tuple[str, str]] = set()
-        repeats = 0
-        for t in dead:
-            key = (t.action, json.dumps(t.params, sort_keys=True))
-            if key in seen:
-                repeats += 1
-            seen.add(key)
-        note = f"  <- {len(dead)}/{len(tried)} actions on this level changed nothing"
+        dead, tried, repeats = self.level_dead, self.level_tried, self.level_repeats
+        note = f"  <- {dead}/{tried} actions on this level changed nothing"
         if repeats:
             note += f" ({repeats} repeated one you had already seen do nothing)"
         return note

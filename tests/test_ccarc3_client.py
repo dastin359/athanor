@@ -273,12 +273,49 @@ def test_waste_spread_across_a_working_action_is_still_reported(stub):
     assert "repeated" not in s, "distinct coordinates are not a repeat"
 
 
-def test_status_never_raises_because_of_its_own_extras(stub, monkeypatch):
-    """status() is the solver's orientation call; it must not be what breaks."""
-    monkeypatch.setattr(
-        type(stub[0]), "transitions", lambda self: (_ for _ in ()).throw(OSError("gone"))
-    )
-    assert "level" in stub[0].status()
+def test_the_waste_tally_restarts_with_the_level(stub):
+    """It is a per-level figure; carrying it across makes the next level lie."""
+    c, _, replies = stub
+    av = [1]
+    replies.extend([_frame(frame=[[[1]]], available_actions=av),
+                    _frame(frame=[[[1]]], available_actions=av),
+                    _frame(frame=[[[2]]], levels_completed=1, available_actions=av),
+                    _frame(frame=[[[3]]], levels_completed=1, available_actions=av)])
+    c.act(1)
+    c.act(1)                                  # no effect
+    assert c.level_dead == 1
+    c.act(1)                                  # clears the level
+    assert (c.level_dead, c.level_tried) == (0, 0)
+    c.act(1)
+    assert "changed nothing" not in c.status()
+
+
+def test_the_waste_tally_survives_a_new_process(monkeypatch, tmp_path):
+    """Counters live only in memory otherwise, and every action is a new process."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.card_id = "card-1"
+    a.level_tried, a.level_dead, a.level_repeats = 41, 4, 2
+    a._dead_keys, a._last_frame_key = ["ACTION6:1,2"], "abc"
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path)
+    assert (b.level_tried, b.level_dead, b.level_repeats) == (41, 4, 2)
+    assert b._dead_keys == ["ACTION6:1,2"] and b._last_frame_key == "abc"
+    assert "4/41 actions on this level changed nothing" in b.status()
+
+
+def test_status_works_on_a_client_that_has_done_nothing(monkeypatch, tmp_path):
+    """status() is the solver's orientation call, and the first thing it does.
+
+    Its extras must degrade rather than raise: no game info, no baselines, no
+    actions taken, no trace on disk yet.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    s = ArcClient("g", trace_path=tmp_path / "t.jsonl").status()
+    assert "g: level 0" in s
+    assert "on this level" not in s and "changed nothing" not in s
 
 
 def test_pace_reads_the_baselines_off_the_client(paced):
