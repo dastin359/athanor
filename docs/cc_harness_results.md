@@ -3181,3 +3181,57 @@ That ladder no longer has a third rung to climb — **all three tasks now solve 
 `high`**, so there is nothing left in the gain set to escalate. The effort
 experiment will have to draw its failures from elsewhere, and the honest reading
 is that the harness changes got there first.
+
+---
+
+## Two rate-limit windows, and watching the wrong one
+
+Long batches here are bounded by quota, not by anything in the harness. The
+telemetry that reports it is richer than it first appears, and reading it wrong
+is easy in a way worth recording.
+
+Every solver stream carries `rate_limit_event` records. A one-shot probe gets one
+without any batch running:
+
+```bash
+claude -p 'Reply with exactly: OK' --output-format=stream-json --verbose 2>/dev/null \
+  | grep -o '"rate_limit_info":{[^}]*}' | head -1
+```
+
+**There are at least two windows, with different thresholds and wildly different
+consequences:**
+
+| window | warns at | typical reset | cost of exhausting it |
+|---|---|---|---|
+| `five_hour` | `utilization` 0.90 | ~5 h | a pause of an hour or two |
+| `seven_day` | **`utilization` 0.75** | up to ~7 days | **a blackout of up to days** |
+
+The status ladder is `allowed` → `allowed_warning` → `rejected`, and
+`utilization` appears **only once the window crosses its own threshold** — below
+that the field is simply absent. Overage is `rejected` with
+`out_of_credits`, so exhaustion is a hard kill of in-flight solvers rather than a
+slowdown: nine concurrent runs died that way here at 03:19.
+
+**The mistake worth avoiding.** A checker that greps for the most recent
+`rate_limit_info` reports *whichever window last emitted an event*. Since the
+five-hour window emits constantly and the seven-day one stays silent until it
+crosses 0.75, such a checker shows a comfortable five-hour reading for hours
+while the weekly climbs invisibly. That ran here for most of a night, and
+surfaced only when the seven-day window crossed its threshold and began emitting
+on its own.
+
+> **A monitor that reports one member of a set and calls it the state is not a
+> monitor.** The fix is to key readings by `rateLimitType`, keep the most recent
+> of *each*, take the worst status as the overall, and refuse any reading older
+> than a freshness bound — a stale `rejected` from hours ago is as misleading as
+> a stale `allowed`.
+
+Both failure modes were observed here within a few hours: a naive `tail -1`
+across accumulated stream files reported `rejected` long after recovery, and the
+same script's hardcoded directory glob silently excluded four of six live
+experiments while reporting a nineteen-minute-old stream as current.
+
+**Operationally**, the seven-day window is the one to plan around. It warns
+earlier and costs an order of magnitude more to hit, so a batch that would be
+merely delayed by exhausting the five-hour window can lose a day to exhausting
+the weekly. On `allowed_warning`: finish what is in flight, launch nothing new.
