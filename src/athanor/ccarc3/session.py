@@ -109,6 +109,7 @@ client = ArcClient(
     trace_path=HERE / "trace.jsonl",
     info=INFO,
     gate=gate,
+    max_actions={budget},
 )
 client.open()
 

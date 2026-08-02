@@ -206,6 +206,13 @@ class ArcClient:
     tags: tuple[str, ...] = ("ccarc3",)
     info: GameInfo | None = None
     gate: LevelGate | None = None
+    max_actions: int = 0
+    """Hard action cap. 0 means uncapped.
+
+    Enforced here rather than left to the solver's discipline. A cap the solver
+    is merely told about is not a cap, and the failure mode is a run that spends
+    its entire budget executing a plan it should have abandoned.
+    """
 
     card_id: str = ""
     guid: str = ""
@@ -327,6 +334,11 @@ class ArcClient:
         return self._send(action, x=x, y=y)
 
     def _send(self, action: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
+        if self.max_actions and self.actions_used >= self.max_actions:
+            raise ActionRefused(
+                f"action budget exhausted: {self.actions_used}/{self.max_actions}. "
+                f"Reached level {self.level} of {self.win_levels or '?'}."
+            )
         if self.gate is not None:
             self.gate.check()
         name = action_name(action)

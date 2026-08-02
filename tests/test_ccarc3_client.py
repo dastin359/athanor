@@ -266,3 +266,25 @@ def test_a_flat_cap_of_80_would_not_finish_any_real_game():
     """The measured range across the 25 public games is 171..1843."""
     shortest = GameInfo("cd82", baseline_actions=(55, 30, 30, 20, 20, 16))
     assert shortest.baseline_total > 80
+
+
+def test_the_action_budget_is_enforced_not_merely_advertised(stub):
+    """A cap the solver is only told about is not a cap."""
+    c, sent, replies = stub
+    c.max_actions = 2
+    replies.extend([_frame(), _frame()])
+    c.act(1)
+    c.act(2)
+    before = len(sent)
+    with pytest.raises(ActionRefused, match="budget exhausted"):
+        c.act(1)
+    assert len(sent) == before
+
+
+def test_an_uncapped_client_is_the_default(stub):
+    c, _, replies = stub
+    assert c.max_actions == 0
+    replies.extend([_frame() for _ in range(5)])
+    for _ in range(5):
+        c.act(1)
+    assert c.actions_used == 5
