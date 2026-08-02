@@ -32,61 +32,40 @@ run the experiment*. Test lethality early in a level, not at its far end.
 > death is instrumental, not an objective. An agent that fears dying will
 > under-explore, and it will do so exactly where exploring is cheapest.
 
-### 1a. A level may hold a depleting resource, and exhausting it kills you.
+### 1a. A per-action display may or may not be able to kill you. Test it.
 
-Some games give each level a finite budget — energy, time, moves, fuel — and end
-it in `GAME_OVER` when it runs out.
+Many games show something that changes once per action — a bar, a counter, a row
+of tokens, a shape that shrinks. **Do not assume you know what it does.**
 
-**How it is drawn varies from game to game, so do not go hunting for a
-particular widget.** There may be a bar somewhere showing how much health or
-fuel you have left — or a row of tokens that vanish one at a time, or a counter,
-or a shape that shrinks, or nothing visible at all. Those are illustrations, not
-a checklist; treat any of them as a guess to test, never as something you
-already know is there.
+The two possibilities call for opposite play:
 
-What is constant is the *pattern*, and the pattern is what to watch for:
+- **A resource that kills at zero.** Running out is `GAME_OVER`. Wandering is
+  genuinely dangerous and exploration has a hard deadline.
+- **A cycle that simply repeats.** Running out costs nothing. Treating it as
+  lethal makes you rush, skip experiments and waste the exploration budget that
+  every other line here tells you to spend.
 
-- something on the board changes monotonically, once per action, regardless of
-  what you did;
-- and deaths arrive at a consistent action count rather than at a consistent
-  place.
+Measured on `ls20`, the second is what happens: the bar holds 42 cells, drains
+exactly one per action, reads 0, and **refills to 42 automatically** with nothing
+collected and nothing else on the board changing. A clean 43-action cycle, twice
+over, with no death in 120 actions of aimless wandering. A solver that assumed
+lethality would have played that game far too carefully.
 
-That second signal is the reliable one, and it needs no rendering at all. So a
-death has two possible causes, calling for opposite responses:
+So: **find the display, then find out what it does.** `arc.monotone_rows()` finds
+it. To learn whether it kills, let it run out once, early in a level, where a
+death is cheap — that experiment costs almost nothing and its answer changes how
+you play the rest of the game.
+
+If it *does* kill, a death then has two possible causes and they call for
+opposite responses:
 
 - **Contact with something lethal** — you learned where a hazard is. Record it,
   with the location.
-- **Resource exhaustion** — you learned nothing about the board and were
-  probably wandering. Recording a "hazard" here is a false rule that will
-  mislead you for the rest of the run.
+- **Resource exhaustion** — you learned nothing about the board. Recording a
+  "hazard" here is a false rule that will mislead you for the rest of the run.
 
-Before concluding you found a hazard, check *how many actions* you had spent on
-the level. If deaths keep landing near the same count from different places, it
-is the resource, not the board.
-
-**To find its display, use `arc.monotone_rows()`** — rows that change on nearly
-every action whatever you did. The parts of the board that respond to what you
-actually did will not show up; a per-action tick will.
-
-```python
-ts = [t for t in client.transitions()
-      if t.before is not None and not t.board_replaced and not t.wasted]
-arc.monotone_rows((t.before, t.after) for t in ts)
-```
-
-On a real game this returns rows 61 and 62 — the bottom of the frame — where
-colour 11 gives up exactly one cell per action. That is the energy bar, found in
-one call without being told it existed or what it looked like.
-
-**The resource is per level and refills at the boundary.** Measured on a real
-game: the bar holds exactly the same amount at the first frame of every level.
-So running low is not a reason to rush the *game* — it is a reason to stop
-wandering on *this* level. And it is why testing risky things early in a level
-costs least: you have the full budget then, and clearing the level buys a fresh
-one.
-
-A row it returns is a candidate, not a conclusion. Check whether it moves
-*monotonically*: a resource drains one way; a score or a moving object does not.
+Deaths landing at a consistent action *count* rather than a consistent *place*
+mean the resource, not the board.
 
 ## 2. Never make RESET your first action after completing a level.
 

@@ -94,3 +94,34 @@ Everything the harness is for either fired correctly or was never needed:
 - Two deliberate level resets, which the doctrine now describes as a legitimate
   retry rather than only a death recovery.
 - Ledger and server agree exactly on per-level action counts.
+
+---
+
+## Probe — is the `ls20` bar lethal? 2026-08-02
+
+Scripted, no model involved: open a scorecard, wander for 120 actions, watch
+row 61.
+
+**It is not lethal.** The bar holds 42 yellow cells, drains exactly one per
+action, reads 0 at actions 42 and 85, and **refills to 42 automatically** — with
+zero cells changing outside the bar rows at the refill, so nothing was collected
+to cause it. A clean 43-action cycle, twice, no `GAME_OVER` in 120 actions of
+aimless movement.
+
+This corrects the doctrine, which said a depleting per-level resource means
+*"exhausting it kills you"*. That came from an SDK prompt hint
+(`_llm.py:580`, "you GAME_OVER if you run out") which belongs to some other
+game, generalised further than the evidence supported. On `ls20` the display is
+a cycle, and a solver told it was lethal would rush, skip experiments and waste
+the exploration budget the rest of the doctrine tells it to spend.
+
+It also explains the zero deaths across run 1's 370 actions: on this game there
+was nothing to die of by wandering.
+
+The doctrine now says find the display, then find out what it does — letting it
+run out once, early in a level, is a cheap experiment whose answer changes how
+the whole game is played.
+
+Still open: whether a post-`GAME_OVER` RESET opens a new scorecard play row.
+Neither run has died, and on `ls20` dying by exhaustion appears impossible, so
+this needs a different game.
