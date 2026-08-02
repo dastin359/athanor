@@ -448,6 +448,18 @@ def resume_task(
     record = rescore_run(run_dir, dataset_root=dataset_root, dataset_split=dataset_split)
     record["resumed"] = True
     record["resume_run"] = outcome
+    # rescore_run merges the prior record, so the dead launch's `error` rides
+    # along — and a resumed run that accepted and scored is a real result, not an
+    # infrastructure loss. Re-derive the field from *this* launch, keeping the old
+    # text under `previous_error` so the interruption is still on the record.
+    previous_error = record.pop("error", None)
+    if previous_error:
+        record["previous_error"] = previous_error
+    result_message = outcome.get("result_message") or {}
+    if outcome.get("timed_out"):
+        record["error"] = f"wall-clock timeout after {(config or workspace.config).wall_clock_timeout_s:.0f}s"
+    elif result_message.get("is_error"):
+        record["error"] = f"claude reported {result_message.get('subtype')}"
     result_message = outcome.get("result_message") or {}
     if result_message.get("total_cost_usd") is not None:
         record["cost_usd"] = float(record.get("cost_usd") or 0.0) + float(result_message["total_cost_usd"])
