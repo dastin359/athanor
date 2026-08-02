@@ -69,7 +69,13 @@ class LevelGate:
     def observe(self, level: int) -> None:
         """Record the level reported by the latest frame."""
         if level > self.last_level:
-            self.pending_level = level
+            # A boundary already acknowledged has nothing new to record. This is
+            # what makes a *replay* usable: after a full reset the solver
+            # re-crosses every boundary it has already documented, and demanding
+            # a fresh entry at each one would cost a turn apiece to restate what
+            # the rule book already holds. The gate exists to catch knowledge
+            # about to be lost, not to bill for knowledge already kept.
+            self.pending_level = None if level in self.acknowledged else level
         elif level < self.last_level:
             # A full reset rewound the game. Whatever was pending is moot; the
             # rule book keeps what it already learned, which is the point of

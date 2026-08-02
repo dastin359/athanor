@@ -44,6 +44,47 @@ beats clearing three immaculately, every time.
 Put together: get under the baseline, stop optimising once you are, and push as
 deep as the budget allows.
 
+### 0a. Exploration and execution can be separated. Use it when you were slow.
+
+**A RESET issued while the server's action counter is zero — the state
+immediately after a level advance — starts a NEW PLAY.** Measured: the API then
+records a new `guid`, a new `actions` row, and a new `actions_by_level` row.
+Per-level action counts are kept per play and **never summed**, and the
+benchmark scores the *best* play. Your first play's fumbling does not enter
+`a_l` at all; it costs `total_actions`, which is budget, and nothing else.
+
+The games are also **deterministic** — replaying an action sequence reproduces
+the board exactly, patrolling objects included, verified 40 frames out of 40.
+
+So when a level cost you far more than its baseline, you have a second chance
+that the score is happy to take:
+
+```python
+client.restart_for_replay()      # only legal right after a level advance
+```
+
+**Judge it by arithmetic, not by mood.** An environment scores
+`min(completion cap, weighted mean)`. Clear every level and the cap is 1.0, so:
+
+- If your levels came in **under baseline**, your raw score is already at or
+  above 1.0 and the cap is binding. **A replay gains you exactly nothing.**
+  This is the usual case. Do not do it.
+- If overruns dragged your raw score well below 1.0, a replay is worth
+  `1.0 − raw`, which can be half an environment.
+
+Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
+`raw`, `cap` and the per-level breakdown.
+
+**What earns the score is understanding, not the recording.** Replaying your
+own trace verbatim reproduces your own fumbling — the same actions give the
+same result, that is what determinism means. The gain comes from executing the
+route your *rules* now imply, which is work you can only do once you genuinely
+understand the game. If you cannot state a better route than the one you took,
+a replay will not help you.
+
+Budget for it before you start: a replay costs roughly one baseline on top of
+whatever exploration cost.
+
 ---
 
 ## 1. Dying is cheap. Ignorance is expensive.

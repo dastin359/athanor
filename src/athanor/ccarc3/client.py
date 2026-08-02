@@ -486,6 +486,39 @@ class ArcClient:
             )
         return self._send(0)
 
+    def restart_for_replay(self) -> dict[str, Any]:
+        """Start a **new play** of the same game, keeping everything you learned.
+
+        This is the one legitimate use of the RESET that :meth:`reset` refuses.
+        Measured behaviour of the API: a RESET issued while the server's action
+        counter is zero — the state immediately after a level advance — begins a
+        new play with its own ``guid``, its own ``actions`` row and its own
+        ``actions_by_level`` row. Per-level action counts are recorded per play
+        and never summed, and the benchmark scores the *best* play.
+
+        So exploration and execution can be separated. Spend whatever it takes
+        to work the game out, then restart and walk the route you now know. Only
+        the second play's per-level counts are scored; the first play costs you
+        ``total_actions`` — budget — and nothing else.
+
+        **This is not a way to replay a recorded file.** The trace of a fumbling
+        run replayed verbatim reproduces the fumbling. What earns the score is
+        executing the route your *understanding* implies, which is work you can
+        only do once you actually understand the game.
+
+        Refuses unless the counter is at zero, because a RESET anywhere else is
+        a level reset and would silently leave you in the same play.
+        """
+        if not self._last_advanced:
+            raise ActionRefused(
+                "restart_for_replay() only starts a new play when the server's "
+                "action counter is zero, which is the state immediately after a "
+                "level advance. Right now a RESET would be a level reset and you "
+                "would stay in the same play, so the replay would not be scored "
+                "separately. Finish the level you are on first."
+            )
+        return self.reset(force_full=True)
+
     def act(self, action: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
         """Take a game action. ``ACTION6`` needs ``x``/``y`` in ``[0, 63]``."""
         if action == 0:

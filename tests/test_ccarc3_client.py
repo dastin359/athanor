@@ -732,3 +732,33 @@ def test_a_state_file_predating_the_counters_does_not_report_a_false_pace(monkey
     c = ArcClient("g", trace_path=path, info=GameInfo("g", baseline_actions=(10,)))
     assert c.level_actions == 12, "recovered from the trace, not defaulted to 0"
     assert "OVER BASELINE" in c.status()
+
+
+def test_restart_for_replay_starts_a_new_play(stub):
+    """The one legitimate use of the RESET that reset() refuses.
+
+    Measured against the live API: a RESET with the action counter at zero —
+    the state right after a level advance — begins a new play with its own
+    `actions_by_level` row, and the benchmark scores the best play.
+    """
+    c, sent, replies = stub
+    replies.extend([_frame(levels_completed=1), _frame(levels_completed=0, full_reset=True)])
+    c.act(1)                                   # advances a level: counter now zero
+    before = len(sent)
+    c.restart_for_replay()
+    assert len(sent) == before + 1, "the reset must actually be sent"
+    assert c.full_resets == 1
+
+
+def test_restart_for_replay_refuses_when_it_would_only_reset_the_level(stub):
+    """Anywhere but immediately after an advance, this stays in the same play —
+    so the replay would not be scored separately and the actions would be
+    wasted."""
+    c, sent, replies = stub
+    replies.extend([_frame(), _frame()])
+    c.act(1)
+    c.act(1)                                   # counter is not zero now
+    before = len(sent)
+    with pytest.raises(ActionRefused, match="counter is zero"):
+        c.restart_for_replay()
+    assert len(sent) == before, "a refused action must not reach the server"

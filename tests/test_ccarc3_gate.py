@@ -214,3 +214,29 @@ def test_an_acknowledgement_survives_the_process_that_made_it(monkeypatch, tmp_p
     ArcClient("g", trace_path=path, gate=gate2)
     assert not gate2.held, "the next process must not re-refuse a recorded boundary"
     assert gate2.acknowledged == {1: "done"}
+
+
+def test_a_boundary_already_acknowledged_is_not_gated_again():
+    """What makes a replay affordable.
+
+    After a full reset the solver re-crosses every boundary it has already
+    documented. Demanding a fresh rule-book entry at each one would cost a turn
+    apiece to restate what the book already holds — and the gate exists to catch
+    knowledge about to be lost, not to bill for knowledge already kept.
+    """
+    from athanor.ccarc3 import GateRefusal, LevelGate
+
+    gate = LevelGate(rulebook_path="rules.json")
+    gate.observe(1)
+    with pytest.raises(GateRefusal):
+        gate.check()
+    gate.acknowledge("level 0 established the push mechanic")
+    gate.check()
+
+    gate.observe(0)          # full reset for the replay
+    gate.observe(1)          # re-crossing a boundary already recorded
+    gate.check()             # must not raise
+
+    gate.observe(2)          # a boundary never seen before still gates
+    with pytest.raises(GateRefusal):
+        gate.check()

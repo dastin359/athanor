@@ -506,3 +506,13 @@ def test_the_doctrine_states_the_objective_function(ws):
     assert "squared" in doctrine.lower()
     assert "Later levels are worth more" in doctrine
     assert "unfinished level scores 0" in doctrine or "scores 0" in doctrine
+
+
+def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
+    """Not just that it exists — a solver that replays an already-capped run
+    spends a whole baseline for zero score."""
+    d = (ws.root / "DOCTRINE.md").read_text()
+    assert "restart_for_replay()" in d
+    assert "NEW PLAY" in d
+    assert "gains you exactly nothing" in d, "the usual case must be stated"
+    assert "1.0 − raw" in d or "1.0 - raw" in d, "the arithmetic, not a vibe"
