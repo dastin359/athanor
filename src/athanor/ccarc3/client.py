@@ -207,8 +207,29 @@ class ArcClient:
     tags: tuple[str, ...] = ("ccarc3",)
     info: GameInfo | None = None
     gate: LevelGate | None = None
+    level_budget_multiple: float = 0.0
+    """Per-level action cap as a multiple of that level's baseline. 0 disables.
+
+    **This is the official rule, and matching it matters more than it looks.**
+    The ARC-AGI-3 technical report: *"we impose an action budget of five times
+    the human-baseline median action count per level. That is, for a level with
+    a human median of n actions to completion, the agent is terminated after 5n
+    actions."*
+
+    Per **level**, not per game. This harness originally capped only the game
+    total, at 2.0x the summed baseline — which is roughly **40% of the official
+    allowance** and binds in the wrong place. `tn36` was stopped at 634 actions
+    having cleared 6 of 7 levels; the official rule would have allowed up to
+    1585, while separately cutting its one pathological level at 5x rather than
+    letting it run to 5.6x.
+
+    A per-level cap is also the better instrument: it ends the level that is
+    going nowhere instead of letting it consume the budget the *next* level
+    needed.
+    """
+
     max_actions: int = 0
-    """Hard action cap. 0 means uncapped.
+    """Hard action cap across the whole game. 0 means uncapped.
 
     Enforced here rather than left to the solver's discipline. A cap the solver
     is merely told about is not a cap, and the failure mode is a run that spends
@@ -464,6 +485,14 @@ class ArcClient:
     def baseline_here(self) -> int | None:
         return self.info.baseline_for(self.level) if self.info else None
 
+    @property
+    def level_budget(self) -> int:
+        """Actions allowed on the current level, or 0 when uncapped."""
+        base = self.baseline_here
+        if not base or not self.level_budget_multiple:
+            return 0
+        return int(base * self.level_budget_multiple)
+
     def scorecard(self) -> dict[str, Any]:
         return _get(f"{self.root}/api/scorecard/{self.card_id}/{self.game_id}",
                     self._key, opener=self._opener)
@@ -545,6 +574,16 @@ class ArcClient:
             raise ActionRefused(
                 f"action budget exhausted: {self.actions_used}/{self.max_actions}. "
                 f"Reached level {self.level} of {self.win_levels or '?'}."
+            )
+        level_cap = self.level_budget
+        if level_cap and self.level_actions >= level_cap:
+            raise ActionRefused(
+                f"per-level action budget exhausted: {self.level_actions}/{level_cap} "
+                f"on level {self.level} (baseline {self.baseline_here}, "
+                f"{self.level_budget_multiple:g}x). This is the official ARC-AGI-3 "
+                f"rule -- an agent is terminated after {self.level_budget_multiple:g}n "
+                f"actions on a level. Nothing further can be scored on this level, so "
+                f"the environment is over."
             )
         if self.gate is not None:
             self.gate.check()
@@ -643,7 +682,10 @@ class ArcClient:
         base = self.baseline_here
         if base:
             ratio = self.level_actions / base
-            facts.append(f"[{self.level_actions}/{base} on this level = {ratio:.1f}x]")
+            cap_note = f" of {self.level_budget} allowed" if self.level_budget else ""
+            facts.append(
+                f"[{self.level_actions}/{base} on this level = {ratio:.1f}x{cap_note}]"
+            )
             # 1.0, not the 2.0 first shipped here. Over 26 level-attempts, 24 of
             # 25 cleared levels finished at or under 0.92x and the median was
             # 0.52x, so crossing 1.0 is already the unusual case. No cutpoint in

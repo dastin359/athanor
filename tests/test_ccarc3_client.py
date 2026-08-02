@@ -762,3 +762,62 @@ def test_restart_for_replay_refuses_when_it_would_only_reset_the_level(stub):
     with pytest.raises(ActionRefused, match="counter is zero"):
         c.restart_for_replay()
     assert len(sent) == before, "a refused action must not reach the server"
+
+
+def test_the_per_level_budget_matches_the_official_rule(monkeypatch, tmp_path):
+    """ARC: "for a level with a human median of n actions to completion, the
+    agent is terminated after 5n actions." Per LEVEL, not per game."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+
+    def fake_post(url, payload, key, **kw):
+        if url.endswith("/scorecard/open"):
+            return {"card_id": "c"}
+        r = _frame()
+        r["action_input"] = {"id": 1}
+        return r
+
+    monkeypatch.setattr(client_mod, "_post", fake_post)
+    c = ArcClient("g", trace_path=tmp_path / "t.jsonl",
+                  info=GameInfo("g", baseline_actions=(10, 40)),
+                  level_budget_multiple=5.0).open()
+    assert c.level_budget == 50, "5 x the baseline for level 0"
+    for _ in range(50):
+        c.act(1)
+    with pytest.raises(ActionRefused, match="per-level action budget exhausted"):
+        c.act(1)
+
+
+def test_the_per_level_budget_follows_the_level(monkeypatch, tmp_path):
+    """Each level gets its own allowance — that is the point of a per-level cap.
+
+    A per-*game* cap lets one pathological level consume what the next level
+    needed. `tn36` spent 309 actions on a level with a 55 baseline (5.6x) and
+    then hit the game cap two levels later.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    state = {"level": 0}
+
+    def fake_post(url, payload, key, **kw):
+        if url.endswith("/scorecard/open"):
+            return {"card_id": "c"}
+        r = _frame(levels_completed=state["level"])
+        r["action_input"] = {"id": 1}
+        return r
+
+    monkeypatch.setattr(client_mod, "_post", fake_post)
+    c = ArcClient("g", trace_path=tmp_path / "t.jsonl",
+                  info=GameInfo("g", baseline_actions=(10, 40)),
+                  level_budget_multiple=5.0).open()
+    for _ in range(30):
+        c.act(1)
+    state["level"] = 1                     # advance
+    c.act(1)
+    assert c.level_actions == 0, "the tally restarts with the level"
+    assert c.level_budget == 200, "and so does the allowance: 5 x 40"
+
+
+def test_no_per_level_budget_when_the_multiple_is_zero(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    c = ArcClient("g", trace_path=tmp_path / "t.jsonl",
+                  info=GameInfo("g", baseline_actions=(10,)))
+    assert c.level_budget == 0

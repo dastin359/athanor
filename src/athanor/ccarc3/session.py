@@ -59,6 +59,14 @@ class Ccarc3Config:
     out_dir: Path = Path("runs/ccarc3")
     model: str = DEFAULT_MODEL
     effort: str = DEFAULT_EFFORT
+    level_budget_multiple: float = 5.0
+    """Per-level cap as a multiple of that level's baseline — **the official rule**.
+
+    ARC terminates an agent after 5n actions on a level with baseline n. Kept as
+    the default so runs here are comparable to the published evaluation rather
+    than to an arbitrary local choice.
+    """
+
     budget_multiple: float = 4.0
     """Action cap as a multiple of the game's published baseline (§2.6).
 
@@ -149,6 +157,7 @@ client = ArcClient(
     info=INFO,
     gate=gate,
     max_actions={budget},
+    level_budget_multiple={level_budget_multiple!r},
 )
 client.open()
 
@@ -203,6 +212,7 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
             tags=tuple(info.tags),
             baseline=tuple(info.baseline_actions),
             budget=budget,
+            level_budget_multiple=config.level_budget_multiple,
         ),
         encoding="utf-8",
     )
