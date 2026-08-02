@@ -41,6 +41,8 @@ __all__ = [
     "diff",
     "block_size",
     "logical",
+    "collapse",
+    "cell_boundaries",
     "objects",
 ]
 
@@ -129,14 +131,85 @@ def block_size(grid: Sequence[Sequence[int]] | np.ndarray) -> int:
 
 
 def logical(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
-    """Collapse a block-rendered grid to its logical board.
+    """Collapse a block-rendered grid to its logical board, losslessly.
 
-    Idempotent on grids that are already logical, since :func:`block_size`
-    falls back to 1.
+    Exact and safe: it only divides by a factor :func:`block_size` has proved,
+    and is idempotent on grids that are already logical.
+
+    **It is usually not the function you want on a real frame.** ARC-AGI-3
+    renders into a fixed 64x64 viewport, and a board whose side does not divide
+    64 is scaled non-uniformly -- a 10-wide board gives cells 6 or 7 pixels
+    wide, so no integer factor holds and this correctly refuses to claim one,
+    returning a barely-reduced grid. Use :func:`collapse` there.
     """
     arr = as_grid(grid)
     k = block_size(arr)
     return arr if k == 1 else arr[::k, ::k].copy()
+
+
+def collapse(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
+    """Collapse runs of identical adjacent rows and columns.
+
+    **This preserves structure and destroys position.** It is not a downscale
+    and the result is not the logical board. Measured on the local bench, one
+    frame of a 10x10 game goes 64x64 -> 32x32 under :func:`logical` and
+    64x64 -> **5x5** here: every band of identical background rows between the
+    two sprites merges into a single row, however wide it was.
+
+    So it answers "what objects are there and how are they arranged relative to
+    one another" cheaply, and answers "where is the avatar" wrongly. For the
+    logical board with its metric intact, recover the cell grid across a whole
+    trace with :func:`cell_boundaries` and index into the raw frame.
+    """
+    arr = as_grid(grid)
+    if arr.size == 0:
+        return arr
+    keep_rows = np.ones(arr.shape[0], dtype=bool)
+    keep_rows[1:] = (arr[1:] != arr[:-1]).any(axis=1)
+    arr = arr[keep_rows]
+    keep_cols = np.ones(arr.shape[1], dtype=bool)
+    keep_cols[1:] = (arr[:, 1:] != arr[:, :-1]).any(axis=0)
+    return arr[:, keep_cols].copy()
+
+
+def cell_boundaries(
+    grids: Iterable[Sequence[Sequence[int]] | np.ndarray],
+) -> tuple[list[int], list[int]]:
+    """Recover the render's cell grid by pooling boundaries across many frames.
+
+    Returns ``(row_starts, col_starts)`` into the raw frame.
+
+    Single-frame inference cannot do this. ARC-AGI-3 scales a board into a fixed
+    64x64 viewport, so a 10-wide board gives cells of 6 and 7 pixels -- no
+    integer factor for :func:`block_size` to find -- and any one frame only
+    reveals the boundaries where its own contents happen to change colour. A
+    board that is mostly empty reveals almost none.
+
+    Pooling fixes it. Across a trace, sprites move and occupy different cells,
+    so the union of observed boundaries converges on the true grid. This is why
+    it takes an iterable of grids and not a grid: the extra frames are the whole
+    mechanism, and calling it on one frame will usually under-report.
+
+    Boundaries only ever appear where the raw pixels change, so the result is
+    always a subset of the true cell grid -- it under-reports rather than
+    inventing splits. Cross-check ``len(row_starts)`` against a board size you
+    have independent reason to believe before trusting it as complete.
+    """
+    rows: set[int] = {0}
+    cols: set[int] = {0}
+    height = width = 0
+    for g in grids:
+        arr = as_grid(g)
+        if arr.size == 0:
+            continue
+        height, width = arr.shape
+        changed_rows = (arr[1:] != arr[:-1]).any(axis=1)
+        rows.update(int(i) + 1 for i in np.nonzero(changed_rows)[0])
+        changed_cols = (arr[:, 1:] != arr[:, :-1]).any(axis=0)
+        cols.update(int(i) + 1 for i in np.nonzero(changed_cols)[0])
+    if not height:
+        return [], []
+    return sorted(r for r in rows if r < height), sorted(c for c in cols if c < width)
 
 
 @dataclass(frozen=True)

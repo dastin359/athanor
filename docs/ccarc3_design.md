@@ -106,13 +106,48 @@ Two details:
   game's RESETs and re-explorations all draw on one pool. [PLAY] confirms some
   public-set games genuinely need hundreds of actions across all levels.
 
-**[DESIGN] Set `MAX_ACTIONS = 1000`** — not to buy headroom, but so the counter
-stops being what ends a run. The real budget is then explicit and ours
-(wall-clock, tokens), and the action count becomes a *measured* quantity rather
-than a guessed cap. This is the direct lesson from ARC-AGI-2, where the
-iteration budget turned out to be inert (38 of 45 runs used 1 of 8) because the
-binding constraint was somewhere else entirely. Log `action_counter` per game
-and report it honestly — `Card.actions` is a scorecard-visible metric.
+**[DESIGN] Do not set a global constant at all — derive it per game.** See §2.6:
+the API publishes a per-level baseline action count for every game, so the cap
+is a multiple of a known quantity rather than a guess. Log `action_counter` per
+game and report it honestly — `Card.actions` is a scorecard-visible metric.
+
+This supersedes an earlier recommendation here of a flat `MAX_ACTIONS = 1000`.
+That number was reasoned from the SDK's own template spread (20 to 400) with no
+knowledge of real game lengths, and §2.6 shows it would truncate 5 of the 25
+public games outright. The reasoning behind it survives — a guessed cap must not
+be the thing that ends a run, which is the direct lesson from ARC-AGI-2's inert
+iteration budget (38 of 45 runs used 1 of 8) — but the number was wrong.
+
+### 2.6 The API publishes per-level baselines and action-type tags [SDK]
+
+`GET /api/games` returns, for each of the **25** public games, a `baseline_actions`
+list — one entry per level — and usually a `tags` field. Measured:
+
+| | min | median | max |
+|---|---|---|---|
+| levels per game | 6 | 7 | 10 |
+| baseline actions per game | 171 | 638 | **1843** |
+
+Two things follow immediately.
+
+**The stock `MAX_ACTIONS = 80` is not merely conservative, it is unusable.** The
+*shortest* game in the set needs 171 baseline actions. Several individual levels
+exceed 80 on their own, and `dc22-fdcac232` has a single level with a baseline of
+**578**. An 80-action agent is not playing these games; it is sampling their
+opening moves. This is the operator's play experience confirmed with numbers.
+
+**`baseline_actions` is a planning signal, not just a budget.** It is per level
+and known before you start, so it says roughly how long a level *should* take
+when you already understand it. That gives a control law the solver otherwise
+lacks: **at a large multiple of the level's baseline, the working hypothesis is
+probably wrong — stop grinding and go re-explore.** Without it, a solver has no
+way to distinguish "this level is long" from "I have misunderstood it", and will
+happily burn a thousand actions executing a wrong plan.
+
+**`tags` prunes the action space for free.** Of 25 games: 13 `keyboard_click`,
+7 `click`, 4 `keyboard`, 1 untagged. A `click` game is telling you `ACTION6(x,y)`
+is what matters; a `keyboard` game is telling you it is not. Discovering that by
+experiment costs actions that the tag gives away.
 
 ### 2.2 Retry economics: score is best-of, actions are cumulative
 
@@ -196,6 +231,24 @@ That resolves the residual question outright: **`full_reset` on the frame is the
 reliable discriminator** between a level restart and a game restart. There is
 also an `ONLY_RESET_LEVELS` environment switch, so the behaviour is deployment
 configurable — which is presumably why the public games behave as observed.
+
+**But there is a trap in that `elif`, and it is expensive.** `_action_count` is
+zeroed when a level advances. So a RESET issued as the *very next action after
+completing a level* meets `_action_count == 0` and takes the `full_reset()`
+branch — scoring back to zero, back to level 0, whole game discarded. Every
+other RESET at that same moment in the game does a harmless level reset.
+
+The condition is invisible from the outside: nothing in `FrameData` exposes
+`_action_count`, so the solver cannot query it. It can only be inferred ("did I
+just advance a level?") or read back after the fact from `full_reset`.
+
+Found by the local bench, which lost a completed level to it before the cause
+was clear. Two consequences:
+
+- **Doctrine: never make RESET the first action after a level advance.** If a
+  level reset is wanted at that moment, take any other action first.
+- **`full_reset` must be checked on every frame, not just at startup.** It is the
+  only signal that the run just lost its progress.
 
 ### 2.4 Actions issued after a death are silently wasted [SDK]
 

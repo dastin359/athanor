@@ -21,6 +21,8 @@ from athanor.ccarc3 import (
     action_name,
     as_grid,
     block_size,
+    cell_boundaries,
+    collapse,
     diff,
     infer_levels,
     load,
@@ -96,6 +98,43 @@ def test_block_size_does_not_claim_a_factor_that_fails_anywhere():
     rendered = np.kron(np.array([[1, 2], [3, 4]]), np.ones((16, 16), dtype=int))
     rendered[0, 0] = 7  # one cell breaks the 16x16 uniformity
     assert block_size(rendered) != 16
+
+
+def test_collapse_handles_scaling_that_has_no_integer_factor():
+    """A 10-cell board in a 64-px viewport has no common factor; logical() stalls."""
+    board = np.array([[1, 0], [0, 2]])
+    # 6 and 7 pixel cells, as the real renderer produces.
+    rendered = np.repeat(np.repeat(board, 6, axis=0), 7, axis=1)
+    assert block_size(rendered) == 1  # nothing exact to find
+    assert np.array_equal(logical(rendered), rendered)  # so logical is a no-op
+    assert np.array_equal(collapse(rendered), board)  # collapse still recovers it
+
+
+def test_collapse_merges_identical_adjacent_bands_and_loses_position():
+    """Documented, deliberate: structure survives, metric position does not."""
+    sparse = np.zeros((9, 9), dtype=int)
+    sparse[1, 1] = 2
+    sparse[7, 7] = 3
+    out = collapse(sparse)
+    assert out.shape == (5, 5)  # not 9x9 -- the empty bands merged
+    assert (out == 2).sum() == 1 and (out == 3).sum() == 1
+
+
+def test_cell_boundaries_needs_many_frames_and_never_invents_splits():
+    board_a = np.zeros((12, 12), dtype=int)
+    board_a[0:6, 0:6] = 1
+    board_b = np.zeros((12, 12), dtype=int)
+    board_b[6:12, 6:12] = 1
+
+    one = cell_boundaries([board_a])
+    both = cell_boundaries([board_a, board_b])
+    assert len(both[0]) >= len(one[0])  # pooling only ever adds boundaries
+    assert all(0 <= r < 12 for r in both[0])
+    assert both[0][0] == 0
+
+
+def test_cell_boundaries_on_nothing_is_empty():
+    assert cell_boundaries([]) == ([], [])
 
 
 def test_objects_finds_components_and_infers_background():
