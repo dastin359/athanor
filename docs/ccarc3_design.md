@@ -715,10 +715,18 @@ right one when a rule *is* worth checking. But it is no longer the centre of
 gravity, and presenting it as such sent the solver's attention to the wrong
 place.
 
-The general lesson is cheap to apply and was available all along: **grep the
-trace for your own API**. An abstraction with zero uses is a design error, not a
-solver error — the same shape as ARC-AGI-2's finding that the iteration budget
-was inert because `check()` was free.
+The general lesson is cheap to apply and was available all along: **check the
+run for uses of your own API**. An abstraction with zero uses is a design error,
+not a solver error — the same shape as ARC-AGI-2's finding that the iteration
+budget was inert because `check()` was free.
+
+> **Do not do it by grepping the stream, which is what this section originally
+> advised.** The stream carries tool *results*, so a single `Read DOCTRINE.md`
+> echoes every example in the doctrine back into it — `verify(` greps as 65 hits
+> across five runs and is really zero. Parse `tool_use` blocks and read only
+> their inputs. §9.8a has the method and the numbers at n=5, including the part
+> this section could not see from one run: the planner built in response to the
+> hand-rolled BFS below was never adopted either.
 
 ### 9.8 Only a real agent finds the interface bugs
 
