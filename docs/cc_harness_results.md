@@ -3235,3 +3235,72 @@ experiments while reporting a nineteen-minute-old stream as current.
 earlier and costs an order of magnitude more to hit, so a batch that would be
 merely delayed by exhausting the five-hour window can lose a day to exhausting
 the weekly. On `allowed_warning`: finish what is in flight, launch nothing new.
+
+---
+
+## Opus 5, stratified: 95.3% estimated, and 20/20 on the tasks the baseline fails
+
+Both strata are complete. Model `opus` (Opus 5), effort `high`, commit `d5a2abf`.
+The strata are the CoT-4.8-high baseline's own outcomes, which is the one
+partition of the split available without inventing a difficulty measure.
+
+```
+HARD stratum — the 35 tasks the baseline FAILS.  Sampled 20.   20.00/20 = 100.0%
+EASY stratum — the 85 tasks the baseline SOLVES. Sampled 15.   14.00/15 =  93.3%
+                                                 one miss: 3e6067c3
+```
+
+**Paired against Opus 4.8 on the identical 20 hard tasks**, same harness commit,
+same effort — the 4.8 numbers were already on disk from Arm A:
+
+```
+Opus 5   20.00        Opus 4.8   15.50        +4.50
+  5545f144  0.00 -> 1.00      e12f9a14  0.00 -> 1.00
+  291dc1e1  0.00 -> 1.00      7b80bb43  0.00 -> 1.00
+  21897d95  0.50 -> 1.00
+```
+
+Five tasks recovered, none lost. This is the cleanest comparison in the project:
+same tasks, same harness, same effort, one variable.
+
+### The stratified estimate
+
+```
+hard  1.0000 x 35 = 35.00      (sampled 20 of 35)
+easy  0.9333 x 85 = 79.33      (sampled 15 of 85)
+                   ------
+                   114.33/120 = 95.3%
+```
+
+| | points | rate |
+|---|---|---|
+| CoT-4.8-high baseline | 92.33/120 | 76.9% |
+| CCARC + Opus 4.8 *(projected)* | 108.33/120 | 90.3% |
+| **CCARC + Opus 5 *(estimated)*** | **114.33/120** | **95.3%** |
+
+### What this number is not
+
+**The confidence interval is wide.** The easy stratum is 14/15, se ≈ 0.064, and
+because it carries 85 of the 120 tasks its uncertainty dominates: ±1.96 se spans
+an estimate of **86.3% to 100.0%**. Fifteen tasks is not enough to pin the term
+that does most of the work, and the honest reading of 95.3% is "somewhere in the
+high eighties to high nineties".
+
+**A survivorship check, because 100% on a stratum demands one.** The hard sample
+was drawn from Arm A tasks *not already run under Opus 5*, which could have
+excluded known failures and manufactured the perfect score. It did the opposite:
+of the 15 excluded, **14 had been solved** and one (`581f7754`) had never been
+attempted under Opus 5. The exclusion removed successes, not failures. Caveat on
+the caveat: that tally counts tonight's `harness_v2` runs, so `9bbf930d` reads as
+solved when its pre-tonight score was 0.00.
+
+**`581f7754` is the one gap** — an Arm A task never run under Opus 5, currently
+0.50 under 4.8. It should be run to close the hard stratum honestly, and is not
+being launched now because the seven-day quota window is in `allowed_warning`.
+
+**Neither projection is a measurement.** Both the 90.3% and the 95.3% reweight
+sampled strata onto the full split, and both assume the sampled tasks represent
+their stratum. The 4.8 figure additionally assumes zero regression across all 85
+easy tasks, which now has one counterexample (`4e34c42c`, 0.50) and one more here
+(`3e6067c3`, 0.00). **The regression term is the weakest part of both numbers**,
+and it is the cheapest to improve: 68 easy-stratum tasks remain unsampled.
