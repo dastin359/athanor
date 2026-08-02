@@ -6,8 +6,15 @@ run it: `ccarc3.md`.
 ## Where this stands against the published Opus 5 result
 
 The ARC-AGI-3 leaderboard entry for Claude Opus 5 (24 July 2026) reports
-**30.16%**, at High reasoning effort, on the **public demo set of 25
-environments**.
+**40.68%**, at High reasoning effort, on the **public demo set of 25
+environments** — the unweighted mean of its 25 per-environment scores
+(1016.9 / 25 = 40.676%).
+
+> An earlier draft of this section said 30.16%, taken from a summary of the
+> results page rather than from the per-environment values. The correct figure
+> is 40.68%, and the gap it implies is three times larger. Recorded rather than
+> quietly corrected: a number lifted from a summariser is not a measurement, and
+> this one set the project's target for several hours.
 
 **The metric is not "games finished".** It is *Relative Human Action
 Efficiency*, implemented in `athanor.ccarc3.scoring` and checked against the
@@ -39,13 +46,29 @@ stops early speed from paying for late failure.
 
 | | |
 |---|---|
-| Opus 5, published | **30.16%** |
+| Opus 5, published | **40.68%** |
 | CCARC3, 7 environments won, 18 unplayed scored 0 | **27.79%** |
 | mean over environments actually played | 99.24% |
-| still needed to pass | **0.593 environment-units — under one more win** |
+| still needed to pass | **3.222 environment-units — about three more full wins** |
 
-**Not ahead yet.** Seven of seven attempted are essentially perfect; eighteen
-environments have never been played and an unplayed environment scores zero.
+**Not ahead yet, and the reason is coverage rather than capability.**
+
+| | CCARC3 | Opus 5 |
+|---|---|---|
+| environments scoring ≥99% | **6** | **5** |
+| environments at 0% | 18 (unplayed) | 3 |
+| aggregate | 27.79% | 40.68% |
+
+Opus 5's published distribution is five environments at 100%, then 98.8, 77.8,
+58.3, 56.3, 47.6, 47.6, 44.8, 28.6 and a tail down to zero. **It fully clears
+fewer environments than this harness does** and earns the rest of its total on
+partial progress — levels cleared in games it did not finish.
+
+That is the shape of the deficit. RHAE gives partial credit for levels cleared
+under the completion cap, so the eighteen remaining games do not all have to be
+*wins* to close it: a run that clears four of six levels still scores. What
+cannot be recovered is an environment never attempted, which is exactly what the
+eighteen zeros are.
 
 ### What the rubric says about where the remaining margin is
 
@@ -67,6 +90,16 @@ A new environment is worth **nineteen times** more than repairing the worst
 level in an existing win. That is why `scratchpad/batch6.py` plays the remaining
 eighteen cheapest-baseline-first: every environment is worth the same 1/25, a
 run costs turns × roughly $0.10, and baselines span 317 to 1843.
+
+**One qualification the corrected Opus 5 distribution adds.** "RHAE has
+collapsed into a count of environments finished" is true of *this harness's
+results so far*, not of the rubric. Opus 5 earns most of its 40.68% from
+environments it never finished — 98.8, 77.8, 58.3, 56.3, 47.6 — because the
+completion cap pays for levels cleared, not only for games won. Every run here
+has so far been all-or-nothing, and the one that was nothing (`cd82` first
+attempt, 0 of 6 levels) scored a true zero. A run that stalls on level 5 of 8
+is worth roughly 0.4 of an environment, so **a game that looks unwinnable is
+still worth playing to its budget rather than abandoned.**
 
 ### Caveats any published comparison must carry
 
