@@ -62,8 +62,9 @@ Colours are **0-15 (sixteen)**, not ARC-AGI-2's ten.
 ### 1.3 The action space
 
 `RESET`, `ACTION1`-`ACTION5`, `ACTION7` are parameterless; `ACTION6` carries
-`x, y` with `Field(ge=0, le=63)`. `RESET` is itself a counted action, and
-`do_action_request` attaches `card_id` to it.
+`x, y` with `Field(ge=0, le=63)`. `do_action_request` attaches `card_id` to `RESET`. The SDK's code reads as
+though every RESET is a counted action; live, the *opening* one is free and
+later ones are billed (§7.2).
 
 ### 1.4 Recording
 
@@ -533,10 +534,22 @@ level's start, where that price is near zero.
    §3's eviction policy assumed independence and is close enough: frames may
    leave context at a boundary, because the playfield is genuinely new.
 
-2. **Does a RESET after GAME_OVER open a new `Card` play row2. **Does a RESET after GAME_OVER open a new `Card` play row or continue the
-   current one?** The scorecard exposes `total_plays`, `actions_by_level` and a
-   per-play `levels_completed` list, so this is now directly observable from a
-   run that dies at least once — it just has not been read yet.
+2. **Partially answered** [LIVE]. Reading the scorecard of a live 5-level run:
+
+   - `total_plays: 1`. RESET alone does **not** open a new play row -- the run
+     issued three and stayed on one play. Whether a post-GAME_OVER RESET does is
+     still open, and needs a run that actually dies; this one had zero deaths.
+   - **The opening RESET is not billed.** The ledger holds 3 RESETs and 283
+     other actions; the server reports `resets: [2]` and `total_actions: 285`.
+     The RESET that starts the game is free, and every later one costs. §1.3
+     said "RESET is itself a counted action" on the strength of the SDK code --
+     true of subsequent resets, wrong about the first. `max_actions` counts all
+     of them, so the harness cap is conservative by exactly one action.
+   - **`actions_by_level` is cumulative at completion**, not per level:
+     `[17, 76, 143, 192, 275]`. Differencing gives `17, 59, 67, 49, 83`, which
+     matches the per-level counts derived from the trace exactly. The ledger and
+     the server agree, which is worth knowing before trusting either alone.
+
 3. **How is a depleting per-level resource represented?** Confirmed to exist
    [PLAY], and confirmed to vary between games, so the doctrine deliberately
    describes the *pattern* (something changing monotonically per action; deaths

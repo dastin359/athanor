@@ -101,6 +101,16 @@ refusal, it just saved the run.
 Check `full_reset` on every frame, not just at startup. It is the only signal
 that you have lost your progress.
 
+### 2a. A level reset is a cheap, legitimate retry.
+
+Resetting mid-level costs one action and restores the level. It does not open a
+new play or touch your score, and it is not only for recovering from death — a
+real run used two level resets with zero deaths, simply to re-approach a level
+better once it understood it. If your route through a level was wasteful, doing
+it again knowing the answer can cost fewer actions than continuing to improvise.
+
+The opening RESET that starts the game is free. Every later one is billed.
+
 ## 3. Do not act while dead.
 
 While the state is `GAME_OVER` or `WIN`, every non-RESET action is discarded
