@@ -2610,3 +2610,42 @@ as idleness, a run label read as an ablation, and now a result file read as
 completion. The fix is the same each time and it is not "be more careful" — it is
 to ask which artifact is *causally downstream of the thing being asked about*, and
 read that one instead.
+
+### Correction, immediately: the record did say so, and I did not read it
+
+The section above claims a timed-out run is "byte-indistinguishable from an
+honest zero". **That is false.** `4e34c42c`'s `result.json` carries:
+
+```
+error         : 'wall-clock timeout after 3600s'
+run.timed_out : True
+run.returncode: 143
+```
+
+`runner.py` has stamped this since the timeout path was written. The record
+distinguishes the three outcome classes cleanly, and the whole batch sorts by it
+without ambiguity:
+
+| `accepted` | `error` | meaning | tasks |
+|---|---|---|---|
+| `True` | none | genuine wrong answer | `2b83f449` `3dc255db` `78332cb0` `9bbf930d` |
+| `False` | none | ran out without ever submitting | `abc82100` |
+| `False` | `wall-clock timeout after 3600s` | interrupted mid-work | `4e34c42c` |
+
+So the bug in `--resume-incomplete` was real, and the fix is right, but the cause
+was **not** a harness that failed to record the distinction. It was me testing
+`(run_dir / "result.json").is_file()` when the file I was opening contained the
+answer two keys away. I then wrote a confident paragraph about artifacts being
+trusted for questions they cannot answer — about an artifact that answered it.
+
+The corrected skip logic stands, and is still preferable to reading `timed_out`:
+consulting the gate ledger handles accepted, budget-exhausted and interrupted
+runs through one predicate rather than three, and `resume_task` already
+implements it. But the generalisation in the previous section is withdrawn. The
+honest version is narrower and less flattering:
+
+> Three of this session's four artifact errors were *reading the wrong file*. The
+> fourth was **not reading the file I had already opened**. The remedy for the
+> first three is to ask which artifact is causally downstream of the question. The
+> remedy for the fourth is just to look — and no amount of methodology substitutes
+> for that, including the methodology I had written down forty minutes earlier.
