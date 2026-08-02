@@ -102,14 +102,23 @@ def _summarise(results: list[dict]) -> None:
     for r in sorted(ok, key=lambda x: x.get("game_id", "")):
         reached, total = r.get("levels_reached", 0), r.get("levels_total", 0)
         used, base = r.get("actions_used", 0), r.get("baseline_total", 0)
-        ratio = f"{used / base:.2f}x" if base else "-"
+        # Against the baseline, only the final playthrough is comparable: a full
+        # reset means earlier actions bought progress that was then discarded,
+        # and charging them to the result overstates the cost by whatever was
+        # replayed. The total is still shown -- it is what the budget paid.
+        cost = r.get("actions_final_playthrough", used)
+        ratio = f"{cost / base:.2f}x" if base else "-"
         flags = " ".join(
             f
             for f, on in (
                 ("WON", r.get("won")),
                 ("TIMEOUT", r.get("timed_out")),
                 (f"wasted={r.get('wasted_actions')}", r.get("wasted_actions")),
-                (f"FULLRESET={r.get('full_resets')}", r.get("full_resets")),
+                (
+                    f"FULLRESET={r.get('full_resets')} (ratio is the last "
+                    f"{cost} of {used})",
+                    r.get("full_resets"),
+                ),
             )
             if on
         )

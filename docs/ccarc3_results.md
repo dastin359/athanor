@@ -199,9 +199,18 @@ action.
 
 ### The resume bug — diagnosed
 
-`result.json` reports `actions_used: 860` because the ledger spans both
-playthroughs. The honest figure for a complete game is **489**; the other 371
-were the resume re-walking ground already covered.
+`result.json` reported `actions_used: 860` because the ledger spans both
+playthroughs. The honest figure for a complete game is **490** — the full reset
+plus the 489 spent across the seven levels; the other 370 were the resume
+re-walking ground already covered.
+
+That correction no longer has to be made by hand. `collect_outcome` now splits
+the trace at the last full reset and reports `playthroughs`,
+`actions_final_playthrough` and `levels_reached_final_playthrough` alongside the
+total, and the batch summary rates against the final playthrough while showing
+the total it cost. The restarting RESET counts in the playthrough it starts,
+because it was billed — which is why this reads 490 where the per-level table
+below sums to 489. The reset belongs to no level.
 
 The cause is legible in two consecutive lines of the trace:
 

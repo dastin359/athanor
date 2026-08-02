@@ -512,6 +512,22 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     states = [t.state for t in transitions]
     levels = [t.level for t in transitions]
 
+    # A full reset restarts the game inside the same trace, so the ledger holds
+    # more than one playthrough and the two honest numbers diverge. `ls20`
+    # reported 860 actions for a game that was won in 490; the other 370 were a
+    # replay, and the correction had to be made by hand in the write-up. Report
+    # both: the total is what the budget paid, the last playthrough is what the
+    # result cost.
+    #
+    # The restarting action is counted *in* the final playthrough, because it
+    # was billed. That is why this reads 490 where a per-level table of the same
+    # run sums to 489 -- the reset belongs to no level.
+    last_restart = max(
+        (i for i, t in enumerate(transitions) if t.full_reset),
+        default=0,
+    )
+    final = transitions[last_restart:]
+
     outcome = {
         "game_id": ws.info.game_id,
         "levels_reached": max(levels, default=0),
@@ -526,6 +542,9 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         ),
         "wasted_actions": sum(t.wasted for t in transitions),
         "full_resets": sum(1 for t in transitions if t.full_reset),
+        "playthroughs": sum(1 for t in transitions if t.full_reset) + 1,
+        "actions_final_playthrough": len(final),
+        "levels_reached_final_playthrough": max((t.level for t in final), default=0),
         "exit_code": exit_code,
         "timed_out": timed_out,
     }

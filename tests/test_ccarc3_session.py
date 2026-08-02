@@ -120,6 +120,39 @@ def test_deaths_count_episodes_not_frames(ws):
     assert out["wasted_actions"] == 2
 
 
+def test_a_full_reset_splits_the_trace_into_playthroughs(ws):
+    """`ls20` reported 860 actions for a game won in 490 of them.
+
+    The other 370 bought progress a full reset then discarded, so charging them
+    to the result overstates its cost by whatever was replayed. That correction
+    was made by hand in the write-up; here it comes off the ledger. Both figures
+    are reported — the total is what the budget paid.
+    """
+    _trace(ws, [
+        ("RESET", 0, "NOT_FINISHED", [[[1]]]),
+        ("ACTION1", 1, "NOT_FINISHED", [[[2]]]),
+        ("RESET", 0, "NOT_FINISHED", [[[3]]]),      # level went down: full reset
+        ("ACTION1", 1, "NOT_FINISHED", [[[4]]]),
+        ("ACTION1", 2, "WIN", [[[5]]]),
+    ])
+    out = collect_outcome(ws, exit_code=0, timed_out=False)
+    assert out["actions_used"] == 5, "the budget paid for all of them"
+    assert out["playthroughs"] == 2
+    assert out["actions_final_playthrough"] == 3, "the restart itself was billed"
+    assert out["levels_reached_final_playthrough"] == 2
+
+
+def test_a_run_with_no_full_reset_reports_one_playthrough(ws):
+    """The common case must not acquire a second, confusing number."""
+    _trace(ws, [
+        ("RESET", 0, "NOT_FINISHED", [[[1]]]),
+        ("ACTION1", 1, "NOT_FINISHED", [[[2]]]),
+    ])
+    out = collect_outcome(ws, exit_code=0, timed_out=False)
+    assert out["playthroughs"] == 1
+    assert out["actions_final_playthrough"] == out["actions_used"] == 2
+
+
 def test_an_empty_run_collects_without_crashing(ws):
     out = collect_outcome(ws, exit_code=1, timed_out=True)
     assert out["actions_used"] == 0 and out["timed_out"] is True
