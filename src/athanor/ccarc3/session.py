@@ -34,7 +34,14 @@ from ..cc_harness.config import (
 from ..cc_harness.runner import resolve_permission_mode
 from .client import GameInfo, list_games
 
-__all__ = ["Ccarc3Config", "build_workspace", "build_cli_args", "run_game"]
+__all__ = [
+    "Ccarc3Config",
+    "Workspace",
+    "build_workspace",
+    "build_cli_args",
+    "run_game",
+    "collect_outcome",
+]
 
 ASSETS = Path(__file__).parent / "assets"
 

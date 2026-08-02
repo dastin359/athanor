@@ -50,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_cc_arguments(cc)
 
+    from athanor.ccarc3.cli import add_arguments as _add_ccarc3_arguments
+
+    ccarc3 = subparsers.add_parser(
+        "ccarc3",
+        help="ARC-AGI-3 harness variant (interactive games, level gate, no reviewer)",
+    )
+    _add_ccarc3_arguments(ccarc3)
+
     return parser
 
 
