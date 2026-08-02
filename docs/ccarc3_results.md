@@ -5,7 +5,9 @@ run it: `ccarc3.md`.
 
 ## Read this before quoting any number here
 
-**These are public-set scores, and ARC states outright that public-set scores
+**Two caveats govern everything below: the set, and the budget.**
+
+**1. These are public-set scores, and ARC states outright that public-set scores
 are not a measure of progress.** From the ARC-AGI-3 technical report:
 
 > "Because it is impossible to ensure that system designers don't use the
@@ -25,6 +27,19 @@ change helps, on a fixed set, against a fixed reference. It is not a benchmark
 claim and cannot be turned into one. The comparison against Opus 5's published
 public-demo numbers is like-for-like in the sense that both are public-set and
 neither is leaderboard-eligible.
+
+**2. Every run here was given 40% of the official action budget.** ARC's
+evaluation *"impose[s] an action budget of five times the human-baseline median
+action count per level. That is, for a level with a human median of n actions
+to completion, the agent is terminated after 5n actions."* That is a **per-level**
+cap of 5n. This harness used a **per-game** cap of 2.0 × the baseline total — so
+`tn36` was stopped at 634 actions where the official rule would have allowed up
+to 1585, and it was stopped having cleared 6 of 7 levels.
+
+The numbers below are therefore *understated* relative to what the same harness
+would score under official conditions, and `tn36`'s 0.449 is the clearest case:
+it hit our cap, not ARC's. Correcting this is the single highest-value change
+outstanding — it is a harness setting, not a solver capability.
 
 ## Where this stands against the published Opus 5 result
 

@@ -100,19 +100,39 @@ benchmark's own summary claims: *"Skill-acquisition efficiency over time"*, and
 
 ### What that does to the replay strategy
 
-ARC settles it directly. Their technical report says they *built* the thing:
-*"we are releasing an open-source 'harness' which scores 100% on all public
-environments, using human replay"* — offered as a demonstration that public-set
-scores are meaningless, not as a technique. And the human protocol they
-baselined against allowed level resets but **"participants were limited to a
-single attempt per environment and could not revisit previously completed
-levels."**
+**Two different things are called "replay" and they must not be conflated.**
 
-The metric's own definition is first-exposure: *"Counting the total number of
-actions taken on **first exposure** to beat an environment accounts for both"*
-exploration and execution. Both are supposed to be counted.
+- **ARC's "human replay"** — playing back a *human's* recorded solution. The
+  report offers a harness doing this as proof that public-set scores are
+  meaningless: *"we are releasing an open-source 'harness' which scores 100% on
+  all public environments, using human replay."* External knowledge, no learning.
+- **Self-derived replay** — the agent explores, works out the rules itself, then
+  re-executes its own optimal route. Every bit of knowledge is generated inside
+  the evaluation.
 
-It removes its justification. Explore expensively, restart, then execute a
+The first is plainly cheating. **The second is a genuine grey area**, and an
+earlier version of this section wrongly cited the first as though it settled the
+second.
+
+What the report actually gives against self-derived replay:
+
+- **Intent.** *"Counting the total number of actions taken on **first exposure**
+  to beat an environment accounts for both"* exploration and execution. The
+  metric means to count the fumbling. Explore in one play and execute in
+  another, and it is not counted.
+- **Asymmetry, which is the stronger argument.** The baseline humans could not
+  do it: *"participants were limited to a single attempt per environment and
+  could not revisit previously completed levels. However, they were allowed to
+  reset the current level at any time."* Level resets yes, whole-game restarts
+  no. Scoring an agent that restarts against a baseline gathered from humans who
+  could not is comparing unlike things.
+
+What the report does **not** give: any explicit rule that an *agent* may not
+restart. The official AI budget it specifies — 5n actions per level — says
+nothing about plays or attempts.
+
+So this project does not use it, on the asymmetry argument, and does not claim
+ARC has forbidden it. Explore expensively, restart, then execute a
 clean route, and you are comparing a **post-learning** agent run against a
 **during-learning** human baseline. That is not a like-for-like comparison; it
 is the metric's central quantity replaced with something else.
