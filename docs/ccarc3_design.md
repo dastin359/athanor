@@ -14,6 +14,52 @@ strength:
 - **[LIVE]** — measured against the live API with a real key.
 - **[DESIGN]** — proposed here; most is now built, see §8.
 
+## What is actually established
+
+Enough claims here have been overturned by their own follow-up measurements
+that the strength of each is worth stating plainly. Read this before quoting
+anything below.
+
+**Well supported.**
+
+| claim | evidence |
+|---|---|
+| Score is best-of across plays, actions are summed. Dying costs no score. | [SDK] read from source; the whole doctrine turns on it |
+| RESET as the first action after a level advance discards the entire game | [LIVE] observed, and it cost a won game (§9.9) |
+| A solver that understands a level finishes it under the published baseline | [LIVE] 24 of 25 cleared levels at ≤0.92×, median 0.52× |
+| Solvers do not use the rule engine, the forward model, or the planner | [LIVE] **seven consecutive runs, zero calls**, all advertised (§9.8a) |
+| A guard's arming state must persist, or it silently stands down | [LIVE] one occurrence, one lost game, mechanism fully traced |
+
+**Provisional — one observation, or a rank order without a cutpoint.**
+
+| claim | why it is weak |
+|---|---|
+| The server's `full_reset` flag can read false when a full reset happened | n=1. Distrusting it is the safe reading regardless |
+| A post-`GAME_OVER` RESET resets the level, not the game, and opens no new play row | n=1 game (`r11l`) |
+| Wasted actions track failure | rank-ordered across 7 runs, but a run won at 93% effective. **No threshold.** |
+| Deaths are unreachable by wandering on some games | 4 games probed with a random policy |
+
+**Not established, and stated here because the tempting reading is wrong.**
+
+- **That the harness changes caused any measured improvement.** `cd82` went from
+  0/6 in 337 actions to 6/6 in 121 across a harness change — and the winning run
+  called the new function *twice* in 83 tool blocks. Confounded, n=1.
+- **That run-to-run variance is small.** The only estimate (`ls20` replaying
+  levels 0–5 in exactly 369 actions, twice) came from re-walking a route already
+  known, which is the lowest-variance case obtainable and says nothing about a
+  novel exploration.
+
+**Refuted, having once been stated here as findings.**
+
+- *A wide action space is what breaks the solver.* `cd82` won using six action
+  types.
+- *Exhausting a per-action display kills you.* On `ls20` it is a 43-action cycle
+  that refills itself.
+- *The click space is harder to search than the keyboard.* Click-only games are
+  among the most efficient runs on record.
+- *Downscaling frames is the big token saving.* Real frames rarely have uniform
+  block structure; `logical()` usually declines to reduce at all.
+
 ---
 
 ## 1. What the SDK actually exposes [SDK]
