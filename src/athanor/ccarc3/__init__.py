@@ -30,6 +30,13 @@ from .grids import (
     objects,
     render,
 )
+from .client import (
+    ROOT_URL,
+    ActionRefused,
+    ArcClient,
+    GameInfo,
+    list_games,
+)
 from .ledger import (
     ACTION_NAMES,
     TraceWriter,
@@ -66,6 +73,12 @@ __all__ = [
     "objects",
     "counts",
     "flatten_frames",
+    # client
+    "ROOT_URL",
+    "ArcClient",
+    "GameInfo",
+    "ActionRefused",
+    "list_games",
     # ledger
     "ACTION_NAMES",
     "Transition",
