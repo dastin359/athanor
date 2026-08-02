@@ -6,7 +6,7 @@ wrote in its own scratch space, it had hand-rolled breadth-first search **twice*
 understood that some cells launch the avatar across the board rather than moving
 it one square.
 
-**And it did not adopt this.** Over five runs and 332 solver commands, measured
+**And it did not adopt this.** Over seven runs and 539 solver commands, measured
 from `tool_use` inputs rather than from the stream (design note §9.8a),
 ``shortest_path`` and ``reachable`` were called **zero** times. Solvers went on
 writing their own search. Recorded here rather than quietly left out, because

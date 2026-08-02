@@ -392,7 +392,7 @@ def predict(
 
     **Measured caveat, recorded because it undercuts the case for this function.**
     Solvers write step functions unaided -- the first real run on `ls20` wrote
-    one before anything here supported it -- but across five runs and 332
+    one before anything here supported it -- but across seven runs and 539
     commands, **not one of them ever called this**. They kept their models in
     their own code. Nothing in `rules` has been used by a solver; see design
     note §9.8a. Offering an abstraction is not the same as it being adopted.

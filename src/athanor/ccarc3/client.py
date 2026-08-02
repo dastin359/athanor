@@ -642,7 +642,7 @@ class ArcClient:
         """Report actions that changed nothing on this level. Silent when none.
 
         Lives in ``status()`` rather than in a function of its own on deliberate
-        evidence: across five runs and 332 solver commands, every analytical
+        evidence: across seven runs and 539 solver commands, every analytical
         helper this package exports was called **zero** times while ``status()``
         was called 82. A signal in a function nobody calls is not a signal.
 

@@ -798,16 +798,18 @@ contains tool *results*, so every `Read DOCTRINE.md` echoes the doctrine's own
 examples back into it. Parsing `tool_use` blocks and reading only the *inputs*
 gives what the solver actually executed. The two answers are not close.
 
-Across **332 Bash commands** in five runs, every workspace advertising all of
-these in both `CLAUDE.md` and `DOCTRINE.md`:
+Across **539 tool calls** in seven runs, every workspace advertising all of these
+in both `CLAUDE.md` and `DOCTRINE.md`:
 
 | called | times |
 |---|---|
-| `client.status()` | 82 |
-| `arc.diff()` | 39 |
-| `arc.render()` | 27 |
-| `arc.png()` | 20 |
-| `arc.objects()` | 4 |
+| `client.status()` | 157 |
+| `arc.render()` | 106 |
+| `arc.diff()` | 63 |
+| `arc.png()` | 35 |
+| `arc.objects()` | 8 |
+| `arc.effective_actions()` | 2 |
+| `client.pace()` | 1 |
 
 | never called, in any run | |
 |---|---|
@@ -816,10 +818,16 @@ these in both `CLAUDE.md` and `DOCTRINE.md`:
 | `shortest_path()`, `reachable()` | the planner |
 | `monotone_rows()`, `logical()`, `collapse()`, `block_size()` | |
 
-**Four of those five runs won.** §5 — the longest and most-argued section of this
+**Six of those seven runs won.** §5 — the longest and most-argued section of this
 design note, the three-valued predicate core the `rules` module opens by calling
 "the single most important constraint in this module" — has never been exercised
-by a solver. Not once did any run construct a `Rule`.
+by a solver. Not once, in seven runs, did any of them construct a `Rule`.
+
+The two newest entries are the ones to watch rather than to celebrate:
+`effective_actions()` and `pace()` were added *because* of this finding, and
+between them have three calls. `pace()` was used on its first outing, which is
+weak support for the placement argument below — it is a `client.` method, and
+`client.` is where solvers look — but three calls is three calls.
 
 Three claims elsewhere in this project are corrected by it:
 
