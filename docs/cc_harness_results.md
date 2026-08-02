@@ -1992,3 +1992,98 @@ background-task output files found that angle empty, swept the surrounding
 directory anyway, and surfaced the supervisor log that made everything else
 exact. The assigned angle produced nothing; the unassigned neighbourhood
 produced the answer.*
+
+---
+
+## `88e364bc`: the hedge was right, and the harness could not see the bug
+
+Arm A, Opus 4.8. Score **0.5** — test 1 solved, test 0 failed. Train-perfect,
+4 verified invariants, confidence 4, 38 turns, $3.62. The interesting part is
+where it went wrong, because it is not where anything in the harness was looking.
+
+The task: yellow markers slide along coloured "snake" corridors in a direction
+read off a key block, and come to rest against a wall. The solver found the rule,
+and then found a genuine ambiguity inside it. A *diagonal* step can pass a wall
+corner — the destination cell is empty but one orthogonal neighbour of the step
+is a wall. Two readings both reproduce every training pair:
+
+- **lenient** — a diagonal step is legal whenever the destination is empty;
+- **strict** — a diagonal step is illegal if either orthogonal neighbour is a wall.
+
+Training's only diagonal never brushes a corner, so the examples cannot separate
+them. The solver said so explicitly — *"a real out-of-sample leap, not a provable
+one"* — worked out that the two readings diverge **only on test 0**, at the yellow
+starting at (3,11), and returned both candidates there while returning a single
+candidate for test 1 where they agree.
+
+Every part of that is what the doctrine asks for. The ambiguity is real, the
+enumeration is complete, the divergence analysis is correct, and the hedge is
+spent exactly where it is needed and nowhere else. Test 1 came back solved.
+
+**And the strict reading was the right one.** Ground truth puts that yellow at
+(4,12) — one diagonal step from (3,11), then stopped. Tracing the path shows why:
+step 1 to (4,12) has both orthogonals empty and is legal under either reading;
+step 2 to (5,13) has `(4,13) = 5`, a gray wall brushing the corner, so strict
+forbids it. Stop at (4,12). Exactly ground truth.
+
+The submitted strict candidate left the yellow at **(3,11)**, unmoved.
+
+**Where it actually broke.** `_slide` computed (4,12) correctly. Then `_apply`
+discarded it. Yellows are matched to their key by *the colour of the cell that
+stopped the slide* — "the yellow moves along its own snake's corridor" — which is
+a sound rule as long as what stops a slide is a wall. Under the strict reading a
+slide can also be stopped by a **geometry rule**, and then the reported stopping
+colour is the empty destination's 0. That matches no key's frame colour, the
+association fails, and the fallback resets the landing cell to the yellow's
+original position — throwing away an endpoint that had already been computed
+correctly.
+
+Verified rather than argued. Replacing the fallback so it keeps the slide's own
+endpoint, a one-line change:
+
+```
+candidate 1: no
+candidate 2: MATCHES GROUND TRUTH
+patched still train-perfect: True
+```
+
+The hypothesis was right, the divergence analysis was right, the hedge was
+aimed correctly, and the task still scored zero on that output.
+
+**Why train-100% could not catch it, and why that is structural.** The faulty
+branch never executes on any training input. Training's only diagonal never
+brushes a corner → the strict refusal never fires → the stopping colour is always
+a frame colour → the association never fails → the fallback never runs. The bug
+lives exclusively on a path that the verification standard cannot reach.
+
+This generalises past this one task, and it is the sharpest limit on
+code-as-verification found so far:
+
+> **The hedge branch is, by construction, the code that training cannot
+> exercise.** A second candidate exists precisely because the training examples
+> fail to discriminate it. So the training pairs run the primary reading and
+> validate it, and the alternative reading ships with whatever bugs it has.
+> Athanor anchors its entire verification apparatus on train-100%, and the
+> candidate that anchor cannot test is the one written to handle the case the
+> anchor never saw. **The more disciplined the hedging, the larger the
+> unverified surface.**
+
+**The fix this implies** is not more verification, it is verification of the
+verification's *reach*: run the training pairs with line tracing on `solve()` and
+report which lines never executed, before submission. "These 6 lines have never
+run. Training cannot vouch for them." Cheap to implement, needs no ground truth,
+and it points at exactly the branch that failed here.
+
+**Deliberately not shipped yet.** Workspaces copy the toolkit from `assets/` when
+each task starts, so changing it now would hand later Arm A tasks a different
+harness from earlier ones and quietly ruin the comparison the batch exists to
+make. It lands when the batch does.
+
+**One pattern to check at batch end, currently n=2 and therefore not a finding.**
+In both Arm A failures so far, the test output where the solver *hedged* is the
+one it got wrong, and the test output where it shipped a single candidate is the
+one it got right (`88e364bc` test 1 solved; `78332cb0` both wrong, hedged on test
+0 only). If that holds across the batch it says the solver's uncertainty is well
+calibrated — it knows which input is hard — while its second candidate is drawn
+from too narrow a space to rescue it. That would make candidate *quality*, not
+candidate *targeting*, the thing to work on.
