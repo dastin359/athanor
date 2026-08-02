@@ -495,39 +495,63 @@ level's start, where that price is near zero.
 
 ---
 
-## 7. Measure before trusting [DESIGN]
+## 7. Measure before trusting
 
-Ordered by how much of the above they invalidate if they come out wrong.
+**Resolved since this list was written:**
 
-*Resolved:* whether RESET after GAME_OVER restarts the game or the level. It
-restarts **the level** [PLAY] — see §2.3, which is now the basis for §6.2 rather
-than an open risk to it.
+- *Does RESET after GAME_OVER restart the game or the level?* **The level**
+  [PLAY], corroborated by `handle_reset` in the engine source. §2.3. This was
+  the item everything in §6.2 depended on.
+- *What block size do real games render at?* **None** [LIVE]. Real frames carry
+  pixel-level detail and have no uniform block factor, so `logical()` correctly
+  declines to reduce them. See the correction in §4.2 — this one came out
+  against the design rather than for it.
+- *What is the distribution of actions-to-solve?* Published, not inferred:
+  `baseline_actions` per level for every game, 171 to 1843 per game. §2.6.
 
-1. **Are levels really independent in state?** `score` is cumulative across
-   levels; inventory, position conventions or palette may also persist. Cheap to
-   check via `full_reset` and score continuity. §3's eviction policy assumes
-   independence and should not until this is measured.
-3. **Does a RESET after GAME_OVER open a new `Card` play row, or continue the
-   current one?** `do_action_request` attaches `card_id` to RESET and forwards
-   any existing `guid`; the resolution is server-side. Affects how
-   `Card.scores` / `Card.actions` should be read.
-4. **What is the actual distribution of actions-to-solve?** With `MAX_ACTIONS`
-   at 1000 this becomes observable instead of truncated. It is the number that
-   should set every later budget.
-5. **What block size do real games render at?** `arc3.logical()`'s inference
-   needs validating against actual games, not the toy.
+**Still open, in the order they would hurt:**
+
+1. **Are levels really independent in state?** Inventory, position conventions
+   or palette may persist across a boundary. §3's eviction policy assumes
+   independence and should not until this is measured. Cheap to check now that
+   a real trace spans levels: compare the first frame of level N against the
+   last of level N-1.
+2. **Does a RESET after GAME_OVER open a new `Card` play row or continue the
+   current one?** The scorecard exposes `total_plays`, `actions_by_level` and a
+   per-play `levels_completed` list, so this is now directly observable from a
+   run that dies at least once — it just has not been read yet.
+3. **How is a depleting per-level resource represented?** Confirmed to exist
+   [PLAY], and confirmed to vary between games, so the doctrine deliberately
+   describes the *pattern* (something changing monotonically per action; deaths
+   at a consistent action count rather than a consistent place) instead of any
+   widget. Whether the pattern is reliably detectable from frames alone is
+   untested.
 
 ---
 
-## 8. Where this lives
+## 8. Where this lives — decided
 
-Undecided, and deliberately so until §7.1-§7.2 are measured. The seam analysis
-is in `cc_harness_results.md`. What is already clear: the *submission gate*
-concept survives the port (as §6.1's level gate), the *toolkit* concept survives
-(as §4), the *doctrine* concept survives (as §6.2), and the *scoring* module
-does not — ARC-AGI-3 scores are server-side and best-of, with no local
-ground truth to compare against. That is a large enough shared spine to argue
-for the same repo and a different package.
+`athanor.ccarc3`, in this repo, as a separate package from `cc_harness`. The
+seam analysis argued for it and building it confirmed the shape:
+
+| CCARC (ARC-AGI-2) | CCARC3 | |
+|---|---|---|
+| submission gate | `LevelGate` | survives — §6.1 |
+| 43-function toolkit | `grids`, `ledger`, `rules` | survives — §4 |
+| solver doctrine | `CCARC3_DOCTRINE.md` | survives — §6.2 |
+| workspace + runner | `session.py` | survives |
+| `scoring` against ground truth | *(none)* | does not port |
+
+Scoring is the one piece that does not survive: ARC-AGI-3 scores are
+server-side and best-of, with no local ground truth to check against. Its role
+— making a claimed result and a real one the same thing — is taken over by the
+trace, which is why `collect_outcome` reads the ledger and never the solver's
+own account.
+
+One thing the port did *not* inherit, and should not: `arc_agi_3` itself. The
+SDK reads a `score` field the live server does not send (§2.5), so speaking
+HTTP directly is both more correct and keeps the package free of any runtime
+dependency beyond numpy.
 
 ---
 

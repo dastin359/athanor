@@ -37,11 +37,14 @@ run the experiment*. Test lethality early in a level, not at its far end.
 Some games give each level a finite budget — energy, time, moves, fuel — and end
 it in `GAME_OVER` when it runs out.
 
-**How it is drawn varies from game to game.** Do not go looking for a specific
-widget. It might be a bar, a row of tokens that disappear one at a time, a
-counter, a colour draining out of something, or a region that shrinks. It may
-not be visually obvious at all. What is constant is the *pattern*, and the
-pattern is what to watch for:
+**How it is drawn varies from game to game, so do not go hunting for a
+particular widget.** There may be a bar somewhere showing how much health or
+fuel you have left — or a row of tokens that vanish one at a time, or a counter,
+or a shape that shrinks, or nothing visible at all. Those are illustrations, not
+a checklist; treat any of them as a guess to test, never as something you
+already know is there.
+
+What is constant is the *pattern*, and the pattern is what to watch for:
 
 - something on the board changes monotonically, once per action, regardless of
   what you did;
