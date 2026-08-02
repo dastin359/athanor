@@ -294,6 +294,13 @@ def cell_boundaries(
     inventing splits. Cross-check ``len(row_starts)`` against a board size you
     have independent reason to believe before trusting it as complete.
     """
+    if isinstance(grids, np.ndarray) and grids.ndim == 2:
+        raise ValueError(
+            "cell_boundaries takes an iterable of grids, not one grid -- passing "
+            "a single 2-D array iterates its rows and fails on the first. For one "
+            "frame, wrap it: cell_boundaries([grid]). But pooling across a trace "
+            "is the whole mechanism; one frame will under-report badly."
+        )
     rows: set[int] = {0}
     cols: set[int] = {0}
     height = width = 0

@@ -646,3 +646,17 @@ def test_monotone_rows_on_nothing_is_empty():
     from athanor.ccarc3 import monotone_rows
 
     assert monotone_rows([]) == []
+
+
+def test_cell_boundaries_rejects_a_single_grid_with_a_useful_message():
+    """It takes an iterable of grids; one 2-D array iterates its rows instead.
+
+    A real solver hit this as "expected a 2-D grid, got shape (64,)", which says
+    nothing about the actual mistake.
+    """
+    from athanor.ccarc3 import cell_boundaries
+
+    with pytest.raises(ValueError, match="iterable of grids, not one grid"):
+        cell_boundaries(np.zeros((64, 64), dtype=int))
+    # wrapped, it works
+    assert cell_boundaries([np.zeros((8, 8), dtype=int)]) == ([0], [0])

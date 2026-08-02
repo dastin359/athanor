@@ -252,3 +252,15 @@ def test_resuming_with_a_bigger_budget_keeps_the_game(tmp_path):
     assert ws2.resumed
     assert ws2.trace_path.read_text().strip(), "the actions already paid for survive"
     assert ws2.rules_path.exists(), "so does what was learned"
+
+
+def test_the_workspace_puts_an_interpreter_with_numpy_first_on_path(ws):
+    """The first live run burned turns on ModuleNotFoundError from bare python3."""
+    import shutil
+
+    first = ws.env["PATH"].split(":")[0]
+    python = shutil.which("python3", path=first)
+    assert python, f"no python3 in the first PATH entry: {first}"
+    import subprocess
+    r = subprocess.run([python, "-c", "import numpy"], capture_output=True)
+    assert r.returncode == 0, "the default interpreter must have numpy"

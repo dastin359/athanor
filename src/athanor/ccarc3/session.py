@@ -224,8 +224,17 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     key = config.api_key or os.environ.get("ARC_API_KEY", "")
     if key:
         env["ARC_API_KEY"] = key
-    src = str(Path(__file__).resolve().parents[2])
+    src = Path(__file__).resolve().parents[2]
     env["PYTHONPATH"] = f"{src}:{env.get('PYTHONPATH', '')}".rstrip(":")
+
+    # Put the interpreter that actually has numpy first on PATH. The first live
+    # run wasted turns on `ModuleNotFoundError: No module named 'numpy'` from
+    # bare `python3`, then had to discover the venv path by trial. Making
+    # `python3` resolve to the right thing removes the whole class of error
+    # rather than documenting a way around it.
+    venv_bin = src.parent / ".venv" / "bin"
+    if (venv_bin / "python3").exists() or (venv_bin / "python").exists():
+        env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}".rstrip(":")
 
     return Workspace(
         root=root,
