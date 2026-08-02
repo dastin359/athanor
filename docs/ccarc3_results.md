@@ -424,6 +424,38 @@ It is also the most *economical*: **35 tool calls** for an eight-level win,
 against 83 for `cd82`'s six. Whatever varies between runs, it is not only
 actions.
 
+### What a run costs, and what drives it
+
+Measured across four runs, now that `result.json` carries turns and cost:
+
+| run | levels | turns | cost | cost/turn | input tokens | tool output |
+|---|---|---|---|---|---|---|
+| `cd82` | 6/6 | 84 | $10.17 | $0.121 | 17.8M | 126K chars |
+| `sb26` | 8/8 | 36 | $3.04 | $0.084 | 5.3M | 82K chars |
+| `ls20` | 7/7 | 80 | $8.51 | $0.106 | 16.5M | 109K chars |
+| `r11l` | 6/6 | 90 | $9.01 | $0.100 | 17.4M | 111K chars |
+
+**Cost is turns × roughly $0.10, and almost nothing else.** The spread in
+cost-per-turn is 0.084–0.121, and it tracks average context size: context
+accumulates within a run, so a longer run pays more per turn as well as paying
+for more turns.
+
+**It is not driven by tool output.** Every run's entire tool output is around
+100K characters — perhaps 25K tokens across the whole game — against 5–18M input
+tokens. Rendered grids are 16–61% of that tool output and therefore a rounding
+error in the bill. The context is dominated by the accumulated conversation, not
+by what the harness hands back.
+
+Two consequences worth acting on:
+
+- **Budget in turns, not actions.** `cd82` and `sb26` took near-identical action
+  counts (121 vs 125) and differed 3.3× in cost, because one needed 84 turns and
+  the other 36. The harness caps *actions*, which is the right cap for the
+  benchmark and the wrong one for the bill.
+- **Do not optimise the renderer for tokens.** An earlier instinct here was that
+  1-char-per-cell rendering was the big saving. At 25K tokens of tool output
+  against 18M of context, halving it would change a $10 run by pennies.
+
 ### The batch's own verdict on the hypothesis it was built to test
 
 Two `keyboard_click` games, two wins, both comfortably under baseline. Combined
