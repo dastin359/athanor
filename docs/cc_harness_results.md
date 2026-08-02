@@ -3366,3 +3366,95 @@ project distinctive has no direct analogue, and "port the harness" quietly means
 Worth settling before any code is written, because it determines whether the new
 package shares `gate.py` at all — and that single answer decides how much of the
 2,500 lines is really ARC-2-specific rather than merely written that way.
+
+---
+
+## Effort escalation: `max` buys back about a third of the gap, at two to three times the price
+
+Nine Arm A tasks that scored **0.00 at `claude-opus-4-8` / `high`** were rerun at
+the same model and harness with `--effort max`, paired against their own `high`
+results. Four completed before the run was stopped to spend the budget elsewhere:
+
+| task | high | max | |
+|---|---|---|---|
+| `291dc1e1` | 0.00 ($3.20) | **1.00 ($10.70)** | recovered, 3.3× cost |
+| `5545f144` | 0.00 ($9.64) | 0.00 ($12.36) | no change, +28% |
+| `9bbf930d` | 0.00 ($4.99) | 0.00 ($7.57) | no change, +52% |
+| `abc82100` | 0.00 ($6.09) | 1.00 ($8.28) | **not interpretable** |
+
+`abc82100` is excluded from the count: its `high` run was the sub-agent stall,
+which recorded 0 iterations and no hypothesis, so there was never a real
+high-effort attempt to compare against. Its `max` result shows only that 4.8 can
+solve the task at all.
+
+**So: one clean recovery in three clean attempts, for $38.90.** All three of the
+clean tasks are ones **Opus 5 solves at `high` for $3–7**. On this evidence extra
+thinking substitutes for model capability *sometimes*, and the cheaper route to
+the same score is the better model rather than the bigger budget. n=3, so the
+one-in-three rate carries no weight; what the runs do show is that effort is not
+uniformly inert — some 4.8 failures are search-depth-limited and others are not,
+which is more useful than either uniform answer would have been.
+
+---
+
+## ARC-AGI-3: what the official SDK actually exposes
+
+Installed and inspected rather than read about. Two packages, both on PyPI,
+Python ≥3.12.
+
+**`arc-agi-3`** — the agent SDK. What an agent observes:
+
+```python
+FrameData:
+    frame: list[list[list[int]]]   # a STACK of integer colour grids
+    state: NOT_PLAYED | NOT_FINISHED | WIN | GAME_OVER
+    score: int                     # 0-254
+    available_actions: list[GameAction]
+```
+
+**The observation is the same data type as ARC-AGI-2** — integer colour grids, up
+to 64×64 (inferred from `ComplexAction`'s `x, y ∈ [0,63]`). The action space is
+small and discrete: `RESET`, `ACTION1–5,7` parameterless, and `ACTION6(x, y)`, a
+click. The entire agent contract is two methods —
+
+```python
+choose_action(frames: list[FrameData], latest_frame: FrameData) -> GameAction
+is_done(frames: list[FrameData], latest_frame: FrameData) -> bool
+```
+
+— under a hard **`MAX_ACTIONS = 80`** per game.
+
+**`arcengine`** — a separate package containing the *engine*
+(`ARCBaseGame`, `Level`, `Sprite`, `Camera`, `PlaceableArea`) for **building**
+environments. It ships no games. Useful for local harness development at zero API
+cost, but it is not the benchmark.
+
+**Blocker:** the API returns `401 NOT_AUTHORIZED` without a key, and the SDK has
+no anonymous-key logic despite the documentation implying otherwise — it simply
+reads `ARC_API_KEY` from the environment. Playing the official games requires
+registering at `three.arcprize.org`.
+
+### This revises the gate question, in the harness's favour
+
+The earlier analysis in this log worried that athanor's contract has no analogue
+because an interactive benchmark has no training set. Having seen the API, that
+framing was wrong in a useful way. `choose_action` is handed `frames` — the full
+history — alongside the present frame, so **every action produces a labelled
+example the moment it is taken**. Verification is not gated on a held-out set; it
+is continuous.
+
+> The predictive gate becomes concrete rather than speculative: before acting,
+> the agent commits to `predict(action) -> expected_frame`; the harness executes,
+> compares, and scores the prediction before progress may be banked. That is
+> code-as-verification with **the environment as the oracle**, and it carries no
+> contamination risk, because the agent cannot peek at an answer that does not
+> exist yet.
+
+Three things transfer directly. The grid toolkit (`show`, `diff`, `colors`,
+`histogram`) operates on `frame` unchanged. `MAX_ACTIONS = 80` is structurally
+the same budgeted-resource design as `max_iterations` — and worth watching for
+the same failure, where the budgeted quantity turns out not to be the scarce one.
+And the CCARC shape composes naturally: a Claude Code solver writing and
+iterating on an `Agent` subclass, tested against the environment, is doing
+precisely what the doctrine asks — except the artifact is a **policy** rather
+than a `solve()` function.
