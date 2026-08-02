@@ -3098,3 +3098,38 @@ The doctrine currently carries the weaker version, landed an hour before this
 analysis. It should be revised, and this is recorded here rather than acted on
 immediately because the claim it replaces was also stated too strongly on first
 sight — twice now, on the same subject.
+
+### Arm B addendum: the resumed tenth task, and the first regression signal
+
+`4e34c42c` — excluded from Arm B all night as an infrastructure loss — was
+resumed for consistency with the three Arm A casualties that were resumed and
+counted. It came back **0.50** (`matched=[None, 1]`: both candidates lost test 0,
+candidate 1 won test 1), `accepted: True`, at **$32.40 cumulative across three
+launches** — the most expensive task in the project.
+
+That is the **first regression signal Arm B has produced**, and it must be
+reported in two figures rather than one, because the run is not the same
+experimental condition as the other nine:
+
+| Arm B | scoreable | points | vs baseline 1.00/task |
+|---|---|---|---|
+| **fresh runs only** (the comparable set) | 9 | **9.00/9.00** | **0.00** |
+| **including the resumed task** | 10 | **9.50/10.00** | **−0.50** |
+
+The resumed run received `build_resume_prompt` with its prior ledger pre-loaded,
+after two launches killed by a container SIGTERM and the wall clock respectively.
+Folding it silently into the arm score would compare a resumed solver against
+nine fresh ones; dropping it entirely would hide a task the baseline solves and
+this harness did not.
+
+**Which figure to use depends on the question.** For *does the harness regress
+under identical conditions*, the answer remains 9.00/9.00 on nine tasks. For
+*what happens to a task in practice, infrastructure included*, it is 9.50/10 —
+and the projection's zero-regression term becomes an assumption with one
+counterexample rather than none.
+
+Note also what this does to the earlier reasoning about excluding it. The
+argument for exclusion was that its gate ledger held a train-perfect submission
+when the clock expired, so scoring it 0.00 would attribute a timeout to the
+model. That was right — it scores 0.50, not 0.00. But "not zero" is not "one",
+and the exclusion quietly implied the latter.
