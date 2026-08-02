@@ -108,10 +108,17 @@ def play(
         history.append(record)
 
         score = int(record.get("levels_completed", record.get("score", 0)) or 0)
-        writer.append(record, level=level)
-        # Read the level *after* writing, so the action that completes a level
-        # is attributed to the level it was played on rather than the next one.
+        # Label with the level the frame reports, *before* writing -- the same
+        # convention ArcClient uses. The action that clears a level therefore
+        # carries the new level number, which is what lets load() infer
+        # crosses_level from an increase. Labelling it with the old level (the
+        # level it was "played on", which reads more naturally) silently breaks
+        # that inference: the clearing action is exactly the one whose before
+        # and after straddle two different boards, and it would never be
+        # flagged. Two conventions and one inference is a bug waiting to
+        # happen, and did.
         level = score
+        writer.append(record, level=level)
 
         state = str(record.get("state", ""))
         state = getattr(state, "value", state)

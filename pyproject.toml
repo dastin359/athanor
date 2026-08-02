@@ -33,6 +33,11 @@ phoenix = [
 dev = [
   "pytest>=8.0",
 ]
+# Local ARC-AGI-3 bench games, driven without an API key. Enables
+# tests/test_ccarc3_bench.py, which skips without it.
+bench = [
+  "arcengine>=0.9.3",
+]
 
 [project.scripts]
 athanor = "athanor.cli:main"
