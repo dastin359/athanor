@@ -1773,3 +1773,66 @@ established by rescanning every run:
 **Every run in the experiment — 37 of them — was rescanned under the new check.
 Zero flagged.** That is now a statement the harness makes rather than one I made
 by hand.
+
+## Runs die when the *orchestrator* goes quiet, not when the box gets busy
+
+Four launches of the Opus 4.8 experiment ended before completing. Two were my
+own bugs (a broken permission grant, a `pkill -f` that matched its own shell).
+The other two I wrote off as "the container got reclaimed" without establishing
+a mechanism. That was the wrong place to stop: the mechanism turns out to be
+actionable, and knowing it changes how a long batch should be run here.
+
+**The evidence.** Eight shards stopped inside a 46-second window:
+
+```
+00:38:25  arm-a-78332cb0     00:39:01  arm-a-269e22fb
+00:38:25  arm-b-409aa875     00:39:05  arm-a-2b83f449
+00:38:48  arm-a-13e47133     00:39:10  arm-b-4e34c42c
+                             00:39:11  arm-b-135a2760
+```
+
+`/proc/uptime` puts the next boot at 00:40:15 — 64 seconds after the last shard
+stopped. Three things follow. Independent process failures do not cluster into
+46 seconds, so this was one action against the whole box. An OOM kill takes a
+single victim and leaves the machine up, so a reboot rules it out. And the
+memory evidence is negative in its own right: `memory.failcnt` is 0, there is no
+swap configured, and no shard's stream contains a real `ENOMEM`, `SIGKILL`, or
+heap-exhaustion string. (The grep hits that first suggested otherwise were
+base64 image data with `OOM` inside it — a reminder to look at the match, not
+the count.)
+
+**What it correlates with instead.** Both deaths sit inside gaps in the
+orchestrating session's own transcript:
+
+| shards died | orchestrator's last event before it | delay |
+|---|---|---|
+| ~23:09 | 23:04:25 (gap runs to 23:40) | ~4.5 min |
+| 00:38:25 | 00:33:25 (gap runs to 00:43:39) | ~5.0 min |
+
+A consistent ~5-minute idle timer, measured from the *orchestrator's* last turn.
+
+**The trap.** Background solver processes do not count as session activity. Nine
+concurrent solves is the box doing as much useful work as it can, and the
+platform still saw an idle session. The failure mode is precisely inverted from
+the intuition: the batch is at greatest risk exactly when it is running well
+enough that the orchestrator has nothing to do.
+
+**Consequences for how batches run here:**
+
+- Poll every 2–3 minutes while a batch is live. Not to make progress — to stay
+  inside the window.
+- Prefer many short shards to few long ones. A shard that dies loses only its
+  own progress, and per-task results are already written as each task completes.
+- Re-check the staged dataset after every restart. One relaunch failed all ten
+  tasks instantly with `FileNotFoundError: Dataset root does not exist`, because
+  the restart had wiped the staged dataset directory. Cost: $0.00 and ten
+  useless records, which is cheap only because it failed loudly.
+
+**One correction to an earlier conclusion.** Output directories were reported as
+lost in these restarts. They were not: a relative `--out-dir` resolves against
+cwd, and these batches were launched from the scratchpad, so the results sat
+there rather than in the repo. Nine task directories and all twelve solver
+transcripts survived, including full `stream.jsonl` up to the moment of death
+for the killed runs. Checking the wrong directory and concluding the data was
+gone is the same error as inferring process liveness from filesystem state — an
+answer read off the artifact that was easiest to look at.

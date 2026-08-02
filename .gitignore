@@ -23,3 +23,7 @@ randombatch/
 batchrun/
 replicate/
 
+# Staged ARC dataset. Kept at an unguessable path so a solver that wanders
+# outside its workspace does not trip over ground truth sitting in plain sight;
+# the suffix itself must never reach git, hence the glob.
+.holdout-dataset-*/
