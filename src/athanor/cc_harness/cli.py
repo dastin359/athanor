@@ -60,6 +60,18 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         help="Keep cwd and env info in the system prompt (breaks cross-task prompt-cache reuse).",
     )
     parser.add_argument("--overwrite", action="store_true", help="Replace an existing workspace.")
+    parser.add_argument(
+        "--ablate",
+        action="append",
+        default=[],
+        metavar="TARGET",
+        help=(
+            "Remove a named prompt component, repeatable. 'doctrine' drops the doctrine "
+            "from the appended system prompt; 'workspace:<Section>' drops a section from "
+            "the workspace CLAUDE.md. An unknown name is an error, and the choice is "
+            "recorded in the run's config so the manipulation is reproducible from it."
+        ),
+    )
     parser.add_argument("--quiet", action="store_true", help="Do not trace agent events to stdout.")
 
 
@@ -79,6 +91,7 @@ def _config_from_args(args: argparse.Namespace) -> CCRunConfig:
         bare=args.bare,
         setting_sources=args.setting_sources,
         stable_system_prompt=not args.no_stable_system_prompt,
+        ablate=tuple(getattr(args, "ablate", ()) or ()),
     )
 
 

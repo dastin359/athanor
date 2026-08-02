@@ -153,3 +153,62 @@ class TestEnvironmentDescription:
         entry = settings["hooks"]["SessionStart"][0]
         assert entry["matcher"] == "compact"
         assert entry["hooks"][0]["args"] == [str(tmp_path / "on_compact.sh")]
+
+
+class TestAblation:
+    """An ablation that is not verified to have removed anything is not an ablation.
+
+    These exist because a doctrine ablation ran for weeks against an edited
+    workspace file while every arm received the doctrine verbatim in the appended
+    system prompt. Nothing in the harness could compose a prompt without it, and
+    nothing in the run record said which arm was which.
+    """
+
+    def test_the_default_prompt_contains_the_doctrine(self):
+        """Regression guard for the mislabelled ablation: assert the baseline."""
+        assert "## 3. GOAL" in prompt.build_system_prompt()
+
+    def test_ablating_the_doctrine_actually_removes_it(self):
+        full = prompt.build_system_prompt()
+        ablated = prompt.build_system_prompt(("doctrine",))
+        assert "## 3. GOAL" in full
+        assert "## 3. GOAL" not in ablated
+        assert len(ablated) < len(full)
+        # the shared domain knowledge must survive, or the arms differ on priors too
+        assert "1. ROLE & IDENTITY" in ablated
+
+    def test_an_unknown_target_raises_rather_than_doing_nothing(self):
+        with pytest.raises(ValueError, match="unknown ablation target"):
+            prompt.build_system_prompt(("Doctrine",))
+
+    def test_a_workspace_target_is_refused_at_the_system_prompt_layer(self):
+        with pytest.raises(ValueError, match="workspace CLAUDE.md"):
+            prompt.build_system_prompt(("workspace:Rival readings",))
+
+    def test_stripping_a_section_leaves_its_neighbours_intact(self):
+        text = "# T\n\nintro\n\n## Keep me\n\nA\n\n## Drop me\n\nB\n\n## Also keep\n\nC\n"
+        out = prompt.strip_markdown_sections(text, ["Drop me"])
+        assert "## Keep me" in out and "## Also keep" in out
+        assert "## Drop me" not in out and "\nB\n" not in out
+
+    def test_stripping_a_missing_section_raises(self):
+        with pytest.raises(ValueError, match="no '## Nope' section"):
+            prompt.strip_markdown_sections("## Real\n\nx\n", ["Nope"])
+
+    def test_workspace_claude_md_honours_the_ablation(self):
+        config = CCRunConfig(ablate=("workspace:Rival readings",))
+        baseline = prompt.build_workspace_claude_md(
+            task_id="t", puzzle_data=MIRROR_TASK, config=CCRunConfig()
+        )
+        ablated = prompt.build_workspace_claude_md(
+            task_id="t", puzzle_data=MIRROR_TASK, config=config
+        )
+        assert "## Rival readings" in baseline
+        assert "## Rival readings" not in ablated
+        assert "## The invariant ledger" in ablated  # only the named section goes
+
+    def test_the_run_record_states_its_own_manipulation(self):
+        """The original ablation was invisible in result.json — same config both arms."""
+        assert CCRunConfig().to_dict()["ablate"] == ()
+        assert CCRunConfig(ablate=("doctrine",)).to_dict()["ablate"] == ("doctrine",)
+        assert CCRunConfig(ablate=("doctrine",)).to_dict() != CCRunConfig().to_dict()

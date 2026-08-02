@@ -272,7 +272,7 @@ def build_workspace(
     _write(root / ".athanor" / "state.json", json.dumps(state, indent=2))
     _write(root / ".athanor" / "invariants.jsonl", "")
 
-    system_prompt = prompt_mod.build_system_prompt()
+    system_prompt = prompt_mod.build_system_prompt(config.ablate)
     initial_prompt = prompt_mod.build_initial_prompt(
         task_id=task_id,
         puzzle_data=visible,

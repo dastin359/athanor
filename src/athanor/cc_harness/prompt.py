@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .config import CCRunConfig
 
@@ -78,9 +78,82 @@ def doctrine() -> str:
     return (ASSETS / "CC_SOLVER_DOCTRINE.md").read_text(encoding="utf-8").strip()
 
 
-def build_system_prompt() -> str:
-    """Full appended system prompt. Task-independent, so it caches across a batch."""
-    return "\n\n---\n\n".join([PROMPT_HEADER.strip(), shared_arc_sections(), doctrine()]) + "\n"
+#: The one system-prompt component an experiment may remove.
+DOCTRINE = "doctrine"
+
+#: Prefix for a workspace ``CLAUDE.md`` section, e.g. ``workspace:Rival readings``.
+WORKSPACE_PREFIX = "workspace:"
+
+
+def _split_ablations(ablate: Iterable[str]) -> tuple[bool, tuple[str, ...]]:
+    """Partition ablation targets, rejecting names nothing would act on.
+
+    An unrecognised target must raise rather than quietly do nothing: a silent
+    no-op is indistinguishable from a performed ablation, and an experiment that
+    cannot tell those apart is not an experiment.
+    """
+    drop_doctrine = False
+    sections: list[str] = []
+    for target in ablate:
+        if target == DOCTRINE:
+            drop_doctrine = True
+        elif target.startswith(WORKSPACE_PREFIX):
+            name = target[len(WORKSPACE_PREFIX):].strip()
+            if not name:
+                raise ValueError(f"ablation target {target!r} names no section")
+            sections.append(name)
+        else:
+            raise ValueError(
+                f"unknown ablation target {target!r}; expected {DOCTRINE!r} or "
+                f"{WORKSPACE_PREFIX}<section heading>"
+            )
+    return drop_doctrine, tuple(sections)
+
+
+def strip_markdown_sections(text: str, headings: Iterable[str]) -> str:
+    """Remove ``## <heading>`` blocks, up to the next heading of the same level.
+
+    Raises if a named heading is not present, for the same reason as above.
+    """
+    for heading in headings:
+        lines = text.splitlines(keepends=True)
+        start = next(
+            (i for i, line in enumerate(lines) if line.strip() == f"## {heading}"), None
+        )
+        if start is None:
+            raise ValueError(f"cannot ablate {heading!r}: no '## {heading}' section found")
+        end = next(
+            (j for j in range(start + 1, len(lines)) if lines[j].startswith("## ")), len(lines)
+        )
+        text = "".join(lines[:start] + lines[end:])
+    return text
+
+
+def build_system_prompt(ablate: Iterable[str] = ()) -> str:
+    """Full appended system prompt. Task-independent, so it caches across a batch.
+
+    ``ablate`` exists so an experiment that claims to have removed the doctrine
+    has actually removed it. Before this existed there was no way to compose a
+    prompt without the doctrine, and an ablation study ran for weeks against an
+    edited workspace file while every arm received the doctrine verbatim.
+    """
+    drop_doctrine, sections = _split_ablations(ablate)
+    if sections:
+        raise ValueError(
+            f"{WORKSPACE_PREFIX}* targets apply to the workspace CLAUDE.md, "
+            "not the system prompt"
+        )
+    parts = [PROMPT_HEADER.strip(), shared_arc_sections()]
+    if not drop_doctrine:
+        parts.append(doctrine())
+    text = "\n\n---\n\n".join(parts) + "\n"
+    if drop_doctrine:
+        # Post-condition, not decoration: the whole point is that the caller can
+        # trust the removal happened.
+        marker = doctrine().splitlines()[0].strip()
+        if marker and marker in text:
+            raise AssertionError(f"doctrine ablation left {marker!r} in the prompt")
+    return text
 
 
 # ── task presentation ────────────────────────────────────────────────────────
@@ -290,6 +363,9 @@ def build_workspace_claude_md(
     }
     for key, value in substitutions.items():
         template = template.replace(key, value)
+    _, sections = _split_ablations(getattr(config, "ablate", ()) or ())
+    if sections:
+        template = strip_markdown_sections(template, sections)
     return template
 
 

@@ -139,6 +139,11 @@ class CCRunConfig:
     extra_cli_args: tuple[str, ...] = ()
 
     # ── bookkeeping ──────────────────────────────────────────────────────
+    #: Named prompt components to remove, e.g. ``("doctrine",)`` or
+    #: ``("workspace:Rival readings",)``. Recorded in ``to_dict`` so a run
+    #: record states its own manipulation; an unknown name raises.
+    ablate: tuple[str, ...] = ()
+
     label: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
