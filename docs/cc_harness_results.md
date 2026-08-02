@@ -3133,3 +3133,51 @@ argument for exclusion was that its gate ledger held a train-perfect submission
 when the clock expired, so scoring it 0.00 would attribute a timeout to the
 model. That was right — it scores 0.50, not 0.00. But "not zero" is not "one",
 and the exclusion quietly implied the latter.
+
+---
+
+## The harness-version test: 3/3 recovered, 0/4 regressed
+
+The question was whether the changes accumulated since 2026-08-01 actually help,
+or whether the log had merely been accumulating plausible-sounding commits. Two
+arms, both Opus 5, effort `high`, all at commit `d5a2abf`.
+
+**Gain arm** — the three tasks never solved under the old harness. Baseline
+**0.00/task**, since each had been tried and failed:
+
+```
+0934a4d8   1.00 (1/1)   matched=[1]      conf 5   11 invariants   $3.33
+20270e3b   1.00 (2/2)   matched=[1,1]    conf 4   28 invariants   $4.33
+9bbf930d   1.00 (1/1)   matched=[1]      conf 4   13 invariants   $5.58
+```
+
+**Regression arm** — four tasks the old harness solved. Baseline **1.00/task**:
+
+```
+28a6681f 1.00    78332cb0 1.00    7b5033c1 1.00    e8686506 1.00
+```
+
+**3.00/3.00 gained, 4.00/4.00 held.** Every gain came on **candidate 1** — the
+primary hypothesis, not a rescue by the hedge.
+
+The prior attempts, for the record: `0934a4d8` failed at 09:22 and `20270e3b` at
+09:48 on 08-01, both inside the project's first hour, before `sweep()`,
+`rival()`, the full tool surface, `unreached()` or any of the doctrine work.
+`9bbf930d` failed **twice**, most recently at 20:37, still before the full tool
+surface and the doctrine additions.
+
+**What this does and does not establish.** It is a paired before/after on the
+same tasks with a control arm, which is a better design than most things in this
+log. But n=3 on the gain side, and two of those three had failed exactly once, so
+run-to-run variance could account for part of it — `9bbf930d`'s two prior
+failures are the strongest single data point precisely because it had two
+chances. What it does exclude is the worry the control arm exists for: the
+changes did not buy gains by breaking something else. 4/4 held.
+
+**A consequence for the queued effort-escalation experiment.** The plan was to
+rerun the failures at `--effort max`, with `harness_v2/gain` supplying a
+three-rung ladder: old harness + high → new harness + high → new harness + max.
+That ladder no longer has a third rung to climb — **all three tasks now solve at
+`high`**, so there is nothing left in the gain set to escalate. The effort
+experiment will have to draw its failures from elsewhere, and the honest reading
+is that the harness changes got there first.
