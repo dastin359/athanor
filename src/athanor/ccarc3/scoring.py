@@ -170,6 +170,8 @@ def total_score(environment_scores: Sequence[float]) -> float:
 def actions_per_level(
     transitions: Sequence["object"],
     n_levels: int,
+    *,
+    cumulative: bool = True,
 ) -> list[int | None]:
     """Actions used to complete each level, from a ledger. ``None`` if not completed.
 
@@ -187,18 +189,35 @@ def actions_per_level(
     this returns 18 actions for level 0, which is exactly what that solver
     reported for itself; grouping by the recorded level gives 17.
 
-    Transitions before the last full reset are dropped — a replayed level would
-    otherwise be counted twice and the score would fall for work that was
-    redone, not for work that was slow.
+    **``cumulative=True`` (the default) counts a replayed level twice**, and
+    that is the conservative reading of an ambiguity in the rubric. It says
+    ``a_l`` is "the agent's action count for completing level l" without saying
+    how multiple playthroughs combine. Two things decide it in favour of
+    summing:
 
-    Actions spent on abandoned attempts *are* included. They were spent, and
-    "actions used to complete this level" is what the rubric divides by.
+    - The SDK's own aggregation is asymmetric: ``Card.high_score = max(scores)``
+      but ``Card.total_actions = sum(actions)``. Score is best-of, actions
+      accumulate. That asymmetry exists precisely so that replaying a game to
+      learn its route cannot pay — and if ``a_l`` were per-play, the summing
+      would be pointless and the benchmark trivially gameable by grinding out
+      the optimal route and then walking it.
+    - Choosing otherwise means reporting the flattering reading of a rule you
+      have not resolved.
+
+    Pass ``cumulative=False`` for the per-play reading, which counts only the
+    playthrough that finished. On `ls20` — the one run here with a full reset —
+    the two give **0.799** and **1.000**. Nothing else in the set is affected.
+
+    Actions spent on abandoned attempts and on failed level retries are included
+    either way. They were spent, and "actions used to complete this level" is
+    what the rubric divides by.
     """
     from .ledger import Transition  # noqa: F401 -- documents the expected element type
 
     kept = list(transitions)
-    cut = max((i for i, t in enumerate(kept) if t.full_reset), default=0)
-    kept = kept[cut:]
+    if not cumulative:
+        cut = max((i for i, t in enumerate(kept) if t.full_reset), default=0)
+        kept = kept[cut:]
 
     counts: dict[int, int] = {}
     previous: int | None = None
@@ -214,6 +233,14 @@ def actions_per_level(
 def score_run(
     transitions: Sequence["object"],
     baselines: Sequence[int],
+    *,
+    cumulative: bool = True,
 ) -> EnvironmentScore:
-    """RHAE score for one run, straight from its ledger and the game's baselines."""
-    return score_environment(baselines, actions_per_level(transitions, len(baselines)))
+    """RHAE score for one run, straight from its ledger and the game's baselines.
+
+    Defaults to the conservative reading of the replay ambiguity — see
+    :func:`actions_per_level`.
+    """
+    return score_environment(
+        baselines, actions_per_level(transitions, len(baselines), cumulative=cumulative)
+    )

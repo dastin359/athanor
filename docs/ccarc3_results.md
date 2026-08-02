@@ -36,7 +36,7 @@ stops early speed from paying for late failure.
 
 | environment | levels | E_raw | cap | **E** | limited by |
 |---|---|---|---|---|---|
-| `ls20-9607627b` | 7/7 | 1.150 | 1.000 | **1.000** | completion cap |
+| `ls20-9607627b` | 7/7 | 0.799 | 1.000 | **0.799** | efficiency — it was replayed |
 | `ft09-0d8bbf25` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `r11l-495a7899` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `sb26-7fbdac44` | 8/8 | 1.144 | 1.000 | **1.000** | completion cap |
@@ -47,17 +47,17 @@ stops early speed from paying for late failure.
 | | |
 |---|---|
 | Opus 5, published | **40.68%** |
-| CCARC3, 7 environments won, 18 unplayed scored 0 | **27.79%** |
-| mean over environments actually played | 99.24% |
-| still needed to pass | **3.222 environment-units — about three more full wins** |
+| CCARC3, 7 environments won, 18 unplayed scored 0 | **26.98%** |
+| mean over environments actually played | 96.37% |
+| still needed to pass | **3.423 environment-units — about three and a half more wins** |
 
 **Not ahead yet, and the reason is coverage rather than capability.**
 
 | | CCARC3 | Opus 5 |
 |---|---|---|
-| environments scoring ≥99% | **6** | **5** |
+| environments scoring ≥99% | **5** | **5** |
 | environments at 0% | 18 (unplayed) | 3 |
-| aggregate | 27.79% | 40.68% |
+| aggregate | 26.98% | 40.68% |
 
 Opus 5's published distribution is five environments at 100%, then 98.8, 77.8,
 58.3, 56.3, 47.6, 47.6, 44.8, 28.6 and a tail down to zero. **It fully clears
@@ -69,6 +69,37 @@ under the completion cap, so the eighteen remaining games do not all have to be
 *wins* to close it: a run that clears four of six levels still scores. What
 cannot be recovered is an environment never attempted, which is exactly what the
 eighteen zeros are.
+
+### The replay ambiguity, resolved against ourselves
+
+**Nothing in ARC-AGI-3 stops you playing a game twice.** A RESET issued
+immediately after a level advance performs a full *game* reset — same scorecard,
+back to level 0 — which is exactly what happened to `ls20` by accident. So a
+solver could in principle grind out a game, learn the optimal route, replay it
+and score near the cap.
+
+The rubric does not say how multiple playthroughs combine into `a_l`. Two
+readings:
+
+| | `ls20` |
+|---|---|
+| (a) count only the playthrough that finished | **1.000** |
+| (b) count every action ever spent on that level | **0.799** |
+
+**This project uses (b).** The SDK's own aggregation is asymmetric —
+`Card.high_score = max(scores)` but `Card.total_actions = sum(actions)` — score
+is best-of and actions accumulate. That asymmetry has no purpose *except* to
+make replaying self-defeating, and under reading (a) the summing would be inert
+and the benchmark trivially gameable by memorising a route. There is no "play
+the game only once" rule because none is needed: the scoring already punishes
+it, and punishes it squared.
+
+Reading (a) was what this harness implemented first, and it is the flattering
+one. Adopting (b) costs 0.201 units and drops the headline from 27.79% to
+**26.98%** — and drops `ls20` out of the ≥99% column, so the "6 versus 5" claim
+above becomes **5 versus 5**. Both figures are kept in `result.json`
+(`rhae` and `rhae_per_play_reading`) so the choice stays visible rather than
+buried. `ls20` is the only affected environment; no other run has a full reset.
 
 ### What the rubric says about where the remaining margin is
 
