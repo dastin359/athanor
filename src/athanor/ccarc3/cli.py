@@ -28,6 +28,7 @@ def _config(args: argparse.Namespace, game_id: str) -> Ccarc3Config:
         effort=args.effort,
         budget_multiple=args.budget_multiple,
         wall_clock_timeout_s=args.timeout,
+        fresh=getattr(args, "fresh", False),
     )
 
 
@@ -38,6 +39,9 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--budget-multiple", type=float, default=4.0,
                    help="action cap as a multiple of the game's published baseline")
     p.add_argument("--timeout", type=float, default=7200.0)
+    p.add_argument("--fresh", action="store_true",
+                   help="discard any existing trace and start over "
+                        "(default is to resume an interrupted run)")
 
 
 def cmd_games(args: argparse.Namespace) -> int:

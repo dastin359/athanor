@@ -178,3 +178,54 @@ def test_the_doctrine_asset_actually_exists_where_the_code_looks():
     from athanor.ccarc3.session import ASSETS
 
     assert (ASSETS / "CCARC3_DOCTRINE.md").is_file()
+
+
+# --------------------------------------------------------------------------- #
+# resume vs fresh — containers get recycled mid-run
+# --------------------------------------------------------------------------- #
+
+
+def _seed(root):
+    (root / "trace.jsonl").write_text(json.dumps({
+        "i": 0, "level": 0, "action": "RESET", "params": {}, "frames": [[[1]]],
+        "score": 0, "state": "NOT_FINISHED", "full_reset": False,
+        "available_actions": [],
+    }) + "\n")
+    (root / "trace.state.json").write_text('{"game_id":"ls20-test","actions_used":1}')
+    (root / "rules.json").write_text('{"verified":[{"rule":"a"}],"refuted":[],"open_questions":[]}')
+
+
+def test_a_rebuilt_workspace_resumes_by_default(tmp_path):
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)
+
+    again = build_workspace(cfg, INFO)
+    assert again.resumed
+    assert again.trace_path.read_text().strip(), "the trace must survive"
+    assert again.rules_path.exists(), "so must what the earlier session learned"
+
+
+def test_the_resumed_prompt_tells_the_solver_not_to_start_over(tmp_path):
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    _seed(build_workspace(cfg, INFO).root)
+    prompt = build_workspace(cfg, INFO).initial_prompt
+    assert "resuming" in prompt.lower()
+    assert "rules.json" in prompt
+    assert "reset" in prompt.lower()
+
+
+def test_fresh_discards_the_previous_run(tmp_path):
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    _seed(build_workspace(cfg, INFO).root)
+
+    ws = build_workspace(Ccarc3Config("ls20-test", out_dir=tmp_path, fresh=True), INFO)
+    assert not ws.resumed
+    assert not ws.trace_path.exists()
+    assert not ws.rules_path.exists()
+    assert "resuming" not in ws.initial_prompt.lower()
+
+
+def test_a_first_run_is_not_reported_as_resumed(tmp_path):
+    ws = build_workspace(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO)
+    assert not ws.resumed

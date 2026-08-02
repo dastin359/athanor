@@ -85,6 +85,16 @@ class Ccarc3Config:
     the benchmark. Everything else Claude Code ships stays available.
     """
     api_key: str | None = None
+    fresh: bool = False
+    """Discard any existing trace and start the game over.
+
+    The default is to *resume*. A container can be recycled mid-run, and the
+    client already persists its session, so relaunching against the same
+    out_dir continues the same game rather than paying for the first N actions
+    twice. Making that the default is deliberate; making it silent would not
+    be, hence the flag and the log line.
+    """
+
     extra_cli_args: tuple[str, ...] = ()
 
 
@@ -95,6 +105,7 @@ class Workspace:
     info: GameInfo
     initial_prompt: str = ""
     env: dict[str, str] = field(default_factory=dict)
+    resumed: bool = False
 
     @property
     def trace_path(self) -> Path:
@@ -171,6 +182,12 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     root.mkdir(parents=True, exist_ok=True)
     (root / "notes").mkdir(exist_ok=True)
 
+    trace = root / "trace.jsonl"
+    if config.fresh:
+        for stale in (trace, trace.with_suffix(".state.json"), root / "rules.json"):
+            stale.unlink(missing_ok=True)
+    resumed = trace.exists()
+
     budget = info.suggested_budget(config.budget_multiple)
 
     (root / "session.py").write_text(
@@ -214,8 +231,9 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
         root=root,
         config=config,
         info=info,
-        initial_prompt=_initial_prompt(info, budget),
+        initial_prompt=_initial_prompt(info, budget, resumed=resumed),
         env=env,
+        resumed=resumed,
     )
 
 
@@ -333,7 +351,20 @@ it still holds. Treat carried mechanics as priors about what to test first.
 """
 
 
-def _initial_prompt(info: GameInfo, budget: int) -> str:
+def _initial_prompt(info: GameInfo, budget: int, *, resumed: bool = False) -> str:
+    if resumed:
+        return (
+            f"You are resuming an interrupted run of `{info.game_id}`. The game is "
+            f"still open and your previous actions are recorded.\n\n"
+            "Read DOCTRINE.md, then `from session import client, gate, arc`. Start "
+            "with `client.status()` and `client.transitions()` to see where you are, "
+            "and read `rules.json` for what the earlier session established — those "
+            "mechanics were paid for and re-deriving them wastes budget you have "
+            "already spent. Do not RESET to 'start clean'; that discards real "
+            "progress.\n\n"
+            f"Continue toward winning as many of the {info.levels} levels as you can, "
+            f"within the {budget}-action budget you are already partway through."
+        )
     return (
         f"Play `{info.game_id}` and win as many of its {info.levels} levels as you can, "
         f"within {budget} actions.\n\n"

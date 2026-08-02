@@ -80,6 +80,20 @@ between a solver and re-deriving the game once per level, and the budget cannot
 pay for that. The gate does not judge the content — grading a hypothesis would
 make it a reviewer.
 
+## Resuming
+
+Runs are long and containers get recycled. Relaunching against the same
+`--out-dir` **resumes** by default: the client persists its scorecard, session
+cookies, level and action count, so the solver picks up the same game rather
+than paying for the first N actions twice. The resumed session is told to read
+`rules.json` first and not to RESET, since the earlier session's mechanics were
+paid for.
+
+```bash
+athanor ccarc3 run --game ls20-9607627b            # resumes if a trace exists
+athanor ccarc3 run --game ls20-9607627b --fresh    # discard and start over
+```
+
 ## Reading a run
 
 ```bash
