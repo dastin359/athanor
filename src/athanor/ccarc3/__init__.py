@@ -37,6 +37,7 @@ from .client import (
     GameInfo,
     list_games,
 )
+from .gate import GateRefusal, LevelGate
 from .ledger import (
     ACTION_NAMES,
     TraceWriter,
@@ -45,6 +46,7 @@ from .ledger import (
     infer_levels,
     load,
 )
+from .session import Ccarc3Config, build_workspace, run_game
 from .rules import (
     Counts,
     Outcome,
@@ -79,6 +81,13 @@ __all__ = [
     "GameInfo",
     "ActionRefused",
     "list_games",
+    # gate
+    "LevelGate",
+    "GateRefusal",
+    # session
+    "Ccarc3Config",
+    "build_workspace",
+    "run_game",
     # ledger
     "ACTION_NAMES",
     "Transition",

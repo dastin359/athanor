@@ -28,9 +28,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .gate import GateRefusal, LevelGate
 from .ledger import TraceWriter, action_name
 
-__all__ = ["ROOT_URL", "ArcClient", "GameInfo", "ActionRefused", "list_games"]
+__all__ = [
+    "ROOT_URL",
+    "ArcClient",
+    "GameInfo",
+    "ActionRefused",
+    "GateRefusal",
+    "list_games",
+]
 
 ROOT_URL = "https://three.arcprize.org"
 
@@ -197,6 +205,7 @@ class ArcClient:
     root: str = ROOT_URL
     tags: tuple[str, ...] = ("ccarc3",)
     info: GameInfo | None = None
+    gate: LevelGate | None = None
 
     card_id: str = ""
     guid: str = ""
@@ -318,6 +327,8 @@ class ArcClient:
         return self._send(action, x=x, y=y)
 
     def _send(self, action: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
+        if self.gate is not None:
+            self.gate.check()
         name = action_name(action)
         payload: dict[str, Any] = {"game_id": self.game_id}
         if action == 0:
@@ -347,6 +358,9 @@ class ArcClient:
         # Set *after* reading, so the flag describes the state the next call
         # will act in -- which is exactly when the RESET trap fires.
         self._last_advanced = self.level > previous_level
+
+        if self.gate is not None:
+            self.gate.observe(self.level)
 
         assert self._writer is not None
         self._writer.append(frame, level=self.level)
