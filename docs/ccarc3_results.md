@@ -225,11 +225,12 @@ restored. The next occurrence will be readable from one file.
 | `ls20-9607627b` | keyboard | **7/7 WON** | 489 | 776 | 63% | 0 |
 | `ft09-0d8bbf25` | untagged | **6/6 WON** | 75 | 208 | **36%** | 0 |
 | `r11l-495a7899` | click | **6/6 WON** | 82 | 233 | **35%** | 0 |
+| `tr87-cd924810` | keyboard | **6/6 WON** | 357 | 414 | 86% | 1 |
 | `cd82-fb555c5d` | keyboard_click | **0/6** | 337 | 171 | — | 1 |
 
-Three wins from four, clustered at 35-63% of a baseline set by someone who
-already knew the rules. One total failure that never left level 0, burning 6.1x
-that level's 55-action baseline.
+**Four wins from five**, spanning 35-86% of a baseline set by someone who already
+knew the rules. One total failure that never left level 0, burning 6.1x that
+level's 55-action baseline.
 
 **The variance between games dwarfs everything else measured on this project.**
 A single-game result — which is all `ls20` was — is correspondingly weak
