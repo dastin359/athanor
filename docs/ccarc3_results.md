@@ -215,3 +215,74 @@ with `"w"`, so starting the resume truncated the record of the handoff. Both are
 now fixed: a previous stream is renamed aside, and `run_game` writes
 `resume_state.json` before the solver starts, recording what the client
 restored. The next occurrence will be readable from one file.
+
+---
+
+## Batch 1 — four games across every tag type, 2026-08-02
+
+| game | tag | levels | actions | baseline | rate | deaths |
+|---|---|---|---|---|---|---|
+| `ls20-9607627b` | keyboard | **7/7 WON** | 489 | 776 | 63% | 0 |
+| `ft09-0d8bbf25` | untagged | **6/6 WON** | 75 | 208 | **36%** | 0 |
+| `r11l-495a7899` | click | **6/6 WON** | 82 | 233 | **35%** | 0 |
+| `cd82-fb555c5d` | keyboard_click | **0/6** | 337 | 171 | — | 1 |
+
+Three wins from four, clustered at 35-63% of a baseline set by someone who
+already knew the rules. One total failure that never left level 0, burning 6.1x
+that level's 55-action baseline.
+
+**The variance between games dwarfs everything else measured on this project.**
+A single-game result — which is all `ls20` was — is correspondingly weak
+evidence, and the 63% figure quoted from it now looks like the *worst* of the
+three wins rather than a representative number.
+
+### What the failure looks like from the trace
+
+| game | action types used | actions that changed nothing |
+|---|---|---|
+| `cd82` | **7** | **20%** (67 of 336) |
+| `ls20` | 5 | 0% |
+| `ft09` | **1** | 0% |
+| `r11l` | **1** | 0% |
+
+**Every win wasted zero actions. The failure wasted one in five**, and clicks
+were the worst of it — 46 of 157 `ACTION6`s left the board untouched.
+
+**Hypothesis, n=1 on the key cell: a wide action space is what breaks it.**
+`cd82` is the only game here where keyboard *and* click are both available, and
+the solver spread effort across all seven types rather than establishing which
+modality mattered. The two fastest wins used exactly **one** action type each.
+
+This is a testable prediction rather than a conclusion, and it is an
+uncomfortable one: **13 of the 25 public games are `keyboard_click`**, so if it
+holds, the harness is systematically weak on more than half the set. The next
+batch should be drawn from `keyboard_click` games specifically, to confirm or
+kill it.
+
+### What it argues the harness should do
+
+The doctrine already says to trust `available_actions` over the tags. That is
+necessary and evidently not sufficient: **available is not the same as
+effective**. Nothing establishes which of the available actions actually do
+anything, and a solver facing seven of them has no cheap way to find out.
+
+Roughly seven actions spent probing each available action once, against a
+possible saving of hundreds, is the trade. This is the same shape as every other
+finding here — doctrine that stays prose gets ignored, and the version that
+survives is a function.
+
+### The click space is easier, not harder
+
+Recorded because it contradicts a prediction stated twice while building this.
+`ACTION6` covers a 64x64 coordinate space against four directions for keyboard,
+so clicks looked like the harder search. `r11l` is the second-most efficient run
+in the set and never probed a single unavailable action.
+
+The likely reason is the one §9.7 already identified: a click acts *directly* on
+a target the solver has located in the frame, while a keyboard game must **route**
+to it. Verification is cheap here and planning is expensive, so the modality that
+skips the routing wins.
+
+`r11l` also took **zero deaths on the one game where a scripted random policy
+died in 38 actions** — the solver avoided entirely a failure mode that random
+play walks straight into.
