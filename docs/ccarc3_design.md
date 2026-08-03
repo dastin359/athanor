@@ -49,7 +49,7 @@ anything below.
 | A post-`GAME_OVER` RESET resets the level, not the game, and opens no new play row | n=1 game (`r11l`) |
 | Wasted actions track failure | rank-ordered across 7 runs, but a run won at 93% effective. **No threshold.** |
 | Deaths are unreachable by wandering on some games | 4 games probed with a random policy |
-| Board-state revisits separate "stuck" from "exploring" better than pace does | 22 level-attempts, 3 games, **1 loss**. Length is an unmodelled confound: longer levels collide more often by chance, and the two high-revisit levels are the two longest. **No threshold.** |
+| Board-state revisits track how *expensive* a level will be — **not** whether it will be cleared | Narrowed 2026-08-03 after a live prediction went the other way, see below. 23 level-attempts, 4 games, 1 loss. Length is an unmodelled confound. **No threshold.** |
 
 The revisit claim is worth stating precisely, because it is the first thing found
 that distinguishes the one lost game from the wins, and because the two obvious
@@ -72,11 +72,32 @@ pace under another name: `su15` L5 and `tn36` L3 ran at the same 1.52× and both
 cleared, while `tn36` L5 ran at 5.62×; both `su15` L5 and `tn36` L5 tripped the
 same 1.0× pace warning.
 
-What would falsify it: a run that loses a level with near-zero revisits, or one
-that clears a long level at 30%+. Neither exists yet, and with one loss on
-record neither is unlikely. `client.level_revisits` is reported as a number in
-`status()` with no threshold attached, so batch 3's remaining games generate the
-data either way.
+**The claim has already been narrowed by its own first live test, and the
+narrowing is a demotion.** `sp80` level 0 was watched forward rather than in
+retrospect: at 108 actions it stood at 19% revisits and 0 no-ops, between
+`tn36`'s two disaster levels, and the prediction on record was trouble. It then
+**cleared**, finishing at 126 actions and 17%:
+
+| level | ratio | revisits | cleared? |
+|---|---|---|---|
+| `sp80` L0 | **3.23×** | 22/126 = 17% | **yes** |
+
+That is below the 30% falsifier named in advance, so it does not refute the
+claim outright — but it is the least supportive point in the set, and combined
+with `tn36` L1 clearing at 16% it means **revisits do not separate cleared from
+uncleared**. Only one level above 16% has ever failed.
+
+What 17% did predict correctly was *cost*: 3.23× baseline, the most expensive
+cleared level on record. So the honest reading is a **cost signal, not a failure
+signal**, and the row above has been rewritten to say so. `sp80` went on to clear
+levels 1-4 at 0.47×, 0.52×, 0.24× and 0.68× — the expense was concentrated
+entirely in working the mechanics out, which is what a revisit-heavy stretch
+appears to mark.
+
+What would still falsify even the narrowed claim: a level cleared cheaply
+(under 1×) with high revisits, or an expensive level (over 2×) with near-zero.
+`client.level_revisits` is reported as a number in `status()` with no threshold
+attached, so the remaining games generate the data either way.
 
 **Load-bearing and undocumented — the largest external-validity risk here.**
 
