@@ -74,7 +74,11 @@ stops early speed from paying for late failure.
 
 | environment | levels | E_raw | cap | **E** | limited by |
 |---|---|---|---|---|---|
+| `lp85-305b61c3` | 8/8 | 1.150 | 1.000 | **1.000** | completion cap — `raw` at the theoretical maximum |
 | `ls20-9607627b` | 7/7 | 1.150 | 1.000 | **1.000** | completion cap |
+| `vc33-5430563c` | 7/7 | 1.150 | 1.000 | **1.000** | completion cap |
+| `su15-1944f8ab` | 9/9 | 1.055 | 1.000 | **1.000** | completion cap |
+| `tu93-0768757b` | 9/9 | 1.077 | 1.000 | **1.000** | completion cap — narrowest margin of any win |
 | `ft09-0d8bbf25` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `r11l-495a7899` | 6/6 | 1.150 | 1.000 | **1.000** | completion cap |
 | `sb26-7fbdac44` | 8/8 | 1.144 | 1.000 | **1.000** | completion cap |
@@ -86,28 +90,42 @@ stops early speed from paying for late failure.
 | | |
 |---|---|
 | Opus 5, published | **40.68%** |
-| CCARC3, 8 environments scored, 17 unplayed scored 0 | **29.58%** |
-| mean over environments actually played | 92.45% |
-| still needed to pass | **2.773 environment-units — under three more full wins** |
+| CCARC3, 12 environments scored, 13 unplayed scored 0 | **45.58%** |
+| mean over environments actually played | 94.97% |
+| margin | **+4.91 percentage points — 1.229 environment-units ahead** |
 
-**Not ahead yet, and the reason is coverage rather than capability.**
+**Ahead as of 2026-08-03, on 12 of 25 environments.** The four wins that closed
+the gap were `su15` (9/9, 0.47x), `lp85` (8/8, 0.24x), `vc33` (7/7, 0.51x) and
+`tu93` (9/9, 0.53x).
 
 | | CCARC3 | Opus 5 |
 |---|---|---|
-| environments scoring ≥99% | **6** | **5** |
-| environments at 0% | 17 (unplayed) | 3 |
-| aggregate | 29.58% | 40.68% |
+| environments scoring >=99% | **10** | **5** |
+| environments at 0% | 13 (unplayed) | 3 |
+| aggregate | **45.58%** | 40.68% |
 
 Opus 5's published distribution is five environments at 100%, then 98.8, 77.8,
 58.3, 56.3, 47.6, 47.6, 44.8, 28.6 and a tail down to zero. **It fully clears
-fewer environments than this harness does** and earns the rest of its total on
-partial progress — levels cleared in games it did not finish.
+half as many environments as this harness does** and earns the rest of its total
+on partial progress — levels cleared in games it did not finish.
 
-That is the shape of the deficit. RHAE gives partial credit for levels cleared
-under the completion cap, so the eighteen remaining games do not all have to be
-*wins* to close it: a run that clears four of six levels still scores. What
-cannot be recovered is an environment never attempted, which is exactly what the
-eighteen zeros are.
+**Read the margin with three caveats attached.** Thirteen environments are still
+unplayed and scored zero, so this is a lead held while touching under half the
+set. Those thirteen were not randomly withheld: batches 1-2 chose games to test
+hypotheses and batch 3 plays cheapest-baseline-first, so the remaining games are
+longer and harder by construction — `wa30` alone carries a 1843-action baseline,
+six times `tn36`'s. And every run here used roughly 40% of the official action
+budget, which bounds the result from below rather than above.
+
+RHAE gives partial credit for levels cleared under the completion cap, so the
+thirteen remaining games do not all have to be *wins* to extend the lead: a run
+that clears four of six levels still scores. What cannot be recovered is an
+environment never attempted, which is exactly what the thirteen zeros are — and
+they are the only reason a 11-from-12 record sits at 45.58% rather than near 95%.
+
+**The margin is one bad stretch wide.** Thirteen unplayed environments are worth
+52 percentage points between them; the current lead is 4.91. This is a position,
+not a result.
 
 ### `tn36-ef4dde99` — the first partial credit, and the first cap hit
 
