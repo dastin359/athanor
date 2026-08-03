@@ -610,15 +610,25 @@ def test_the_doctrine_states_the_objective_function(ws):
 
 def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
     """Not just that it exists — a solver that replays an already-capped run
-    spends a whole baseline for zero score."""
+    spends a whole baseline for zero score.
+
+    This test used to assert **DO NOT DO THIS**, matching a doctrine that told
+    solvers never to replay. That was measured wrong on 2026-08-03: two plays
+    driven by hand on `lp85` showed the server scores the *best* play, and
+    reversing their order gave the same environment score, so the rule is `max`
+    and a replay can never lower a result. Both halves are still required —
+    replay is free of risk but not free of actions, and eight of ten runs on
+    record were already at the cap where it buys nothing.
+    """
     d = (ws.root / "DOCTRINE.md").read_text()
     assert "restart_for_replay()" in d
     assert "NEW PLAY" in d
     assert "gains you exactly nothing" in d, "the usual case must be stated"
-    # The baseline is a *first-time* human, so a replayed clean run is not a
-    # like-for-like comparison. The doctrine must say so, not merely price it.
-    assert "DO NOT DO THIS" in d
-    assert "for the first time" in d
+    assert "BEST play" in d, "the measured rule must be stated, not the old caution"
+    assert "never lower it" in d, "a replay carries no downside; say so"
+    assert "DO NOT DO THIS" not in d.split("An earlier version")[0], (
+        "the reversed guidance must not survive above its own retraction"
+    )
 
 
 def test_the_doctrine_says_to_reserve_budget_for_a_replay(ws):

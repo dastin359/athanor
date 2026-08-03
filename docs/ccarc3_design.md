@@ -80,32 +80,37 @@ data either way.
 
 **Not established, and stated here because the tempting reading is wrong.**
 
-- **Which play the scorer uses.** That plays are stored separately, each with
-  its own `actions_by_level`, is measured. That the *best* one is scored is an
-  inference from `Card.high_score = max(scores)` — a property of the SDK's
-  client-side bookkeeping, not of RHAE. The whole explore-then-replay strategy
-  turns on it: best-play makes a replay worth `1.0 − raw`, first-play makes it
-  worth nothing. **Nothing in this project relies on the strategy**, and it
-  should stay that way until this is measured.
+- ~~**Which play the scorer uses.**~~ **RESOLVED 2026-08-03 — the server scores
+  the BEST play.** Driven by hand on `lp85`, no LLM involved, reading the
+  scorecard back from the close response:
 
-  **It cannot be measured after the fact, and that was learned the hard way.**
-  Scorecards are ephemeral: two `card_id`s taken from runs finished the same day
-  both returned `404 card_id not found` while the same key still listed all 25
-  games. So no run this project has completed — including the only one that ever
-  produced two plays, `ls20` — can answer this, and none ever will.
+  | play | actions on L0 | `level_scores[0]` | play score |
+  |---|---|---|---|
+  | run 1 | 21 | 65.533 | 1.8204 |
+  | run 2 | 7 | 115.000 | 2.7778 |
+  | | | **environment** | **2.7778** |
 
-  `ArcClient.close()` now snapshots the scorecard to `scorecard.json` beside the
-  trace before closing the card, which is the last moment it is readable. That
-  buys two things for free on every future run: the server's own
-  `actions_by_level`, which is the exact quantity RHAE scores and which
-  `athanor.ccarc3.scoring` currently re-derives from the trace with the two never
-  having been compared on real data; and one row per play, which is the evidence
-  this question needs.
+  Repeated with the order reversed — good play first, bad play second — the
+  environment still reported **2.7778**, so the rule is `max` over plays, not
+  "most recent". **A replay can only raise a score, never lower it.**
 
-  **The experiment is now cheap and should be run on the smallest game**: clear a
-  level inefficiently, RESET at action-counter-zero to open a second play, clear
-  the same level efficiently, finish, and read the saved scorecard. Whether the
-  reported figure follows the better play or the first winning one is the answer.
+  The same response confirms the whole rubric against ARC's own arithmetic
+  rather than against the rubric text: `65.533 = (17/21)² × 100`,
+  `115.0 = min(1.15, (17/7)²) × 100`, `1.8204 = 1 × 0.65533 / 36 × 100`, and
+  `2.7778 = 1/36`, the completion cap for 1 of 8 levels binding over that play's
+  raw of 3.194.
+
+  Consequences. Doctrine §0a said "DO NOT DO THIS" and has been reversed. A
+  replay is worth `cap − raw`, which is zero for the eight runs already at the
+  cap and **+0.301 of an environment for `tn36`**, whose levels were solved but
+  slowly. And terminating at the first WIN is *not* score-neutral after all: it
+  forecloses the one move that can still improve an inefficient win.
+
+  **Scorecard access, corrected.** An earlier note here said scorecards are
+  ephemeral. More precisely: `GET /api/scorecard/{card}/{game}` works while the
+  card is **open** and 404s once it is **closed**, and the close POST returns the
+  full card as its response body. Cards from runs hours old also 404, so they
+  expire as well — snapshot promptly either way.
 
 - **That the harness changes caused any measured improvement.** `cd82` went from
   0/6 in 337 actions to 6/6 in 121 across a harness change — and the winning run

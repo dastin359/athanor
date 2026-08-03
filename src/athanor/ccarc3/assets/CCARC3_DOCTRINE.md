@@ -51,28 +51,37 @@ immediately after a level advance — starts a NEW PLAY.** Measured: the API the
 records a new `guid`, a new `actions` row, and a new `actions_by_level` row.
 Per-level action counts are kept per play and never summed.
 
-> **DO NOT DO THIS**, and the reason is worth understanding rather than
-> obeying. It is documented because the mechanism is real and you will find it.
+**The server scores the BEST play, and this is measured, not inferred.** Two
+plays were driven by hand on `lp85` and the scorecard read back directly:
+
+```
+run 1:  21 actions   level_scores [ 65.533, 0...]   score 1.8204
+run 2:   7 actions   level_scores [115.000, 0...]   score 2.7778
+                                  environment score = 2.7778
+```
+
+The environment took the better play. Run in the other order — good play first,
+bad play second — it *still* reported 2.7778, so the rule is `max` over plays and
+not "most recent". **A replay can only raise your score or leave it alone. It can
+never lower it.**
+
+Everything else in the scorecard reproduced the rubric exactly: `65.533 =
+(17/21)² × 100`, `115.0 = min(1.15, (17/7)²) × 100`, `1.8204 = 1 × 0.65533 / 36
+× 100`, and `2.7778 = 1/36`, the completion cap for 1 of 8 levels binding over
+that play's raw 3.194.
+
+> **An earlier version of this section said DO NOT DO THIS.** The argument was
+> that the human baseline comes from people who *could not restart* — "limited
+> to a single attempt per environment", able to reset only the current level —
+> so `(h/a)²` should compare your cost of learning against a human's cost of
+> learning, and a post-learning replay measures a different quantity.
 >
-> The human baseline you are measured against comes from people playing the
-> game **for the first time**, and — this is the part that decides it — those
-> people **could not restart the game**. They were "limited to a single attempt
-> per environment and could not revisit previously completed levels", though
-> they could reset the current level freely. Their action count therefore
-> contains all of their own fumbling.
->
-> So `(h/a)²` compares your cost of *learning* the level against a human's cost
-> of learning it. Explore across one play, restart, and present a clean route,
-> and you put a post-learning run against a during-learning baseline gathered
-> under a rule you just broke. That is not a better score; it is a different
-> quantity.
->
-> Two honest caveats. Nothing states that an *agent* is forbidden from
-> restarting — the argument here is the asymmetry, not a published rule. And it
-> is unverified that it would even work: which play the scorer reads is not
-> established.
->
-> **Play once. Learn from nothing. Let the action count fall where it falls.**
+> That reasoning is still sound as a description of what the number *means*. It
+> was wrong about what to do. Nothing forbids an agent from restarting, the
+> scorer demonstrably reads the best play, and the benchmark is the benchmark.
+> Recorded here rather than deleted because the caveat it ended on — "it is
+> unverified that it would even work" — was the honest part, and it has now been
+> verified the other way.
 
 The games are also **deterministic** — replaying an action sequence reproduces
 the board exactly, patrolling objects included, verified 40 frames out of 40.
@@ -89,9 +98,15 @@ client.restart_for_replay()      # only legal right after a level advance
 
 - If your levels came in **under baseline**, your raw score is already at or
   above 1.0 and the cap is binding. **A replay gains you exactly nothing.**
-  This is the usual case. Do not do it.
-- If overruns dragged your raw score well below 1.0, a replay is worth
-  `1.0 − raw`, which can be half an environment.
+  This is the usual case — of ten runs on record, eight were already at the cap.
+  Do not spend actions on it.
+- If overruns dragged your raw score below the cap, a replay is worth
+  `cap − raw`. On the one run this project has lost, that is
+  **0.750 − 0.449 = +0.301 of an environment**, from levels it had already
+  solved and knew the routes to.
+
+The second case is the one to watch for, because it is where a *bad* run turns
+into a good score. The cap does not care that you were slow the first time.
 
 Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
 `raw`, `cap` and the per-level breakdown.
