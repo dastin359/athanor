@@ -998,3 +998,249 @@ def test_no_per_level_budget_when_the_multiple_is_zero(monkeypatch, tmp_path):
     c = ArcClient("g", trace_path=tmp_path / "t.jsonl",
                   info=GameInfo("g", baseline_actions=(10,)))
     assert c.level_budget == 0
+
+
+# --------------------------------------------------------------------------- #
+# the running score
+#
+# `su15` is the case behind this block. Its solver spent 268 actions on a
+# 31-baseline level and 182 on an 8-baseline one, cleared level 7, and then
+# correctly chose to replay -- with nothing in the harness able to tell it that
+# those two levels had already fixed its ceiling at 0.82.
+# --------------------------------------------------------------------------- #
+
+
+def _levelled(monkeypatch, tmp_path, baselines, win_levels, **kw):
+    """A client whose level advances are driven by `post.next`."""
+    def fake_post(url, payload, key, **kwargs):
+        if url.endswith("/scorecard/open"):
+            return {"card_id": "card-1"}
+        reply = _frame(win_levels=win_levels, **getattr(fake_post, "next", {}))
+        name = url.rsplit("/", 1)[-1]
+        reply["action_input"] = {"id": 0 if name == "RESET" else int(name.removeprefix("ACTION"))}
+        return reply
+
+    monkeypatch.setattr(client_mod, "_post", fake_post)
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    info = GameInfo("g1", baseline_actions=tuple(baselines))
+    c = ArcClient("g1", trace_path=tmp_path / "t.jsonl", info=info, **kw).open()
+    return c, fake_post
+
+
+def _clear(c, post, level, actions):
+    """Spend `actions` on the current level, the last of which clears it."""
+    for _ in range(actions - 1):
+        c.act(1)
+    post.next = {"levels_completed": level}
+    c.act(1)
+    post.next = {"levels_completed": level}
+
+
+def test_level_costs_charge_the_clearing_action_to_the_level_it_left(
+    monkeypatch, tmp_path
+):
+    """The same attribution `scoring.actions_per_level` uses, and it must match.
+
+    The action that finishes a level is recorded at the *next* level, so a
+    counter that reads the recorded level shortens every level by one. Checked
+    against the scorer on the very trace this client wrote rather than asserted
+    twice from the same assumption.
+    """
+    from athanor.ccarc3.ledger import load
+    from athanor.ccarc3.scoring import actions_per_level
+
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20, 30), 3)
+    _clear(c, post, 1, 7)
+    _clear(c, post, 2, 4)
+    assert c.level_costs == (7, 4)
+    assert actions_per_level(load(c.trace_path), 3)[:2] == [7, 4]
+
+
+def test_a_full_reset_starts_the_score_over_because_plays_score_separately(
+    monkeypatch, tmp_path
+):
+    """The server keeps `actions_by_level` per play and scores the best one.
+
+    Carrying the abandoned play's costs into the replay is exactly the error
+    that would read `su15`'s 1.000-pace replay as its 8.65x exploration.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20, 30), 3)
+    _clear(c, post, 1, 40)
+    assert c.level_costs == (40,)
+
+    post.next = {"levels_completed": 0}
+    c.restart_for_replay()
+    assert c.level_costs == (), "a new play scores from nothing"
+    assert c.full_resets == 1
+
+    _clear(c, post, 1, 5)
+    assert c.level_costs == (5,)
+
+
+def test_the_completion_cap_needs_no_baselines(monkeypatch, tmp_path):
+    """The half of the score that survives the baseline-free setup.
+
+    C is pure structure -- which levels fell, not how fast -- so a solver that
+    can see nothing else can still see this.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (), 9)
+    for level in (1, 2):
+        _clear(c, post, level, 3)
+    assert c.score_now is None and c.score_ceiling is None
+    assert c.completion_cap == pytest.approx(3 / 45)
+
+
+def test_the_ceiling_reproduces_the_su15_replay_decision(monkeypatch, tmp_path):
+    """The real numbers from the run that motivated this, checked end to end.
+
+    su15's exploration play cleared seven of nine levels at
+    [16, 22, 16, 18, 5, 268, 182] against baselines
+    [22, 42, 26, 115, 36, 31, 8, 40, 41]. Two blown levels put a perfect score
+    permanently out of reach: 0.8199, whatever it did on levels 8 and 9. That
+    number is why replaying was right, and the solver had no way to see it.
+    """
+    from athanor.ccarc3.scoring import score_environment
+
+    baselines = (22, 42, 26, 115, 36, 31, 8, 40, 41)
+    c, post = _levelled(monkeypatch, tmp_path, baselines, 9)
+    for level, cost in enumerate([16, 22, 16, 18, 5, 268, 182], start=1):
+        _clear(c, post, level, cost)
+
+    assert c.level_costs == (16, 22, 16, 18, 5, 268, 182)
+    assert c.score_ceiling == pytest.approx(0.8199, abs=5e-5)
+    # score_now must agree with the scorer on the same play, or the number in
+    # status() is a second implementation free to drift from the real one.
+    stopped = list(c.level_costs) + [None, None]
+    assert c.score_now == pytest.approx(score_environment(list(baselines), stopped).score)
+
+
+def test_a_clean_play_keeps_its_ceiling_at_one(monkeypatch, tmp_path):
+    """The contrast case: under baseline everywhere, nothing is out of reach."""
+    baselines = (22, 42, 26, 115, 36, 31, 8, 40, 41)
+    c, post = _levelled(monkeypatch, tmp_path, baselines, 9)
+    for level, cost in enumerate([14, 22, 16, 9, 5, 11, 7], start=1):
+        _clear(c, post, level, cost)
+    assert c.score_ceiling == pytest.approx(1.0)
+    assert "CEILING" not in c.status()
+
+
+def test_status_says_nothing_about_score_unless_asked(monkeypatch, tmp_path):
+    """The flag is what keeps the baseline-free arm one-variable.
+
+    Ten of its twenty-five games ran before this existed. A signal that turned
+    itself on halfway would make the two halves different experiments.
+    """
+    baselines = (22, 42, 26, 115, 36, 31, 8, 40, 41)
+    c, post = _levelled(monkeypatch, tmp_path, baselines, 9)
+    for level, cost in enumerate([16, 22, 16, 18, 5, 268, 182], start=1):
+        _clear(c, post, level, cost)
+    assert c.score_ceiling < 0.9, "the client still knows"
+    s = c.status()
+    assert "CEILING" not in s and "score " not in s, "it just does not say"
+
+
+def test_a_lost_ceiling_names_the_instrument_that_recovers_it(monkeypatch, tmp_path):
+    """A warning that reports a number without an action is a number.
+
+    The solver's move here is a new play, and the message has to say so --
+    §0a of the doctrine spent a whole revision establishing that replaying is
+    safe, and it is still the least-used call in the harness.
+    """
+    baselines = (22, 42, 26, 115, 36, 31, 8, 40, 41)
+    c, post = _levelled(monkeypatch, tmp_path, baselines, 9, show_score=True)
+    for level, cost in enumerate([16, 22, 16, 18, 5, 268, 182], start=1):
+        _clear(c, post, level, cost)
+    s = c.status()
+    assert "score 0.385" in s and "ceiling 0.820" in s
+    assert "CEILING 0.820" in s and "+0.180" in s and "restart_for_replay()" in s
+
+
+def test_without_baselines_status_still_shows_the_cap(monkeypatch, tmp_path):
+    c, post = _levelled(monkeypatch, tmp_path, (), 9, show_score=True)
+    for level in (1, 2):
+        _clear(c, post, level, 3)
+    s = c.status()
+    assert "cap 0.067 = 2/9 levels" in s
+    assert "CEILING" not in s, "no baselines, no ceiling to claim"
+
+
+def test_a_resumed_run_rebuilds_its_level_costs_from_the_trace(monkeypatch, tmp_path):
+    """A state file predating this counter must not report a score of zero.
+
+    Same repair, and same reason, as `level_actions`: a silently wrong number is
+    worse than an absent one, and here the wrong number reads as "you have
+    cleared nothing" on a run that has cleared two.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20, 30), 3)
+    _clear(c, post, 1, 7)
+    _clear(c, post, 2, 4)
+
+    state = json.loads(c.state_path.read_text())
+    del state["level_costs"]
+    c.state_path.write_text(json.dumps(state))
+
+    resumed = ArcClient("g1", trace_path=tmp_path / "t.jsonl",
+                        info=GameInfo("g1", baseline_actions=(10, 20, 30)))
+    resumed.open()
+    assert resumed.level_costs == (7, 4)
+
+
+# --------------------------------------------------------------------------- #
+# withholding baselines from the solver without withholding them from the rules
+# --------------------------------------------------------------------------- #
+
+
+def test_hiding_baselines_does_not_lift_the_official_per_level_cap(
+    monkeypatch, tmp_path
+):
+    """The two-variable bug that made the baseline-free arm not an ablation.
+
+    That arm hid the medians by blanking `GameInfo.baseline_actions` -- the same
+    array `level_budget` derives ARC's 5n termination rule from. So hiding the
+    information removed the rule. `su15` then ran a 31-baseline level to 268
+    actions where ARC would have stopped it at 155.
+
+    ARC withholding a number from an agent does not stop ARC applying it.
+    """
+    c, _ = _levelled(monkeypatch, tmp_path, (31, 40), 2,
+                     level_budget_multiple=5.0, hide_baselines=True)
+    assert c.baseline_here is None, "the solver cannot see it"
+    assert c.level_budget == 155, "the rule applies anyway: 5 x 31"
+
+    blanked, _ = _levelled(monkeypatch, tmp_path, (), 2, level_budget_multiple=5.0)
+    assert blanked.level_budget == 0, "how the arm actually ran"
+
+
+def test_every_solver_facing_baseline_surface_goes_quiet_together(
+    monkeypatch, tmp_path
+):
+    """One property gates them all, so none can be forgotten and leak."""
+    c, post = _levelled(monkeypatch, tmp_path, (31, 40), 2,
+                        level_budget_multiple=5.0, hide_baselines=True,
+                        show_score=True)
+    for _ in range(9):
+        c.act(1)
+    s = c.status()
+    assert "on this level = " not in s and "OVER BASELINE" not in s
+    assert "31" not in s and "155" not in s, "not even by arithmetic"
+    assert c.pace() == {}
+    assert c.score_now is None and c.score_ceiling is None
+    assert "cap 0.000 = 0/2 levels" in s, "the structural half still shows"
+
+
+def test_the_cap_refusal_does_not_name_a_withheld_baseline(monkeypatch, tmp_path):
+    """It does name the cap, which is 5n -- but only as the environment ends."""
+    c, post = _levelled(monkeypatch, tmp_path, (2, 40), 2,
+                        level_budget_multiple=5.0, hide_baselines=True)
+    for _ in range(10):
+        c.act(1)
+    with pytest.raises(ActionRefused, match="baseline withheld"):
+        c.act(1)
+
+
+def test_a_visible_baseline_is_still_named_in_the_refusal(monkeypatch, tmp_path):
+    c, post = _levelled(monkeypatch, tmp_path, (2, 40), 2, level_budget_multiple=5.0)
+    for _ in range(10):
+        c.act(1)
+    with pytest.raises(ActionRefused, match=r"baseline 2, 5x"):
+        c.act(1)

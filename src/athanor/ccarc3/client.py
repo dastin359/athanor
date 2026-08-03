@@ -31,6 +31,7 @@ from typing import Any
 
 from .gate import GateRefusal, LevelGate
 from .ledger import TraceWriter, action_name
+from .scoring import LEVEL_SCORE_CAP
 
 __all__ = [
     "ROOT_URL",
@@ -236,6 +237,43 @@ class ArcClient:
     its entire budget executing a plan it should have abandoned.
     """
 
+    hide_baselines: bool = False
+    """Withhold per-level human medians from the solver, but keep enforcing them.
+
+    **The right way to run the baseline-free ablation, and the way it was not
+    run.** That arm hides the numbers by blanking ``GameInfo.baseline_actions``,
+    which is the same array :attr:`level_budget` derives the official 5n
+    per-level termination rule from -- so hiding the information silently
+    removed the rule as well, making the arm a two-variable experiment.
+
+    `su15` is what that cost. With the cap inert its solver ran a 31-baseline
+    level to 268 actions (8.65x) and an 8-baseline level to 182 (22.75x), burning
+    62% of the game's entire budget on two levels ARC would have terminated at
+    155 and 40. It then replayed, cleared eight of nine levels at the 1.15
+    per-level cap on every single one, and lost anyway -- out of budget on the
+    last level, 0.800 against its control's 1.000.
+
+    ARC withholding a number from the agent would not stop ARC applying it. This
+    flag models that: the pace line, :meth:`pace` and the score block all go
+    quiet, and :attr:`level_budget` keeps working.
+
+    Off by default, and not switched on under the running arm: ten of its
+    twenty-five games are already banked without it, and a variable that changes
+    halfway makes two half-experiments rather than one.
+    """
+
+    show_score: bool = False
+    """Report the running RHAE score and its ceiling in :meth:`status`.
+
+    **Off by default only because an experiment is in flight.** The baseline-
+    free arm is a paired rerun of scored games, and its whole design is that one
+    variable changes between the arms. Turning a new signal on halfway through
+    would mean games 1-10 and games 11-25 ran different harnesses, so the flag
+    exists to keep the arm honest rather than because the signal is optional.
+
+    Turn it on in the workspace template once the arm completes.
+    """
+
     card_id: str = ""
     guid: str = ""
     actions_used: int = 0
@@ -259,6 +297,23 @@ class ArcClient:
     level's baseline while the doctrine's own control law -- re-explore
     rather than grind -- sat unmechanised and unread.
     """
+    level_costs: tuple[int, ...] = ()
+    """Actions spent on each level **this play** has cleared, in order.
+
+    The one piece of state the solver's own score depends on that the harness
+    did not keep. RHAE is a weighted mean over per-level action counts, so
+    without this list a running score cannot be computed at all -- and for six
+    months of this project nothing could tell a solver what it was scoring
+    while it still had budget to react.
+
+    Maintained incrementally for the same reason as :attr:`level_repeats`:
+    deriving it means parsing the whole trace, which ``status()`` cannot afford.
+
+    Cleared on a full reset, because a new play's score is computed from that
+    play alone -- the server records ``actions_by_level`` per play and scores
+    the best one.
+    """
+
     level_tried: int = 0
     level_dead: int = 0
     level_repeats: int = 0
@@ -357,6 +412,7 @@ class ArcClient:
                     "full_resets": self.full_resets,
                     "wasted_actions": self.wasted_actions,
                     "level_actions": self.level_actions,
+                    "level_costs": list(self.level_costs),
                     "last_advanced": self._last_advanced,
                     "level_tried": self.level_tried,
                     "level_dead": self.level_dead,
@@ -431,6 +487,15 @@ class ArcClient:
             self.level_actions = int(saved["level_actions"])
         else:
             self.level_actions = self._level_actions_from_trace(int(saved.get("level", 0)))
+        # A state file written before this counter existed has no level_costs.
+        # Rebuilding it from the trace is the same choice made for
+        # `level_actions` just above, and for the same reason: a resumed run
+        # would otherwise report a score computed from an empty history, which
+        # reads as "you have cleared nothing" on a run that has cleared six.
+        if "level_costs" in saved:
+            self.level_costs = tuple(int(c) for c in saved["level_costs"])
+        else:
+            self.level_costs = self._level_costs_from_trace()
         self._last_advanced = bool(saved.get("last_advanced", False))
         self.level_tried = int(saved.get("level_tried", 0))
         self.level_dead = int(saved.get("level_dead", 0))
@@ -605,15 +670,114 @@ class ArcClient:
 
     @property
     def baseline_here(self) -> int | None:
+        """This level's human median, or None when the solver may not see it.
+
+        Every solver-facing surface reads this one property -- the pace line in
+        :meth:`status`, :meth:`pace`, the score block -- so returning None here
+        silences all of them at once. :attr:`_baseline_here_enforced` is what the
+        harness's own machinery reads, and it is deliberately not the same.
+        """
+        return None if self.hide_baselines else self._baseline_here_enforced
+
+    @property
+    def _baseline_here_enforced(self) -> int | None:
+        """This level's human median, whatever the solver is allowed to see."""
         return self.info.baseline_for(self.level) if self.info else None
 
     @property
     def level_budget(self) -> int:
-        """Actions allowed on the current level, or 0 when uncapped."""
-        base = self.baseline_here
+        """Actions allowed on the current level, or 0 when uncapped.
+
+        **Reads the enforced baseline, not the visible one.** ARC terminates an
+        agent at 5n per level whether or not it told the agent what n was, so a
+        cap that switches itself off when the number is hidden is not modelling
+        the benchmark -- it is removing a rule the benchmark keeps.
+        """
+        base = self._baseline_here_enforced
         if not base or not self.level_budget_multiple:
             return 0
         return int(base * self.level_budget_multiple)
+
+    # -- score ------------------------------------------------------------ #
+    #
+    # The solver could not see its own score. It could see this level's pace
+    # ratio and nothing else -- no running total, no ceiling, no answer to the
+    # only question that decides what to do next: *is what I am doing still
+    # worth anything?*
+    #
+    # `su15` is the case that made this concrete. Its solver blew 268 actions on
+    # a 31-baseline level and 182 on an 8-baseline level, then cleared level 7
+    # and correctly chose to replay. Nothing in the harness could have told it
+    # that those two levels had already fixed its ceiling at 0.82 -- which is
+    # the fact that made the replay right, and the fact it had to guess.
+
+    @property
+    def completion_cap(self) -> float:
+        """`C` if this play stopped here: the weighted fraction of levels cleared.
+
+        **Computable without baselines**, unlike everything else in this block,
+        because it is pure structure: which levels fell, not how fast. A solver
+        that can see nothing else can still see this one.
+        """
+        n = self.win_levels
+        if not n:
+            return 0.0
+        k = min(len(self.level_costs), n)
+        return sum(range(1, k + 1)) / sum(range(1, n + 1))
+
+    def _play_score(self, *, optimistic: bool = False) -> float | None:
+        """RHAE for the current play, or None when baselines are unknown.
+
+        ``optimistic=True`` scores every level not yet cleared at the 1.15 per-
+        level cap, giving the **ceiling**: the best this play can still finish
+        at, however perfectly it plays from here.
+        """
+        # Solver-facing: withheld baselines make this unanswerable, and the
+        # honest answer is None rather than a score computed from numbers the
+        # solver is not being shown.
+        if self.hide_baselines:
+            return None
+        baselines = list(self.info.baseline_actions) if self.info else []
+        n = self.win_levels or len(baselines)
+        if not baselines or len(baselines) < n or not n:
+            return None
+        weighted = 0.0
+        for index in range(1, n + 1):
+            level = index - 1
+            if level < len(self.level_costs):
+                cost = self.level_costs[level]
+                # A level credited without any action of its own -- see the
+                # multi-level advance note in `_send` -- beat the human by
+                # definition, so it takes the cap rather than a division by zero.
+                score = (
+                    LEVEL_SCORE_CAP if cost <= 0
+                    else min(LEVEL_SCORE_CAP, (baselines[level] / cost) ** 2)
+                )
+            elif optimistic:
+                score = LEVEL_SCORE_CAP
+            else:
+                score = 0.0
+            weighted += index * score
+        raw = weighted / sum(range(1, n + 1))
+        cap = 1.0 if optimistic else self.completion_cap
+        return min(raw, cap)
+
+    @property
+    def score_now(self) -> float | None:
+        """What this play scores if it stops on this action. None without baselines."""
+        return self._play_score()
+
+    @property
+    def score_ceiling(self) -> float | None:
+        """The most this play can still score, playing perfectly from here.
+
+        **The number a replay decision turns on.** RHAE is a weighted mean over
+        levels already finished, so a level finished badly is finished badly for
+        good -- no later brilliance repairs it. When this drops below what a
+        fresh play could reach, the play is worth less than the budget it would
+        take to redo, and :meth:`restart_for_replay` is the instrument.
+        """
+        return self._play_score(optimistic=True)
 
     def scorecard(self) -> dict[str, Any]:
         return _get(f"{self.root}/api/scorecard/{self.card_id}/{self.game_id}",
@@ -699,9 +863,15 @@ class ArcClient:
             )
         level_cap = self.level_budget
         if level_cap and self.level_actions >= level_cap:
+            # `level_cap` is the baseline times the multiple, so naming it at all
+            # reveals the baseline to arithmetic. That is acceptable *here* and
+            # nowhere else: this refusal ends the environment, so there is no
+            # subsequent decision the number could inform.
+            base = self._baseline_here_enforced
+            whose = "withheld" if self.hide_baselines else str(base)
             raise ActionRefused(
                 f"per-level action budget exhausted: {self.level_actions}/{level_cap} "
-                f"on level {self.level} (baseline {self.baseline_here}, "
+                f"on level {self.level} (baseline {whose}, "
                 f"{self.level_budget_multiple:g}x). This is the official ARC-AGI-3 "
                 f"rule -- an agent is terminated after {self.level_budget_multiple:g}n "
                 f"actions on a level. Nothing further can be scored on this level, so "
@@ -731,6 +901,17 @@ class ArcClient:
             action_name(a) for a in (frame.get("available_actions") or ())
         )
         self.actions_used += 1
+        if self.level > previous_level:
+            # This action is the last one taken *from* the level just cleared,
+            # which is the attribution :func:`scoring.actions_per_level` uses, so
+            # its cost is the running tally plus this one.
+            #
+            # A jump of more than one level has never been observed; if the
+            # server ever credits two at once, the extra levels really did cost
+            # zero actions of their own and are recorded as such. Zero is read
+            # as "cleared for free" by :meth:`_play_score`, not as missing data.
+            gained = self.level - previous_level
+            self.level_costs = self.level_costs + (self.level_actions + 1,) + (0,) * (gained - 1)
         self.level_actions = 0 if self.level > previous_level else self.level_actions + 1
         # The server's own flag is not reliable. On the one full reset this
         # project has recorded, the level went 6 -> 0 and ``full_reset`` came
@@ -740,6 +921,7 @@ class ArcClient:
         if frame.get("full_reset") or self.level < previous_level:
             self.full_resets += 1
             self.level_actions = 0
+            self.level_costs = ()
         if not frame.get("frame"):
             self.wasted_actions += 1
         # `or frame.get("full_reset")` is defensive, not decorative: the server
@@ -780,6 +962,8 @@ class ArcClient:
         """
         from .rules import level_pace
 
+        if self.hide_baselines:
+            return {}
         return level_pace(self.transitions(), self.info.baseline_actions if self.info else ())
 
     def status(self) -> str:
@@ -817,6 +1001,31 @@ class ArcClient:
             # while warning at the top costs the hundreds of actions in between.
             if ratio >= 1.0:
                 warnings.append("OVER BASELINE: re-explore rather than grind")
+        if self.show_score:
+            ceiling = self.score_ceiling
+            if ceiling is None:
+                # Baselines withheld: the completion cap is still exact, and it
+                # is the half of the score that does not need them.
+                facts.append(f"[cap {self.completion_cap:.3f} = {len(self.level_costs)}"
+                             f"/{self.win_levels or '?'} levels]")
+            else:
+                facts.append(
+                    f"[score {self.score_now:.3f}, ceiling {ceiling:.3f}, "
+                    f"cap {self.completion_cap:.3f}]"
+                )
+                # A ceiling under 1.0 means levels already finished have put the
+                # rest of this play out of reach of a perfect score. Grinding on
+                # cannot recover it; only a new play can. The threshold is the
+                # score a fresh play could still reach, which is 1.0 by
+                # construction, so any shortfall at all is the signal.
+                if ceiling < 0.999:
+                    warnings.append(
+                        f"CEILING {ceiling:.3f}: levels already finished cap this "
+                        f"play below 1.000 however well you play from here. A new "
+                        f"play would be worth up to {1.0 - ceiling:+.3f} if the "
+                        f"remaining budget covers redoing what you have cleared "
+                        f"-- see restart_for_replay()."
+                    )
         if self.wasted_actions:
             facts.append(f"wasted={self.wasted_actions}")
         if self.full_resets:
@@ -826,6 +1035,27 @@ class ArcClient:
             warnings.append(waste)
 
         return " ".join(facts) + "".join(f"\n  <- {w}" for w in warnings)
+
+    def _level_costs_from_trace(self) -> tuple[int, ...]:
+        """Per-level costs for the **current play**, rebuilt from the ledger.
+
+        Only used to repair a state file that predates the counter.
+        :func:`athanor.ccarc3.scoring.actions_per_level` already cuts to the
+        last play and attributes by the level an action was taken *from*, which
+        is exactly this list; the trailing ``None`` entries are levels not yet
+        cleared and are dropped.
+        """
+        from .scoring import actions_per_level
+
+        try:
+            transitions = self.transitions()
+        except Exception:  # noqa: BLE001 -- a resume must not die on a bad trace
+            return ()
+        n = self.win_levels or (len(self.info.baseline_actions) if self.info else 0)
+        if not n:
+            return ()
+        counts = actions_per_level(transitions, n)
+        return tuple(c for c in counts if c is not None)
 
     def _level_actions_from_trace(self, level: int) -> int:
         """How many actions the ledger says were spent on ``level``.
