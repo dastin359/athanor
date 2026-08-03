@@ -304,12 +304,28 @@ cutting those would ablate different variables.
 
 | game | control E | no-baseline E | actions | turns | cost |
 |---|---|---|---|---|---|
-| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 | $2.36 → $6.17 |
-| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 | $3.04 → $4.85 |
-| `tr87` | 0.947 | **1.000** | 358 → **194** | 66 → 55 | $6.86 → $5.68 |
+| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 (×2.17) | $2.36 → $6.17 |
+| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 (×1.97) | $3.04 → $4.85 |
+| `tr87` | 0.947 | **1.000** | 358 → **194** | 66 → 55 (×0.83) | $6.86 → $5.68 |
+| `ls20` | 1.000 | **1.000** | 860 → 612 | 80 → 132 (×1.65) | $8.51 → $21.16 |
+| `lp85` | 1.000 | **1.000** | 94 → 96 | 68 → 97 (×1.43) | $8.79 → $11.99 |
 
-**3 of 3 won with baselines withheld, and the arm leads on score, 3.000 to
-2.947.** `tr87` is the striking one: its control finished 6/6 but scored 0.947
+**5 of 5 won with baselines withheld, and the arm leads on score, 5.000 to
+4.947.**
+
+`lp85` is the single strongest data point. Its control is the best run this
+project has recorded — `raw` at the theoretical maximum 1.1500, every level
+capped — and the blind run reproduced it level for level:
+
+```
+free   9   8  16  13  10  21   9   9      96 actions, raw 1.1500
+ctrl   8  10  18  14  10  20   5   9      94 actions, raw 1.1500
+base  17  38  31  16  41  60  26 159
+```
+
+The 159-baseline finale took **9 actions in both**. A solver that had never seen
+a baseline and one holding the whole array converged on the same solution to the
+hardest level in the game. `tr87` is the striking one: its control finished 6/6 but scored 0.947
 because one level ran 3.44× baseline, and the baseline-free run took that same
 level in 23 actions against 45 — every level capped, `raw` at the theoretical
 maximum 1.1500, in 46% fewer actions and for less money.
@@ -323,11 +339,14 @@ consistent with run-to-run variance on a game whose control had one bad level.
 note, and this is exactly where that gap bites. The two ties carry more weight
 than the apparent win.
 
-*A pattern already failed to replicate.* At n=2 the baseline-free runs took
-roughly double the turns (63 vs 29, 71 vs 36), suggesting baselines buy speed of
-convergence rather than capability. `tr87` used **fewer** turns than its control
-(55 vs 66). Two games supported the reading and the third contradicted it; it is
-recorded here as dead rather than quietly dropped.
+*The turn-cost effect is real, and it was declared dead one game too early.*
+At n=2 the baseline-free runs took roughly double the turns, suggesting
+baselines buy speed of convergence rather than capability. `tr87` then used
+**fewer** turns than its control, and this section recorded the pattern as
+refuted. That was an overcorrection on a single contrary case. At n=5 the ratios
+are ×2.17, ×1.97, ×0.83, ×1.65, ×1.43 — **four of five higher, median ×1.65** —
+and `tr87` is the outlier rather than the refutation. The reading stands:
+withholding baselines costs deliberation, not capability.
 
 *Mechanism is unanswerable for seven of the thirteen.* `ft09`, `ls20`, `r11l`,
 `cd82`, `sb26`, `sc25` and `tr87` had their `stream.jsonl` destroyed with their
