@@ -38,8 +38,29 @@ to 1585, and it was stopped having cleared 6 of 7 levels.
 
 The numbers below are therefore *understated* relative to what the same harness
 would score under official conditions, and `tn36`'s 0.449 is the clearest case:
-it hit our cap, not ARC's. Correcting this is the single highest-value change
-outstanding — it is a harness setting, not a solver capability.
+it hit our cap, not ARC's.
+
+> **This section used to call correcting it "the single highest-value change
+> outstanding". Measured across all 19 runs on record, that overstates it.** The
+> cap has actually bound in **two** runs — `tn36`'s control at 631/634 (99.5%)
+> and `su15` baseline-free at 701/722 (97%) — and those two are the project's
+> two worst scores. Every other run finished with room to spare: ten of the
+> twelve baseline-free runs used **under 40% of the cap they were given**, and
+> the median is 29%.
+>
+> So raising it is a **tail-risk fix, not a broad uplift**. It would have
+> rescued two bad results; it would not have moved twelve good ones by a single
+> action. And `tn36` — the case this paragraph was built on — has since been
+> won at **1.000 in 220 actions**, 35% of the same cap that stopped its control.
+> The environment was never budget-limited; that one run was.
+>
+> The difference that does matter is **structural, not a magnitude**. ARC
+> terminates per *level*, so spending 5n on level 1 leaves level 2's allowance
+> untouched. Our cap is a single game-wide pool, so one runaway level can eat
+> the budget every later level needed — which is exactly how `su15` lost, with
+> 450 actions on two levels and nothing left for the ninth. Raising 2.0× to 5.0×
+> would not fix that; only enforcing the per-level rule does, and in the
+> baseline-free arm that rule is currently inert (see the ablation section).
 
 ## Where this stands against the published Opus 5 result
 
