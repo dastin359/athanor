@@ -1244,3 +1244,61 @@ def test_a_visible_baseline_is_still_named_in_the_refusal(monkeypatch, tmp_path)
         c.act(1)
     with pytest.raises(ActionRefused, match=r"baseline 2, 5x"):
         c.act(1)
+
+
+def test_a_replay_is_still_possible_after_clearing_every_level(monkeypatch, tmp_path):
+    """The case the doctrine does not currently cover, and it is not blocked.
+
+    `E = min(cap, raw)`. Clear everything and `cap` is 1.0, so `E` *is* `raw` --
+    and a run that finished every level at 1.05x is sitting on a score it could
+    still raise. `sp80` did exactly that: 6/6 cleared, `raw` 0.9785, **71% of its
+    action budget unspent**, and it stopped. That 0.0215 is the whole of its
+    deficit against its control.
+
+    `act()` refuses in a terminal state -- and its refusal names the way out --
+    while `restart_for_replay()` routes through `reset(force_full=True)`, which
+    is permitted because `_last_advanced` is true immediately after the winning
+    advance. That is the real server's behaviour: `levels_completed` reaching
+    `win_levels` and `state` becoming WIN arrive in the same frame.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20), 2)
+    _clear(c, post, 1, 3)
+    # The winning advance and the WIN state are one frame, as the server sends them.
+    post.next = {"levels_completed": 2, "state": "WIN"}
+    c.act(1)
+    assert c.done and c.completion_cap == 1.0 and c.level_costs == (3, 1)
+
+    with pytest.raises(ActionRefused, match="RESET first"):
+        c.act(1)
+
+    post.next = {"levels_completed": 0, "state": "NOT_FINISHED"}
+    c.restart_for_replay()
+    assert c.level == 0 and not c.done
+    assert c.level_costs == (), "the replay scores from nothing, as any new play does"
+
+
+def test_an_action_after_the_winning_one_closes_the_replay_door_for_good(
+    monkeypatch, tmp_path
+):
+    """A dead end worth knowing about, found by getting the test above wrong.
+
+    `restart_for_replay()` requires the server's action counter to be zero, which
+    is true only immediately after a level advance. If WIN arrives on a *later*
+    action than the final advance, that action is not an advance, the flag
+    clears, and the replay is refused -- while `act()` refuses everything too
+    because the state is terminal. The run is then stuck with the score it has.
+
+    Not reachable against the live server, which sends the final advance and WIN
+    in one frame. Recorded because the harness must not start relying on that.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20), 2)
+    _clear(c, post, 1, 3)
+    _clear(c, post, 2, 2)                      # advance to the last level
+    post.next = {"levels_completed": 2, "state": "WIN"}
+    c.act(1)                                   # WIN, but not an advance
+    assert c.done
+
+    with pytest.raises(ActionRefused, match="RESET first"):
+        c.act(1)
+    with pytest.raises(ActionRefused, match="only starts a new play"):
+        c.restart_for_replay()
