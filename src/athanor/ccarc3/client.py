@@ -246,6 +246,11 @@ class ArcClient:
     full_resets: int = 0
     wasted_actions: int = 0
     close_error: str = ""
+    scorecard_error: str = ""
+    """Why the scorecard could not be snapshotted before the card was closed.
+
+    Recorded rather than raised: see :meth:`_snapshot_scorecard`.
+    """
     level_actions: int = 0
     """Actions spent on the current level, reset when it advances.
 
@@ -502,6 +507,7 @@ class ArcClient:
         """
         if not self.card_id:
             return {}
+        self._snapshot_scorecard()
         card_id, self.card_id = self.card_id, ""
         self.state_path.unlink(missing_ok=True)
         try:
@@ -510,6 +516,40 @@ class ArcClient:
         except Exception as exc:  # noqa: BLE001 -- deliberate: see docstring
             self.close_error = f"{type(exc).__name__}: {exc}"
             return {}
+
+    def _snapshot_scorecard(self) -> None:
+        """Persist the server's own scorecard beside the trace, before closing.
+
+        **The card does not survive the run.** Two `card_id`s taken from
+        finished runs both returned ``404 card_id not found`` while the same key
+        still listed all 25 games -- so everything the scorecard knows is gone
+        the moment the card is closed, and this is the only chance to keep it.
+        Every run this project has completed threw it away.
+
+        What is thrown away is not incidental. ``actions_by_level`` is the
+        *server's* per-level action count, which is exactly the quantity RHAE
+        scores; :mod:`athanor.ccarc3.scoring` currently re-derives it from the
+        trace and the two have never been compared on real data. And the
+        scorecard carries one row per play, which is the only evidence that
+        could settle whether the scorer uses the first winning play or the best
+        one -- the largest open question in ``docs/ccarc3_design.md``, and one
+        that no finished run can answer any more.
+
+        Never raises, for the same reason :meth:`close` does not: a failed
+        snapshot is bookkeeping, and burying a real solver exception under a
+        bookkeeping error is a mistake this file has already made once.
+        """
+        try:
+            card = self.scorecard()
+        except Exception as exc:  # noqa: BLE001 -- deliberate: see docstring
+            self.scorecard_error = f"{type(exc).__name__}: {exc}"
+            return
+        try:
+            path = self.trace_path.parent / "scorecard.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(card, indent=2), encoding="utf-8")
+        except OSError as exc:
+            self.scorecard_error = f"{type(exc).__name__}: {exc}"
 
     def __enter__(self) -> "ArcClient":
         return self.open()

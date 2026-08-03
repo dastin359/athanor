@@ -288,6 +288,49 @@ def test_the_same_dead_click_twice_is_a_repeat(stub):
     assert "2 repeated one you had already seen do nothing" in c.status()
 
 
+def test_closing_keeps_the_server_scorecard(monkeypatch, tmp_path):
+    """The card is gone the instant it closes -- two card_ids from finished runs
+    both 404'd while the same key still listed all 25 games. Close is the last
+    moment the server's own actions_by_level can be read, and every run this
+    project completed before this test threw it away."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    card = {"card_id": "c1", "score": 6,
+            "actions_by_level": [[10, 20, 30], [8, 15, 25]]}
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: card)
+    monkeypatch.setattr(client_mod, "_post", lambda *a, **k: {})
+
+    c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
+    c.card_id = "c1"
+    c.close()
+
+    saved = json.loads((tmp_path / "run" / "scorecard.json").read_text())
+    assert saved == card
+    assert saved["actions_by_level"] == [[10, 20, 30], [8, 15, 25]], (
+        "one row per play is the only evidence that can settle which play scores"
+    )
+    assert not c.card_id, "the card must still be closed"
+
+
+def test_a_scorecard_that_cannot_be_read_does_not_block_the_close(monkeypatch, tmp_path):
+    """Bookkeeping must never replace the result. A 404 from cleanup once buried
+    the real exception from a run; the reason is recorded, not raised."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    def boom(*a, **k):
+        raise RuntimeError("404: card_id not found")
+    monkeypatch.setattr(client_mod, "_get", boom)
+    closed = {}
+    monkeypatch.setattr(client_mod, "_post",
+                        lambda url, payload, *a, **k: closed.setdefault("hit", url) or {})
+
+    c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
+    c.card_id = "c1"
+    c.close()
+
+    assert "404" in c.scorecard_error
+    assert "scorecard/close" in closed["hit"], "the close must still happen"
+    assert not (tmp_path / "run" / "scorecard.json").exists()
+
+
 def test_cycling_between_boards_is_counted_even_though_nothing_is_a_no_op(stub):
     """The failure that lost `tn36`, which the no-op tally could not see.
 

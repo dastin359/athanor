@@ -88,6 +88,25 @@ data either way.
   worth nothing. **Nothing in this project relies on the strategy**, and it
   should stay that way until this is measured.
 
+  **It cannot be measured after the fact, and that was learned the hard way.**
+  Scorecards are ephemeral: two `card_id`s taken from runs finished the same day
+  both returned `404 card_id not found` while the same key still listed all 25
+  games. So no run this project has completed — including the only one that ever
+  produced two plays, `ls20` — can answer this, and none ever will.
+
+  `ArcClient.close()` now snapshots the scorecard to `scorecard.json` beside the
+  trace before closing the card, which is the last moment it is readable. That
+  buys two things for free on every future run: the server's own
+  `actions_by_level`, which is the exact quantity RHAE scores and which
+  `athanor.ccarc3.scoring` currently re-derives from the trace with the two never
+  having been compared on real data; and one row per play, which is the evidence
+  this question needs.
+
+  **The experiment is now cheap and should be run on the smallest game**: clear a
+  level inefficiently, RESET at action-counter-zero to open a second play, clear
+  the same level efficiently, finish, and read the saved scorecard. Whether the
+  reported figure follows the better play or the first winning one is the answer.
+
 - **That the harness changes caused any measured improvement.** `cd82` went from
   0/6 in 337 actions to 6/6 in 121 across a harness change — and the winning run
   called the new function *twice* in 83 tool blocks. Confounded, n=1.
