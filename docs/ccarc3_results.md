@@ -302,16 +302,19 @@ model, same effort, same action cap, everything else identical. Only the
 per-level array is withheld; §0 (how scoring works) and the cap stay, because
 cutting those would ablate different variables.
 
-| game | control E | no-baseline E | actions | turns | cost |
-|---|---|---|---|---|---|
-| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 (×2.17) | $2.36 → $6.17 |
-| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 (×1.97) | $3.04 → $4.85 |
-| `tr87` | 0.947 | **1.000** | 358 → **194** | 66 → 55 (×0.83) | $6.86 → $5.68 |
-| `ls20` | 1.000 | **1.000** | 860 → 612 | 80 → 132 (×1.65) | $8.51 → $21.16 |
-| `lp85` | 1.000 | **1.000** | 94 → 96 | 68 → 97 (×1.43) | $8.79 → $11.99 |
+| game | control E | no-baseline E | actions | turns |
+|---|---|---|---|---|
+| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 (×2.17) |
+| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 (×1.97) |
+| `tr87` | 0.947 | **1.000** | 358 → 194 | 66 → 55 (×0.83) |
+| `ls20` | 1.000 | **1.000** | 860 → 612 | 80 → 132 (×1.65) |
+| `lp85` | 1.000 | **1.000** | 94 → 96 | 68 → 97 (×1.43) |
+| `r11l` | 1.000 | **1.000** | 83 → 96 | 90 → 93 (×1.03) |
+| `vc33` | 1.000 | **1.000** | 230 → 271 | 75 → 83 (×1.11) |
+| `cd82` | 1.000 | **1.000** | 121 → 171 | 84 → 118 (×1.40) |
 
-**5 of 5 won with baselines withheld, and the arm leads on score, 5.000 to
-4.947.**
+**8 of 8 won with baselines withheld. Score 8.000 against the controls' 7.947.**
+Median turn ratio **×1.40**.
 
 `lp85` is the single strongest data point. Its control is the best run this
 project has recorded — `raw` at the theoretical maximum 1.1500, every level
@@ -325,10 +328,15 @@ base  17  38  31  16  41  60  26 159
 
 The 159-baseline finale took **9 actions in both**. A solver that had never seen
 a baseline and one holding the whole array converged on the same solution to the
-hardest level in the game. `tr87` is the striking one: its control finished 6/6 but scored 0.947
-because one level ran 3.44× baseline, and the baseline-free run took that same
-level in 23 actions against 45 — every level capped, `raw` at the theoretical
-maximum 1.1500, in 46% fewer actions and for less money.
+hardest level in the game.
+
+**The completion cap is doing more work than the tally suggests.** Three of the
+eight had a level go badly wrong and still scored 1.000: `cd82` L3 at 1.80×
+(level score 0.307), `vc33` L1 at 2.29× and L4 at 1.38×. Their `raw` values
+landed at **1.0296** and **1.0268** — barely over the cap, where the early runs
+sat at 1.15. On a game with fewer levels to spread the weight, one such level
+would tip the environment below 1.000. The arm has not yet lost a pair, but it
+has come close twice.
 
 **Three cautions, and they matter more than the table.**
 
@@ -347,6 +355,16 @@ refuted. That was an overcorrection on a single contrary case. At n=5 the ratios
 are ×2.17, ×1.97, ×0.83, ×1.65, ×1.43 — **four of five higher, median ×1.65** —
 and `tr87` is the outlier rather than the refutation. The reading stands:
 withholding baselines costs deliberation, not capability.
+
+*One run was killed and must not be counted.* A session-worker restart
+SIGTERMed `sc25` five actions in; `collect_outcome` still wrote a `result.json`
+with `won: false` and `exit_code: 143`, and the arm's own log counted it as a
+loss — `ablate.log` reads 8/9 from that point and cannot be repaired, being
+append-only. The run is quarantined outside the batch directory and will be
+re-run. Two lessons: **a `result.json` is not proof a game was played** — check
+`exit_code > 128` for a signal — and **`pathlib.Path.glob("*/...")` matches
+dot-directories**, so renaming the workspace with a leading dot did *not* hide
+it from the snapshotter, which re-inserted the false 0.000 within minutes.
 
 *Mechanism is unanswerable for seven of the thirteen.* `ft09`, `ls20`, `r11l`,
 `cd82`, `sb26`, `sc25` and `tr87` had their `stream.jsonl` destroyed with their
