@@ -314,8 +314,10 @@ cutting those would ablate different variables.
 | `cd82` | 1.000 | 1.000 | 121 → 171 | ×1.40 |
 | `tu93` | 1.000 | 1.000 | 246 → 270 | ×0.58 |
 | `sp80` | 1.000 | **0.978** | 329 → 300 | ×1.14 |
+| `su15` | 1.000 | **0.800** | 168 → 701 | ×1.10 |
 
-**Ten pairs. Every game won in both arms. Score 9.978 against 9.947.**
+**Eleven pairs. Ten games won in both arms, one lost. Score 10.778 against
+10.947.**
 
 **`sp80` is the first score loss, and it is the case predicted three pairs
 earlier.** It won all six levels but two ran over — L1 at 1.69× (score 0.349) and
@@ -330,6 +332,99 @@ the opening level in **66** actions where its control needed **126** (3.23×, th
 worst opening this project has recorded). It gave the advantage back on L5, 125
 against 66.
 
+### `su15` — the arm's first lost game, and the finding is about the arm
+
+`su15` is the first environment where something went badly wrong inside a
+baseline-free run, and it exposed that **this arm has never been a
+one-variable experiment.**
+
+The arm withholds the medians by setting `GameInfo.baseline_actions=()`. That is
+the same array `client.level_budget` derives ARC's official per-level
+termination rule from — *"for a level with a human median of n actions, the
+agent is terminated after 5n actions"*. With the array empty, `baseline_here` is
+None, `level_budget` returns 0, and the rule silently stops existing. Every
+workspace in `ablate_nobaseline/` writes `level_budget_multiple=5.0` into its
+`session.py` and none of them can enforce it:
+
+```
+baseline-free arm : baseline_here = None | level_budget = 0
+control arm       : baseline_here = 31   | level_budget = 155
+```
+
+So the arm does not measure *"the solver cannot see the baselines"*. It measures
+*"the solver cannot see the baselines **and** the benchmark's termination rule
+has been switched off"* — and the second half flatters it, because the real
+benchmark would have ended these runs earlier, not later.
+
+**What that cost here.** The exploration play cleared five levels comfortably and
+then jammed:
+
+| level | baseline | play 1 | ratio | ARC would have stopped it at |
+|---|---|---|---|---|
+| L6 | 31 | **268** | 8.65× | 155 |
+| L7 | 8 | **182** | 22.75× | 40 |
+
+Those two levels spent 450 actions — **62% of the game's entire 722 budget** —
+and fixed the play's ceiling at **0.8199**: RHAE is a weighted mean over levels
+already finished, so no play from there could have reached 1.000 however
+perfectly it finished. Under the official rule the run would have ended on L6 at
+155 actions, five levels cleared, **E = 0.333**.
+
+**The solver then did the right thing, and it is the first time in this project
+that any solver has.** Across every run on record, `su15` is the only one whose
+stream contains a `restart_for_replay()` call — four of them. (`ls20` has a
+`full_reset` on its ledger, but that was the accidental RESET trap of §2.3, the
+one the client now refuses; it is the opposite of a deliberate replay.) Having
+cleared L7 — the exact state where the action
+counter is zero and a RESET starts a new play rather than resetting a level — it
+called `restart_for_replay()`. That call has existed since the doctrine's §0a
+reversal earlier the same day, which established that the server scores the
+**best** play and a replay can therefore only raise a score. This is its first
+use in the wild, and it came from a solver that could see none of the arithmetic
+above.
+
+The replay was extraordinary. Eight levels, every one at the 1.15 per-level cap:
+
+| | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 22 | 42 | 26 | 115 | 36 | 31 | 8 | 40 | 41 |
+| play 1 | 16 | 22 | 16 | 18 | 5 | **268** | **182** | — | — |
+| replay | 14 | 22 | 16 | 9 | 5 | **11** | **7** | 34 | — |
+| ratio | 0.64× | 0.52× | 0.62× | 0.08× | 0.14× | 0.35× | 0.88× | 0.85× | — |
+
+`raw` = 0.920, and it still lost: the completion cap binds at 8/9 = **0.800**,
+because the 528 actions the abandoned play had already spent left only 194, and
+level 9's baseline is 41. It ran out with 55 actions on that level.
+
+**So the replay was correct and insufficient, and those are separate facts.**
+Correct: play 1's ceiling was 0.8199 and the replay realised 0.8000, a wash —
+but it was a wash only because the exploration had been so expensive. Had those
+two levels cost anything like their baselines, the replay had budget to spare
+and wins at 1.000. Insufficient: the cost was already sunk when the decision was
+made, and no decision available at that point could recover it.
+
+**The lesson is not about replaying.** It is that nothing stopped the 268- and
+182-action levels while they were running. In the control arm the pace line
+would have said `268/31 on this level = 8.6x` and `OVER BASELINE` for two
+hundred consecutive actions. In this arm it said nothing, and the 5× rule that
+exists precisely to end such a level had been disabled by the same edit that
+silenced the warning.
+
+Both halves are now fixed in the client, off by default:
+
+- `hide_baselines` withholds the medians from every solver-facing surface
+  through one gated property, while `level_budget` reads the enforced value. ARC
+  withholding a number from an agent does not stop ARC applying it.
+- `show_score` reports `score_now`, `score_ceiling` and `completion_cap` in
+  `status()`, and names `restart_for_replay()` when the ceiling drops below
+  1.000. `completion_cap` needs no baselines — it is which levels fell, not how
+  fast — so it survives the baseline-free setup.
+
+They are off because ten of this arm's twenty-five games are banked without
+them. Switching a variable halfway makes two half-experiments. **The remaining
+games should finish as they started, and the faithful configuration — cap
+enforced, numbers hidden — is a separate arm.**
+
 **The turn-cost question is closed as unanswerable at this n.** The ten ratios
 are 0.58, 0.83, 1.03, 1.11, 1.14, 1.40, 1.43, 1.65, 1.97, 2.17 — median 1.27,
 range nearly fourfold, no central tendency worth reporting. This document called
@@ -337,11 +432,24 @@ the effect real at n=2, refuted at n=3, real again at n=5, and it is now clear
 that each of those readings was noise. Recorded as a caution against the habit,
 not as a finding.
 
-**What has not wobbled across ten pairs: withholding the baselines has not cost
-a single win.** The one score difference is 0.031 units in aggregate, and it sits
-on a game whose baseline-ful control also lost a level to a 3.23× overrun.
+**Through ten pairs, withholding the baselines had not cost a single win. `su15`
+ends that**, at −0.200, and it takes the aggregate from +0.031 to −0.169. One
+loss in eleven is still well inside what this design can call noise — McNemar on
+a single discordant pair is p=0.5 — so the finding is not "the baselines are
+load-bearing". It is that the one game where a level went badly wrong is the one
+game the arm lost, and that the arm had disabled the rule which exists to stop
+exactly that.
 
-**Three cautions, and they matter more than the table.**
+**Four cautions, and they matter more than the table.**
+
+*The arm is confounded, and `su15` is where it shows.* See that section above:
+blanking `baseline_actions` also disables ARC's 5n per-level termination rule,
+so this arm is strictly more permissive than the benchmark it is meant to
+predict. The ten wins banked before `su15` are unaffected in *outcome*: the
+worst level in any of them is `vc33` L1 at 2.29×, and `su15` is the only run in
+the arm with a second play, so no abandoned overrun is hidden behind a scored
+count. But the design claim *"only the per-level array is withheld"* was false
+for all eleven.
 
 *The `tr87` result is the least attributable, not the most impressive.* There is
 no repeat of `tr87` **with** baselines, so a 358 → 194 improvement is equally
@@ -349,15 +457,6 @@ consistent with run-to-run variance on a game whose control had one bad level.
 "Run-to-run variance is small" is listed as **not established** in the design
 note, and this is exactly where that gap bites. The two ties carry more weight
 than the apparent win.
-
-*The turn-cost effect is real, and it was declared dead one game too early.*
-At n=2 the baseline-free runs took roughly double the turns, suggesting
-baselines buy speed of convergence rather than capability. `tr87` then used
-**fewer** turns than its control, and this section recorded the pattern as
-refuted. That was an overcorrection on a single contrary case. At n=5 the ratios
-are ×2.17, ×1.97, ×0.83, ×1.65, ×1.43 — **four of five higher, median ×1.65** —
-and `tr87` is the outlier rather than the refutation. The reading stands:
-withholding baselines costs deliberation, not capability.
 
 *One run was killed and must not be counted.* A session-worker restart
 SIGTERMed `sc25` five actions in; `collect_outcome` still wrote a `result.json`

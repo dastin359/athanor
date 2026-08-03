@@ -119,11 +119,29 @@ field, every baseline-derived signal in this harness goes silent at once, and a
 public-set score would be measuring a solver that had information the real
 evaluation does not supply.
 
-**This is testable and has not been tested.** A baseline-free arm — same games,
+**This is testable and is being tested.** A baseline-free arm — same games,
 `baseline_actions` withheld from `session.py` and `CLAUDE.md`, §6 and the pace
-machinery cut — measures how much of the win rate rests on it. Until that runs,
-read every figure in `docs/ccarc3_results.md` as conditional on a field that may
-not exist where it counts.
+machinery cut — measures how much of the win rate rests on it. Eleven of
+twenty-five pairs are in as of 2026-08-03, ten of them ties; see
+`docs/ccarc3_results.md`. Until it completes, read every figure there as
+conditional on a field that may not exist where it counts.
+
+**And that arm has a confound worth stating here, because it is a design error
+this note's own framing invited.** "Withhold `baseline_actions`" was written as
+if the array were purely an information channel to the solver. It is not: it is
+also the input `client.level_budget` derives ARC's official per-level
+termination rule from — *"an agent is terminated after 5n actions on a level"*.
+Blanking the array to hide the numbers therefore switched off the rule as well,
+and made the arm strictly more permissive than the benchmark it exists to
+predict.
+
+`su15` is where that surfaced: with the cap inert, its solver ran a 31-baseline
+level to 268 actions and an 8-baseline level to 182, spending 62% of the game's
+budget on two levels ARC would have ended at 155 and 40. `ArcClient.hide_baselines`
+is the corrected mechanism — every solver-facing surface silenced through one
+gated property, `level_budget` reading the enforced value. **The general
+principle: an ablation must remove the information, not the machinery that
+happens to read it from the same place.**
 
 **Not established, and stated here because the tempting reading is wrong.**
 
