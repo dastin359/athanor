@@ -304,39 +304,42 @@ cutting those would ablate different variables.
 
 | game | control E | no-baseline E | actions | turns |
 |---|---|---|---|---|
-| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 (×2.17) |
-| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 (×1.97) |
-| `tr87` | 0.947 | **1.000** | 358 → 194 | 66 → 55 (×0.83) |
-| `ls20` | 1.000 | **1.000** | 860 → 612 | 80 → 132 (×1.65) |
-| `lp85` | 1.000 | **1.000** | 94 → 96 | 68 → 97 (×1.43) |
-| `r11l` | 1.000 | **1.000** | 83 → 96 | 90 → 93 (×1.03) |
-| `vc33` | 1.000 | **1.000** | 230 → 271 | 75 → 83 (×1.11) |
-| `cd82` | 1.000 | **1.000** | 121 → 171 | 84 → 118 (×1.40) |
+| `ft09` | 1.000 | 1.000 | 76 → 83 | ×2.17 |
+| `sb26` | 1.000 | 1.000 | 125 → 127 | ×1.97 |
+| `tr87` | 0.947 | **1.000** | 358 → 194 | ×0.83 |
+| `ls20` | 1.000 | 1.000 | 860 → 612 | ×1.65 |
+| `lp85` | 1.000 | 1.000 | 94 → 96 | ×1.43 |
+| `r11l` | 1.000 | 1.000 | 83 → 96 | ×1.03 |
+| `vc33` | 1.000 | 1.000 | 230 → 271 | ×1.11 |
+| `cd82` | 1.000 | 1.000 | 121 → 171 | ×1.40 |
+| `tu93` | 1.000 | 1.000 | 246 → 270 | ×0.58 |
+| `sp80` | 1.000 | **0.978** | 329 → 300 | ×1.14 |
 
-**8 of 8 won with baselines withheld. Score 8.000 against the controls' 7.947.**
-Median turn ratio **×1.40**.
+**Ten pairs. Every game won in both arms. Score 9.978 against 9.947.**
 
-`lp85` is the single strongest data point. Its control is the best run this
-project has recorded — `raw` at the theoretical maximum 1.1500, every level
-capped — and the blind run reproduced it level for level:
+**`sp80` is the first score loss, and it is the case predicted three pairs
+earlier.** It won all six levels but two ran over — L1 at 1.69× (score 0.349) and
+L5 at 1.30× (0.590) — and `raw` landed at **0.9785**, a fraction below the
+completion cap. When `cd82` and `vc33` came in at 1.0296 and 1.0268 this section
+recorded that "on a game with fewer levels to spread the weight, one such level
+would tip the environment below 1.000". A six-level game, two bad levels, and it
+did.
 
-```
-free   9   8  16  13  10  21   9   9      96 actions, raw 1.1500
-ctrl   8  10  18  14  10  20   5   9      94 actions, raw 1.1500
-base  17  38  31  16  41  60  26 159
-```
+The irony is that `sp80` looked like the arm's strongest result early: it cleared
+the opening level in **66** actions where its control needed **126** (3.23×, the
+worst opening this project has recorded). It gave the advantage back on L5, 125
+against 66.
 
-The 159-baseline finale took **9 actions in both**. A solver that had never seen
-a baseline and one holding the whole array converged on the same solution to the
-hardest level in the game.
+**The turn-cost question is closed as unanswerable at this n.** The ten ratios
+are 0.58, 0.83, 1.03, 1.11, 1.14, 1.40, 1.43, 1.65, 1.97, 2.17 — median 1.27,
+range nearly fourfold, no central tendency worth reporting. This document called
+the effect real at n=2, refuted at n=3, real again at n=5, and it is now clear
+that each of those readings was noise. Recorded as a caution against the habit,
+not as a finding.
 
-**The completion cap is doing more work than the tally suggests.** Three of the
-eight had a level go badly wrong and still scored 1.000: `cd82` L3 at 1.80×
-(level score 0.307), `vc33` L1 at 2.29× and L4 at 1.38×. Their `raw` values
-landed at **1.0296** and **1.0268** — barely over the cap, where the early runs
-sat at 1.15. On a game with fewer levels to spread the weight, one such level
-would tip the environment below 1.000. The arm has not yet lost a pair, but it
-has come close twice.
+**What has not wobbled across ten pairs: withholding the baselines has not cost
+a single win.** The one score difference is 0.031 units in aggregate, and it sits
+on a game whose baseline-ful control also lost a level to a 3.23× overrun.
 
 **Three cautions, and they matter more than the table.**
 
