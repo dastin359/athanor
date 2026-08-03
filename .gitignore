@@ -27,3 +27,7 @@ replicate/
 # outside its workspace does not trip over ground truth sitting in plain sight;
 # the suffix itself must never reach git, hence the glob.
 .holdout-dataset-*/
+
+# Test artifact: LevelGate.rulebook_path defaults to a relative "rules.json",
+# so anything constructing a gate without a path writes one here.
+/rules.json

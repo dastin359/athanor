@@ -216,17 +216,23 @@ def test_an_acknowledgement_survives_the_process_that_made_it(monkeypatch, tmp_p
     assert gate2.acknowledged == {1: "done"}
 
 
-def test_a_boundary_already_acknowledged_is_not_gated_again():
+def test_a_boundary_already_acknowledged_is_not_gated_again(tmp_path):
     """What makes a replay affordable.
 
     After a full reset the solver re-crosses every boundary it has already
     documented. Demanding a fresh rule-book entry at each one would cost a turn
     apiece to restate what the book already holds — and the gate exists to catch
     knowledge about to be lost, not to bill for knowledge already kept.
+
+    `tmp_path`, not the bare default. `LevelGate.rulebook_path` defaults to the
+    relative string "rules.json", so this test was writing a rule book into
+    whatever directory pytest ran from — the repo root — and appending one line
+    to a tracked file on every run. Six accidental commits and five manual
+    reverts before anyone read the diff.
     """
     from athanor.ccarc3 import GateRefusal, LevelGate
 
-    gate = LevelGate(rulebook_path="rules.json")
+    gate = LevelGate(rulebook_path=tmp_path / "rules.json")
     gate.observe(1)
     with pytest.raises(GateRefusal):
         gate.check()
