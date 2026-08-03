@@ -217,3 +217,78 @@ def test_the_two_readings_are_the_same_run_without_a_full_reset(tmp_path):
                 "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
     ts = load(path)
     assert actions_per_level(ts, 2) == actions_per_level(ts, 2, cumulative=True)
+
+
+def _trace(tmp_path, rows):
+    import json
+    path = tmp_path / "t.jsonl"
+    with path.open("w") as fh:
+        for i, (action, level) in enumerate(rows):
+            fh.write(json.dumps({
+                "i": i, "level": level, "action": action, "params": {},
+                "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
+    return path
+
+
+def test_the_server_reports_cumulative_actions_not_per_level():
+    """The API field is named ``actions_by_level`` and is not per level.
+
+    Measured on a live `tu93`: ``[[1, 18], [2, 45], [3, 64]]`` against a
+    ``total_actions`` of 67. Summing those gives 127, which is the tell. Read
+    naively it inflates every level after the first and scores the run at
+    roughly a third of what it earns.
+    """
+    from athanor.ccarc3.scoring import server_actions_per_level
+
+    card = {"cards": {"g": {"actions_by_level": [[[1, 18], [2, 45], [3, 64]]]}}}
+    assert server_actions_per_level(card, "g") == [18, 27, 19]
+
+
+def test_a_one_level_game_cannot_reveal_the_cumulative_shape():
+    """Why the first probe looked like agreement and was not evidence: on `lp85`
+    only level 0 had been cleared, where cumulative and per-level coincide."""
+    from athanor.ccarc3.scoring import server_actions_per_level
+
+    card = {"cards": {"g": {"actions_by_level": [[[1, 7]]]}}}
+    assert server_actions_per_level(card, "g") == [7]
+
+
+def test_levels_out_of_order_are_refused_rather_than_differenced():
+    """Differencing assumes consecutive ascending levels. Silently differencing
+    a gap would invent an action count no one could trace back."""
+    import pytest as _pytest
+
+    from athanor.ccarc3.scoring import server_actions_per_level
+
+    card = {"cards": {"g": {"actions_by_level": [[[1, 10], [3, 40]]]}}}
+    with _pytest.raises(ValueError, match="out of order"):
+        server_actions_per_level(card, "g")
+
+
+def test_the_trace_and_the_server_are_compared_level_by_level(tmp_path):
+    """Eleven games were scored from the trace alone before the card could be
+    captured. This is the check that was impossible until then."""
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import disagreements_with_server
+
+    # RESET, 2 actions clear level 0, 3 more clear level 1
+    path = _trace(tmp_path, [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1),
+                             ("ACTION1", 1), ("ACTION1", 1), ("ACTION1", 2)])
+    agree = {"cards": {"g": {"actions_by_level": [[[1, 2], [2, 5]]]}}}
+    assert disagreements_with_server(load(path), agree, "g", 3) == []
+
+    off = {"cards": {"g": {"actions_by_level": [[[1, 3], [2, 6]]]}}}
+    assert disagreements_with_server(load(path), off, "g", 3) == [(0, 2, 3)]
+
+
+def test_a_live_run_is_safe_to_check(tmp_path):
+    """The scorecard is snapshotted mid-game, so it holds fewer levels than the
+    trace has attempted. Comparing those would report phantom disagreements."""
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import disagreements_with_server
+
+    path = _trace(tmp_path, [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1),
+                             ("ACTION1", 1), ("ACTION1", 1), ("ACTION1", 2)])
+    partial = {"cards": {"g": {"actions_by_level": [[[1, 2]]]}}}
+    assert disagreements_with_server(load(path), partial, "g", 3) == []

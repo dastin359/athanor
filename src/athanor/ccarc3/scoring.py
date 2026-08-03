@@ -38,6 +38,8 @@ __all__ = [
     "score_run",
     "total_score",
     "score_environment",
+    "server_actions_per_level",
+    "disagreements_with_server",
 ]
 
 LEVEL_SCORE_CAP = 1.15
@@ -195,7 +197,8 @@ def actions_per_level(
     ===================  ==================================================
     ``total_plays``      how many plays this scorecard holds
     ``actions``          actions **per play**, e.g. ``[3, 1]``
-    ``actions_by_level`` per-level actions **per play**, a list of lists
+    ``actions_by_level`` **cumulative** actions at each level's completion,
+                         per play -- see the warning below
     ``total_actions``    the sum across plays — a *budget* figure
     ===================  ==================================================
 
@@ -204,6 +207,18 @@ def actions_per_level(
     counter is zero — which is the state immediately after a level advance —
     **starts a new play**: a new guid, a new ``actions`` row and a new
     ``actions_by_level`` row.
+
+    **``actions_by_level`` is cumulative, despite its name.** Measured on a live
+    run of `tu93`: it returned ``[[1, 18], [2, 45], [3, 64]]`` while
+    ``total_actions`` was **67**. Those entries sum to 127, which is the tell --
+    they are ``[level, actions spent by the time that level fell]``, so the
+    per-level ``a_l`` the rubric divides by is the **difference** between
+    consecutive entries: 18, 27, 19. Reading them as per-level counts inflates
+    every level after the first and would have scored this run roughly a third
+    of what it earns.
+
+    A one-level game cannot show this -- cumulative and per-level coincide -- so
+    the first probe, on `lp85`, looked like agreement and was not evidence.
 
     So for a one-level game with a human baseline of 7, won in 10 and then
     replayed and won in 7: ``actions_by_level`` is ``[[10], [7]]`` and
@@ -267,3 +282,59 @@ def score_run(
     return score_environment(
         baselines, actions_per_level(transitions, len(baselines), cumulative=cumulative)
     )
+
+
+def server_actions_per_level(scorecard: dict, game_id: str, *, play: int = -1) -> list[int]:
+    """Per-level actions as **the server** records them, from a saved scorecard.
+
+    Exists so a run can check itself rather than trusting this module. Every
+    figure this project reported for eleven games was derived from the trace and
+    had never once been compared against ARC's own numbers, because the card is
+    gone by the time anyone looks — see ``ArcClient._snapshot_scorecard_if_due``.
+
+    **Differences the cumulative entries**, which is the whole point: the API
+    field is named ``actions_by_level`` but holds
+    ``[level, actions spent when that level fell]``. See :func:`actions_per_level`.
+
+    ``play`` selects which playthrough; the default is the most recent. Levels in
+    the response are 1-indexed and the returned list is 0-indexed, matching
+    :func:`actions_per_level`.
+    """
+    card = (scorecard.get("cards") or {}).get(game_id)
+    if not card:
+        raise KeyError(f"no card for {game_id} in this scorecard")
+    plays = card.get("actions_by_level") or []
+    if not plays:
+        return []
+    out: list[int] = []
+    previous = 0
+    for level, cumulative in plays[play]:
+        if level - 1 != len(out):
+            raise ValueError(
+                f"{game_id}: levels arrived out of order at {level}; "
+                f"differencing assumes they are consecutive and ascending"
+            )
+        out.append(cumulative - previous)
+        previous = cumulative
+    return out
+
+
+def disagreements_with_server(
+    transitions: Sequence["object"],
+    scorecard: dict,
+    game_id: str,
+    n_levels: int,
+) -> list[tuple[int, int, int]]:
+    """``(level, ours, theirs)`` wherever the trace and the server disagree.
+
+    Empty means the two agree on every level the server has scored. Levels the
+    server has not recorded yet — an in-flight run — are not compared, so this
+    is safe to call on a live game.
+    """
+    theirs = server_actions_per_level(scorecard, game_id)
+    ours = actions_per_level(transitions, n_levels)
+    return [
+        (i, ours[i], theirs[i])
+        for i in range(min(len(theirs), len(ours)))
+        if ours[i] != theirs[i]
+    ]
