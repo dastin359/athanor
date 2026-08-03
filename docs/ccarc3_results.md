@@ -287,6 +287,60 @@ still worth playing to its budget rather than abandoned.**
 
 ---
 
+## Ablation — are the human baselines load-bearing? 2026-08-03 *(in progress)*
+
+**Why this exists.** `baseline_actions` is not in ARC's published `/api/games`
+schema — the docs list `game_id` and `title`; the live server also returns
+`tags` and `baseline_actions`. Every figure above was produced by a solver that
+could read that undocumented field, through `session.py`, the `CLAUDE.md` table,
+doctrine §6, and the pace ratio in `client.status()` (called 256 times across six
+runs). If the semi-private set withholds it, none of those numbers transfer.
+
+**Design.** Paired. Each game re-run with `baseline_actions=()`, the CLAUDE.md
+rows removed and §6/§6a cut, against its own recorded result as control. Same
+model, same effort, same action cap, everything else identical. Only the
+per-level array is withheld; §0 (how scoring works) and the cap stay, because
+cutting those would ablate different variables.
+
+| game | control E | no-baseline E | actions | turns | cost |
+|---|---|---|---|---|---|
+| `ft09` | 1.000 | **1.000** | 76 → 83 | 29 → 63 | $2.36 → $6.17 |
+| `sb26` | 1.000 | **1.000** | 125 → 127 | 36 → 71 | $3.04 → $4.85 |
+| `tr87` | 0.947 | **1.000** | 358 → **194** | 66 → 55 | $6.86 → $5.68 |
+
+**3 of 3 won with baselines withheld, and the arm leads on score, 3.000 to
+2.947.** `tr87` is the striking one: its control finished 6/6 but scored 0.947
+because one level ran 3.44× baseline, and the baseline-free run took that same
+level in 23 actions against 45 — every level capped, `raw` at the theoretical
+maximum 1.1500, in 46% fewer actions and for less money.
+
+**Three cautions, and they matter more than the table.**
+
+*The `tr87` result is the least attributable, not the most impressive.* There is
+no repeat of `tr87` **with** baselines, so a 358 → 194 improvement is equally
+consistent with run-to-run variance on a game whose control had one bad level.
+"Run-to-run variance is small" is listed as **not established** in the design
+note, and this is exactly where that gap bites. The two ties carry more weight
+than the apparent win.
+
+*A pattern already failed to replicate.* At n=2 the baseline-free runs took
+roughly double the turns (63 vs 29, 71 vs 36), suggesting baselines buy speed of
+convergence rather than capability. `tr87` used **fewer** turns than its control
+(55 vs 66). Two games supported the reading and the third contradicted it; it is
+recorded here as dead rather than quietly dropped.
+
+*Mechanism is unanswerable for seven of the thirteen.* `ft09`, `ls20`, `r11l`,
+`cd82`, `sb26`, `sc25` and `tr87` had their `stream.jsonl` destroyed with their
+traces, so whether those control solvers ever consulted the baseline cannot be
+checked. Of the six that survive, engagement ranged from 30% of tool blocks
+(`lp85`) to 0.6% (`tn36`, the only loss). The win/loss comparison is valid for
+all thirteen; the *why* is answerable for six.
+
+**Do not merge these into the headline figure.** Both arms score against the
+same 25-environment denominator, so summing the ledger without filtering on
+`batch` would report a meaningless combined total. `snapshot_results.py` tags
+every row; readers must filter.
+
 ## Run 1 — `ls20-9607627b`, 2026-08-02
 
 **6 of 7 levels cleared in 370 actions. Zero deaths, zero wasted actions, zero
