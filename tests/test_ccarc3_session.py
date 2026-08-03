@@ -626,6 +626,14 @@ def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
     assert "gains you exactly nothing" in d, "the usual case must be stated"
     assert "BEST play" in d, "the measured rule must be stated, not the old caution"
     assert "never lower it" in d, "a replay carries no downside; say so"
+    # E = min(cap, raw): only the smaller term costs anything, and the two are
+    # improved by opposite actions. tn36 lost by fumbling levels it had solved,
+    # where clearing one more would have bought almost nothing.
+    assert "whichever term is binding" in d
+    # On the private set the baselines are not knowable, but the cap is: it needs
+    # only levels cleared and levels total. That is what makes replay the only
+    # way to guarantee collecting a ceiling you have already earned.
+    assert "you still know the cap" in d
     assert "DO NOT DO THIS" not in d.split("An earlier version")[0], (
         "the reversed guidance must not survive above its own retraction"
     )

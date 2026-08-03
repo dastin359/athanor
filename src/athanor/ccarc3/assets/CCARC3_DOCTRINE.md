@@ -111,6 +111,37 @@ into a good score. The cap does not care that you were slow the first time.
 Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
 `raw`, `cap` and the per-level breakdown.
 
+**Fix whichever term is binding.** `E = min(cap, raw)`, so only the smaller one
+is costing you, and the two are improved by opposite actions:
+
+| binding term | what it means | what to do |
+|---|---|---|
+| `cap < raw` | you were efficient but stopped early | **clear another level.** A replay is worth zero |
+| `raw < cap` | you finished levels but fumbled through them | **replay.** Another level barely helps — the ceiling is not your problem |
+
+That second row is counterintuitive and it is the case this project actually
+lost. On `tn36`, `raw` 0.449 against `cap` 0.750: clearing the last level would
+have raised the ceiling to 1.0 and the score only to **0.511**, because `raw` was
+still binding. Replaying the six levels it had already solved was worth
+**0.750** — nearly five times as much, and more per action spent.
+
+**If you do not know the baselines, you still know the cap.**
+`cap = sum(1..k)/sum(1..n)` needs only levels cleared and levels total, both of
+which the API tells you. `raw` is the term you cannot compute. So your ceiling
+is known, your distance below it is not, and **a replay that executes the route
+you now know is the only way to guarantee you collect the ceiling your level
+count already earned.** Without it you may be leaving `cap - raw` behind with no
+way to detect it.
+
+You also do not need a baseline to know you fumbled. The gap between what the
+route turned out to be and what you spent finding it is the signal — a level
+that cost 200 confused actions and resolves to a twelve-move route is telling
+you `raw` is far below `cap` in any units.
+
+And a replay you cannot finish costs nothing but the actions. Each play carries
+its own completion cap and the environment takes the **best** play, so a replay
+that runs out of budget on level 3 simply scores worse and is discarded.
+
 **What earns the score is understanding, not the recording.** Replaying your
 own trace verbatim reproduces your own fumbling — the same actions give the
 same result, that is what determinism means. The gain comes from executing the
