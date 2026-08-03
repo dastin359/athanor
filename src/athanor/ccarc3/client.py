@@ -264,7 +264,49 @@ class ArcClient:
     called 82 times in one run. See :meth:`_account_effect`.
     """
 
+    level_revisits: int = 0
+    """Actions on this level that landed on a board seen earlier on this level.
+
+    Distinct from :attr:`level_repeats`, which counts repeating an action that
+    changed *nothing*. This counts cycling: every action changes the board, and
+    the board keeps coming back to where it has already been.
+
+    **The distinction is the whole point, because the no-op signal missed the
+    only run this project has lost.** `tn36` spent 309 actions on a
+    55-baseline level and never cleared it, with **8** no-ops in the whole
+    level -- invisible to ``level_dead``. A third of those actions landed on a
+    board it had already stood on.
+
+    Replaying all 22 level-attempts on record through this exact accounting,
+    the two levels that cost `tn36` the game rank first and second:
+
+    ====================  =====  ==========  ========
+    level                 ratio  revisits    cleared?
+    ====================  =====  ==========  ========
+    tn36 L5               5.62x  95/308 31%  **no**
+    tn36 L1               2.57x  30/184 16%  yes
+    su15 L7               0.93x   4/36  11%  yes
+    tn36 L3               1.52x   5/60   8%  yes
+    su15 L5               1.52x   1/46   2%  yes
+    every lp85 level      <0.9x    0/84   0%  yes
+    ====================  =====  ==========  ========
+
+    **The control is the 1.52x pair.** `su15` L5 and `tn36` L3 ran at exactly
+    the same multiple of baseline and both cleared, at 2% and 8%. `tn36` L5 ran
+    at 5.62x and 31% and never fell. Both `tn36` L5 and `su15` L5 tripped the
+    same 1.0x pace warning, so the ratio alone does not separate them -- over
+    pace while reaching *new* states is exploration, over pace while cycling is
+    being stuck. `lp85`, the most efficient run on record, revisited nothing at
+    all in 84 accounted actions.
+
+    **Not a threshold, and length is a live confound**: longer levels have more
+    chances to collide, and the two high-revisit levels are also the two longest
+    on record. Four thresholds have dissolved in this project already. This is
+    reported as a number so the next batch generates the data to test it.
+    """
+
     _dead_keys: list[str] = field(default_factory=list, repr=False)
+    _seen_keys: set[str] = field(default_factory=set, repr=False)
     _last_frame_key: str = field(default="", repr=False)
     _writer: TraceWriter | None = field(default=None, repr=False)
     _opener: Any = field(default=None, repr=False)
@@ -314,7 +356,9 @@ class ArcClient:
                     "level_tried": self.level_tried,
                     "level_dead": self.level_dead,
                     "level_repeats": self.level_repeats,
+                    "level_revisits": self.level_revisits,
                     "dead_keys": self._dead_keys,
+                    "seen_keys": sorted(self._seen_keys),
                     "last_frame_key": self._last_frame_key,
                     "cookies": [
                         {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
@@ -386,7 +430,9 @@ class ArcClient:
         self.level_tried = int(saved.get("level_tried", 0))
         self.level_dead = int(saved.get("level_dead", 0))
         self.level_repeats = int(saved.get("level_repeats", 0))
+        self.level_revisits = int(saved.get("level_revisits", 0))
         self._dead_keys = list(saved.get("dead_keys") or [])
+        self._seen_keys = set(saved.get("seen_keys") or ())
         self._last_frame_key = saved.get("last_frame_key", "")
 
         jar = self._cookiejar()
@@ -753,7 +799,9 @@ class ArcClient:
             # describes a board that no longer exists and must not carry over.
             if board_replaced:
                 self.level_tried = self.level_dead = self.level_repeats = 0
+                self.level_revisits = 0
                 self._dead_keys = []
+                self._seen_keys = set()
                 self._last_frame_key = ""
             return
         key = hashlib.blake2b(
@@ -762,8 +810,18 @@ class ArcClient:
         previous, self._last_frame_key = self._last_frame_key, key
         if board_replaced or not previous:
             self.level_tried = self.level_dead = self.level_repeats = 0
+            self.level_revisits = 0
             self._dead_keys = []
+            self._seen_keys = {key}
             return
+        # Membership before insertion, and only for boards that actually moved:
+        # a no-op leaves the board on a key already in the set, so counting it
+        # here would double-report what ``level_dead`` already covers.
+        if key != previous:
+            if key in self._seen_keys:
+                self.level_revisits += 1
+            else:
+                self._seen_keys.add(key)
         self.level_tried += 1
         if key != previous:
             return
@@ -809,10 +867,23 @@ class ArcClient:
         A repeat is not *always* waste either -- a game with hidden state can
         make a previously-inert action live.
         """
-        if not self.level_dead:
-            return ""
-        dead, tried, repeats = self.level_dead, self.level_tried, self.level_repeats
-        note = f"{dead}/{tried} actions on this level changed nothing"
-        if repeats:
-            note += f" ({repeats} repeated one you had already seen do nothing)"
-        return note
+        parts: list[str] = []
+        if self.level_dead:
+            dead, tried = self.level_dead, self.level_tried
+            note = f"{dead}/{tried} actions on this level changed nothing"
+            if self.level_repeats:
+                note += (
+                    f" ({self.level_repeats} repeated one you had already seen "
+                    f"do nothing)"
+                )
+            parts.append(note)
+        if self.level_revisits:
+            # Reported separately because it is a different failure. On the level
+            # tn36 lost, the no-op count above saw 8 of 309 actions; this one saw
+            # 95. Every action was changing the board -- and putting it back
+            # somewhere it had already been.
+            parts.append(
+                f"{self.level_revisits}/{self.level_tried} actions returned the "
+                f"board to a state already seen on this level"
+            )
+        return "; ".join(parts)

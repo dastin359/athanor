@@ -377,6 +377,38 @@ executing a wrong plan **without wasting a single action.** Every move did
 something; all of them were beside the point. Efficiency is no defence against
 being wrong.
 
+### 6a. Over pace, ask whether you are exploring or going in circles.
+
+Being over baseline does not by itself mean you are stuck. The only game lost so
+far and the slowest level of a game that was *won* both ran over the 1.0×
+warning; what separated them was whether the board was going anywhere new.
+
+`status()` reports it when it happens:
+
+```
+95/308 actions returned the board to a state already seen on this level
+```
+
+That is the level the lost run never cleared. Of its 309 actions, **8** changed
+nothing — so the "changed nothing" tally stayed quiet — while a third of them
+put the board back somewhere it had already been. Every action worked. The board
+kept coming home.
+
+Compare, at the same 1.52× of baseline: one level at 2% revisits, another at 8%,
+both cleared. The winning run with the best efficiency on record revisited
+**nothing at all**.
+
+So when you are over pace, read the two numbers together:
+
+| over pace, few revisits | you are exploring. Cost is real, progress is real. |
+|---|---|
+| over pace, many revisits | your action set moves the board around a loop. More of the same will not break out. Change *what you are trying*, not how carefully you try it. |
+
+This is a number, not a threshold — the sample is 22 level-attempts and longer
+levels collide more often by chance alone. Do not treat any particular
+percentage as a stop sign. Treat a large one as a reason to go back to §5 and
+ask what you believe that is wrong.
+
 ## 7. Trust `available_actions` over everything else.
 
 Each frame tells you exactly which actions this game accepts. It is

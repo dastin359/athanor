@@ -49,6 +49,34 @@ anything below.
 | A post-`GAME_OVER` RESET resets the level, not the game, and opens no new play row | n=1 game (`r11l`) |
 | Wasted actions track failure | rank-ordered across 7 runs, but a run won at 93% effective. **No threshold.** |
 | Deaths are unreachable by wandering on some games | 4 games probed with a random policy |
+| Board-state revisits separate "stuck" from "exploring" better than pace does | 22 level-attempts, 3 games, **1 loss**. Length is an unmodelled confound: longer levels collide more often by chance, and the two high-revisit levels are the two longest. **No threshold.** |
+
+The revisit claim is worth stating precisely, because it is the first thing found
+that distinguishes the one lost game from the wins, and because the two obvious
+readings of it are both wrong.
+
+Replayed through `ArcClient._account_effect`'s own accounting:
+
+| level | ratio | revisits | cleared? |
+|---|---|---|---|
+| `tn36` L5 | 5.62× | 95/308 = 31% | **no** |
+| `tn36` L1 | 2.57× | 30/184 = 16% | yes |
+| `su15` L7 | 0.93× | 4/36 = 11% | yes |
+| `tn36` L3 | 1.52× | 5/60 = 8% | yes |
+| `su15` L5 | 1.52× | 1/46 = 2% | yes |
+| `lp85`, all 8 levels | <0.9× | 0/84 = 0% | yes |
+
+It is **not** the no-op signal under another name: `tn36` L5 had 8 no-ops in 309
+actions, so `level_dead` stayed quiet through the whole failure. And it is **not**
+pace under another name: `su15` L5 and `tn36` L3 ran at the same 1.52× and both
+cleared, while `tn36` L5 ran at 5.62×; both `su15` L5 and `tn36` L5 tripped the
+same 1.0× pace warning.
+
+What would falsify it: a run that loses a level with near-zero revisits, or one
+that clears a long level at 30%+. Neither exists yet, and with one loss on
+record neither is unlikely. `client.level_revisits` is reported as a number in
+`status()` with no threshold attached, so batch 3's remaining games generate the
+data either way.
 
 **Not established, and stated here because the tempting reading is wrong.**
 

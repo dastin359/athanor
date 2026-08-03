@@ -288,6 +288,79 @@ def test_the_same_dead_click_twice_is_a_repeat(stub):
     assert "2 repeated one you had already seen do nothing" in c.status()
 
 
+def test_cycling_between_boards_is_counted_even_though_nothing_is_a_no_op(stub):
+    """The failure that lost `tn36`, which the no-op tally could not see.
+
+    309 actions on a 55-baseline level, **8** of them no-ops -- so ``level_dead``
+    stayed near zero while a third of the actions put the board back somewhere it
+    had already been. Every action "worked"; the level still never fell.
+    """
+    c, _, replies = stub
+    av = [1]
+    # A -> B -> A -> B: four real changes, zero no-ops, two returns to a
+    # board already seen.
+    replies.extend([_frame(frame=[[[g]]], available_actions=av)
+                    for g in (1, 2, 1, 2)])
+    for _ in range(4):
+        c.act(1)
+    assert c.level_dead == 0, "every action changed the board"
+    assert c.level_revisits == 2
+    assert "returned the board to a state already seen" in c.status()
+    assert "changed nothing" not in c.status()
+
+
+def test_reaching_new_boards_is_not_counted_however_long_it_takes(stub):
+    """The control that makes the signal worth having.
+
+    `su15` cleared its level 5 at 1.52x baseline with zero revisits, while
+    `tn36` failed its at 5.62x with 33%. Both tripped the same 1.0x pace
+    warning, so the ratio alone does not separate exploring from being stuck --
+    and a signal that fires on every long level would separate nothing either.
+    """
+    c, _, replies = stub
+    av = [1]
+    replies.extend([_frame(frame=[[[g]]], available_actions=av) for g in range(20)])
+    for _ in range(20):
+        c.act(1)
+    assert c.level_revisits == 0
+    assert "already seen" not in c.status()
+
+
+def test_the_revisit_tally_survives_a_new_process(monkeypatch, tmp_path):
+    """Every solver action is a new process, and an unpersisted counter reads
+    zero in each one -- the exact shape of the bug that replayed a won game."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    path = tmp_path / "t.jsonl"
+    a = ArcClient("g", trace_path=path)
+    a.card_id = "card-1"
+    a.level_tried, a.level_revisits = 90, 30
+    a._seen_keys, a._last_frame_key = {"aa", "bb"}, "aa"
+    a._save_state()
+
+    b = ArcClient("g", trace_path=path)
+    assert (b.level_tried, b.level_revisits) == (90, 30)
+    assert b._seen_keys == {"aa", "bb"}
+    assert "30/90 actions returned the board to a state already seen" in b.status()
+
+
+def test_the_revisit_tally_restarts_with_the_level(stub):
+    """Boards from a cleared level are not states of the new one; carrying them
+    over would report revisits against a board that no longer exists."""
+    c, _, replies = stub
+    av = [1]
+    replies.extend([_frame(frame=[[[1]]], available_actions=av),
+                    _frame(frame=[[[2]]], available_actions=av),
+                    _frame(frame=[[[1]]], available_actions=av),
+                    _frame(frame=[[[9]]], levels_completed=1, available_actions=av),
+                    _frame(frame=[[[1]]], levels_completed=1, available_actions=av)])
+    c.act(1); c.act(1); c.act(1)
+    assert c.level_revisits == 1
+    c.act(1)                                  # clears the level
+    assert c.level_revisits == 0
+    c.act(1)                                  # board [[1]] again -- but a new level
+    assert c.level_revisits == 0, "a board from the previous level is not a revisit"
+
+
 def test_the_waste_tally_restarts_with_the_level(stub):
     """It is a per-level figure; carrying it across makes the next level lie."""
     c, _, replies = stub
