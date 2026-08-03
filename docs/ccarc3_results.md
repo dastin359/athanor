@@ -410,6 +410,33 @@ hundred consecutive actions. In this arm it said nothing, and the 5× rule that
 exists precisely to end such a level had been disabled by the same edit that
 silenced the warning.
 
+**A budget-fraction warning was considered and rejected — the separation is real
+and the mechanism is not.** The doctrine's §0a already carries a reserve rule
+("do not spend more than half your action cap before you understand the game;
+keep one baseline in reserve"), it was **present in `su15`'s workspace** —
+`strip_baselines()` cuts §6/§6a, not §0a — and the solver spent 73% of its cap
+before replaying. Across all eighteen finished runs the line separates perfectly:
+
+| | runs | won |
+|---|---|---|
+| stayed at or under half the cap | 16 | **16** |
+| crossed it | 2 | **0** |
+
+The two crossings are this project's only two losses. That looked like a warning
+worth building, and it is not, because replaying the trace shows it would have
+fired uselessly. At exactly half its cap `su15` had cleared **six of nine
+levels**, 346 of its 361 actions were accounted for by levels it had *finished*,
+and only 15 were sunk in the level it was on. Nothing was wrong. The damage came
+afterwards, in the 182 actions L7 then took against an 8-action baseline.
+
+So the threshold is a *consequence* of struggling, not a trigger that precedes
+it — a run that has used a lot of actions is a run that is in trouble, which is
+true and useless. The only instrument that catches this while it is happening is
+the per-level pace ratio, firing at 1.0×, and **that is the instrument the
+ablation had disabled.** Recorded here because the 16/18-against-0/2 table is
+exactly the kind of clean-looking separation this document has been fooled by
+before.
+
 Both halves are now fixed in the client, off by default:
 
 - `hide_baselines` withholds the medians from every solver-facing surface
