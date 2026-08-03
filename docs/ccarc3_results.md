@@ -87,6 +87,15 @@ stops early speed from paying for late failure.
 | `tr87-cd924810` | 6/6 | 0.947 | 1.000 | **0.947** | efficiency, level 3 |
 | `tn36-ef4dde99` | **6/7** | 0.449 | 0.750 | **0.449** | efficiency — hit its action cap |
 
+> **`tn36`'s 0.449 is this arm's number, not this harness's best.** The
+> baseline-free arm later scored **1.000** on the same environment — 7/7 in 220
+> actions against this run's 631, with 65% of the budget unspent. The table is
+> left alone deliberately: the two arms are separate experiments and the standing
+> rule below is not to merge them into one total. But the sentence *"the harness
+> scores 0.449 on `tn36`"* is no longer true as a claim about capability, and the
+> opening caveat that this run "hit our cap, not ARC's" is now demonstrated
+> rather than argued. See the ablation section.
+
 | | |
 |---|---|
 | Opus 5, published | **40.68%** |
@@ -315,9 +324,15 @@ cutting those would ablate different variables.
 | `tu93` | 1.000 | 1.000 | 246 → 270 | ×0.58 |
 | `sp80` | 1.000 | **0.978** | 329 → 300 | ×1.14 |
 | `su15` | 1.000 | **0.800** | 168 → 701 | ×1.10 |
+| `tn36` | 0.449 | **1.000** | 631 → 220 | ×0.57 |
 
-**Eleven pairs. Ten games won in both arms, one lost. Score 10.778 against
-10.947.**
+**Twelve pairs. Score 11.778 against 11.396 — the baseline-free arm is ahead by
+0.383,** on eleven wins to the controls' eleven. Nine exact ties, two small
+losses, one large gain.
+
+**And the aggregate rests on one game.** `tn36` alone is +0.551, more than the
+whole margin; without it the arm is 0.169 *behind*. Read the sign of the total
+as an artifact of a single result until it replicates.
 
 **`sp80` is the first score loss, and it is the case predicted three pairs
 earlier.** It won all six levels but two ran over — L1 at 1.69× (score 0.349) and
@@ -460,14 +475,50 @@ that each of those readings was noise. Recorded as a caution against the habit,
 not as a finding.
 
 **Through ten pairs, withholding the baselines had not cost a single win. `su15`
-ends that**, at −0.200, and it takes the aggregate from +0.031 to −0.169. One
-loss in eleven is still well inside what this design can call noise — McNemar on
-a single discordant pair is p=0.5 — so the finding is not "the baselines are
-load-bearing". It is that the one game where a level went badly wrong is the one
-game the arm lost, and that the arm had disabled the rule which exists to stop
-exactly that.
+ends that**, at −0.200, taking the aggregate to −0.169. One loss in eleven is
+well inside what this design can call noise — McNemar on a single discordant
+pair is p=0.5 — so the finding is not "the baselines are load-bearing". It is
+that the one game where a level went badly wrong is the one game the arm lost,
+and that the arm had disabled the rule which exists to stop exactly that.
 
-**Four cautions, and they matter more than the table.**
+### `tn36` — the arm's largest result, and the one to trust least
+
+`tn36` was the gain arm by construction: its control is the only environment
+this project has ever lost, at 0.4487, so it is the one game where withholding
+the baselines could plausibly *help*. It did. **E = 1.0000, +0.5513**, in 220
+actions against the control's 631 — a third of the actions for more than twice
+the score, with 65% of the budget unspent.
+
+| | L1 | L2 | L3 | L4 | L5 | L6 | L7 |
+|---|---|---|---|---|---|---|---|
+| baseline | 32 | 72 | 26 | 40 | 30 | 55 | 62 |
+| actions | 27 | 38 | 11 | 16 | 20 | **65** | 42 |
+| ratio | 0.84× | 0.53× | 0.42× | 0.40× | 0.67× | **1.18×** | 0.68× |
+
+`raw` = 1.0570, so the cap binds and the single over-baseline level costs
+nothing. Six of seven levels sat at the 1.15 per-level cap.
+
+**What differed is the level that decided both runs.** The 55-baseline L6 is
+where the control died: 309 actions, 5.62×, with 95 of them landing on boards it
+had already stood on. It was not flying blind while it did that — its pace line
+fired `OVER BASELINE` **26 times** and climbed through 2.0× → 3.5× → 5.3×. The
+baseline-free run, with no pace signal at all, cleared the same level in 65.
+
+**Which is why this result is the least trustworthy in the arm, not the most
+convincing.** It is a single run against a single control, and "run-to-run
+variance is small" is still listed as **not established** in the design note.
+The honest reading is that the control's 309-action collapse looks like the tail
+of a distribution rather than the mean, and a baseline-free run drawing a normal
+sample would beat it regardless of what it could see. `tr87` carries the same
+caveat at a tenth the magnitude. **The arm's total is positive because of this
+game and would be negative without it — so the sign of the aggregate is a claim
+about one run, and should not be reported as a property of the arm until it
+replicates.**
+
+The safe statement across twelve pairs: withholding the baselines cost one game
+outright and left the other eleven at or above their controls.
+
+**Five cautions, and they matter more than the table.**
 
 *The arm is confounded, and `su15` is where it shows.* See that section above:
 blanking `baseline_actions` also disables ARC's 5n per-level termination rule,
