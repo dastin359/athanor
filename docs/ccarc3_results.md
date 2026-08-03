@@ -483,9 +483,9 @@ and that the arm had disabled the rule which exists to stop exactly that.
 
 ### `tn36` — the arm's largest result, and the one to trust least
 
-`tn36` was the gain arm by construction: its control is the only environment
-this project has ever lost, at 0.4487, so it is the one game where withholding
-the baselines could plausibly *help*. It did. **E = 1.0000, +0.5513**, in 220
+`tn36` was the gain arm by construction: at the time the arm was designed its
+control was the only environment this project had ever lost, at 0.4487, so it
+was the one game where withholding the baselines could plausibly *help*. It did. **E = 1.0000, +0.5513**, in 220
 actions against the control's 631 — a third of the actions for more than twice
 the score, with 65% of the budget unspent.
 
@@ -550,8 +550,15 @@ it from the snapshotter, which re-inserted the false 0.000 within minutes.
 `cd82`, `sb26`, `sc25` and `tr87` had their `stream.jsonl` destroyed with their
 traces, so whether those control solvers ever consulted the baseline cannot be
 checked. Of the six that survive, engagement ranged from 30% of tool blocks
-(`lp85`) to 0.6% (`tn36`, the only loss). The win/loss comparison is valid for
-all thirteen; the *why* is answerable for six.
+(`lp85`) to 0.6% (`tn36`, then the only loss). The win/loss comparison is valid
+for all thirteen; the *why* is answerable for six.
+
+That 0.6% is worth restating now that `tn36` has been played both ways. **The
+control that lost consulted the baselines least of any run measured** — and the
+baseline-free run, which could not consult them at all, won the same environment
+in a third of the actions. Two observations, so this is a thing to look at
+again, not a finding. But it is the opposite of what the arm was built to
+detect.
 
 **Do not merge these into the headline figure.** Both arms score against the
 same 25-environment denominator, so summing the ledger without filtering on
