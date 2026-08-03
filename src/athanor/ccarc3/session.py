@@ -41,6 +41,7 @@ __all__ = [
     "build_cli_args",
     "run_game",
     "collect_outcome",
+    "snapshot_scorecard",
 ]
 
 ASSETS = Path(__file__).parent / "assets"
@@ -648,5 +649,52 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         outcome["mechanics_recorded"] = len(book.get("verified", []))
         outcome["refutations_recorded"] = len(book.get("refuted", []))
 
+    snapshot_scorecard(ws)
     (ws.root / "result.json").write_text(json.dumps(outcome, indent=2) + "\n", encoding="utf-8")
     return outcome
+
+
+def snapshot_scorecard(ws: Workspace) -> dict[str, Any]:
+    """Save the server's own scorecard next to the trace. Never raises.
+
+    **This has to live here, in the parent, and that was nearly missed.**
+    ``ArcClient.close()`` snapshots too, but nothing calls it: ``close`` runs
+    only from ``__exit__``, the generated ``session.py`` calls ``client.open()``
+    and never closes, and a solver does ``from session import client``. So the
+    client-side snapshot would never have fired on a real run — the same shape
+    as the finding in ``_ineffective``, that a signal in a function nobody calls
+    is not a signal. The harness runs after the solver exits and always runs.
+
+    **Deliberately does not close the card.** ``close()`` deletes the state file,
+    which is what a resume reads to continue the same game; a run that timed out
+    and will be resumed would be broken by it. Cards appear to be reaped
+    server-side anyway — two from finished runs returned 404 the same day.
+
+    Why bother: ``actions_by_level`` is the server's per-level action count,
+    which is exactly what RHAE scores and which :mod:`athanor.ccarc3.scoring`
+    currently re-derives from the trace, never yet compared against the real
+    thing. And it holds one row per play, the only evidence that can settle
+    which play the scorer uses.
+    """
+    state = ws.root / "trace.state.json"
+    if not state.exists():
+        return {}
+    try:
+        card_id = json.loads(state.read_text(encoding="utf-8")).get("card_id")
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not card_id or card_id.startswith("card-"):   # a test stub, not a real card
+        return {}
+    try:
+        from .client import ROOT_URL, _get
+
+        card = _get(
+            f"{ROOT_URL}/api/scorecard/{card_id}/{ws.info.game_id}",
+            os.environ.get("ARC_API_KEY", ""),
+        )
+        (ws.root / "scorecard.json").write_text(
+            json.dumps(card, indent=2) + "\n", encoding="utf-8"
+        )
+        return card
+    except Exception:  # noqa: BLE001 -- bookkeeping must never replace a result
+        return {}

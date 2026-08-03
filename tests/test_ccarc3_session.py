@@ -475,6 +475,80 @@ def test_a_resume_does_not_destroy_the_previous_stream(tmp_path, monkeypatch):
     assert '{"run":1}' in archived[0].read_text()
 
 
+def test_the_harness_saves_the_scorecard_because_the_solver_never_will(tmp_path, monkeypatch):
+    """``ArcClient.close()`` also snapshots, and would never have run.
+
+    ``close`` is reachable only from ``__exit__``; the generated ``session.py``
+    calls ``client.open()`` and never closes; a solver does ``from session import
+    client``. So the client-side snapshot fires on no real run — the same shape
+    as the finding that a signal in a function nobody calls is not a signal.
+    ``collect_outcome`` runs in the parent after the solver exits, and always
+    runs.
+
+    It matters because the card does not survive: two ``card_id``s from runs
+    finished the same day both returned 404 while the same key still listed all
+    25 games. This is the last moment the server's own ``actions_by_level`` — the
+    exact quantity RHAE scores — can be read.
+    """
+    import athanor.ccarc3.client as client_mod
+    import athanor.ccarc3.session as sess
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)
+    (ws.root / "trace.state.json").write_text(json.dumps(
+        {"game_id": "ls20-test", "card_id": "real-card-abc", "actions_used": 1}))
+
+    card = {"score": 6, "actions_by_level": [[10, 20], [8, 15]]}
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: card)
+    collect_outcome(ws, exit_code=0, timed_out=False)
+
+    assert json.loads((ws.root / "scorecard.json").read_text()) == card
+    assert (ws.root / "trace.state.json").exists(), (
+        "closing the card deletes the state a resume reads; snapshotting must not"
+    )
+
+
+def test_an_unreachable_scorecard_does_not_cost_the_result(tmp_path, monkeypatch):
+    """A 404 from cleanup once buried the real exception from a run. The outcome
+    is the deliverable; the scorecard is bookkeeping."""
+    import athanor.ccarc3.client as client_mod
+    import athanor.ccarc3.session as sess
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)
+    (ws.root / "trace.state.json").write_text(json.dumps({"card_id": "real-card-abc"}))
+
+    def boom(*a, **k):
+        raise RuntimeError("404: card_id not found")
+    monkeypatch.setattr(client_mod, "_get", boom)
+
+    outcome = collect_outcome(ws, exit_code=0, timed_out=False)
+    assert outcome["game_id"] == "ls20-test", "the result must survive"
+    assert (ws.root / "result.json").exists()
+    assert not (ws.root / "scorecard.json").exists()
+
+
+def test_no_scorecard_request_is_made_without_a_real_card(tmp_path, monkeypatch):
+    """Every workspace test seeds a stub id; firing a live GET on each would make
+    the suite depend on the network."""
+    import athanor.ccarc3.client as client_mod
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    _seed(ws.root)          # writes card-less state
+    called = []
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: called.append(a) or {})
+
+    collect_outcome(ws, exit_code=0, timed_out=False)
+    assert not called
+
+    (ws.root / "trace.state.json").write_text(json.dumps({"card_id": "card-1"}))
+    collect_outcome(ws, exit_code=0, timed_out=False)
+    assert not called, "'card-1' is the test stub id, not a real card"
+
+
 def test_a_relaunch_keeps_the_stream_of_an_attempt_that_never_acted(tmp_path, monkeypatch):
     """The rotation above was gated on ``ws.resumed``, and a killed launch is not
     a resume: ``resumed = trace.exists()``, so an attempt that died before its
