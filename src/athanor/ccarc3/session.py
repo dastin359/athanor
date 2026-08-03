@@ -460,10 +460,18 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
     _record_resume_state(ws)
     args = build_cli_args(ws)
     stream = ws.root / "stream.jsonl"
-    if ws.resumed and stream.exists():
+    if stream.exists():
         # Opening with "w" destroyed run 1's stream when the resume started,
         # which removed the only record of how the handoff actually went -- and
         # the handoff is exactly what needed diagnosing. Keep each attempt.
+        #
+        # **Not gated on ``ws.resumed``.** A run killed before it wrote a single
+        # action leaves a stream but no trace, so the next launch is not a resume
+        # (``resumed = trace.exists()``) and the old gate let it overwrite the
+        # only record of what that attempt spent. Found on `vc33`, killed two
+        # seconds after launch by a quota stop: 21 KB of stream, no trace, and
+        # relaunching would have billed its tokens to nobody. Any existing stream
+        # is a previous attempt whatever the trace says, so rotate on existence.
         n = len(list(ws.root.glob("stream.*.jsonl"))) + 1
         stream.rename(ws.root / f"stream.{n}.jsonl")
 

@@ -475,6 +475,32 @@ def test_a_resume_does_not_destroy_the_previous_stream(tmp_path, monkeypatch):
     assert '{"run":1}' in archived[0].read_text()
 
 
+def test_a_relaunch_keeps_the_stream_of_an_attempt_that_never_acted(tmp_path, monkeypatch):
+    """The rotation above was gated on ``ws.resumed``, and a killed launch is not
+    a resume: ``resumed = trace.exists()``, so an attempt that died before its
+    first action leaves a stream and no trace, and the gate let the next launch
+    truncate it.
+
+    Found on `vc33`, killed two seconds in by a quota stop -- 21 KB of stream, no
+    trace. Its tokens were spent and billed; overwriting the stream is the
+    difference between that cost being attributable and vanishing, since
+    ``run_cost`` reads exactly these files.
+    """
+    import athanor.ccarc3.session as sess
+
+    cfg = Ccarc3Config("ls20-test", out_dir=tmp_path)
+    ws = build_workspace(cfg, INFO)
+    assert not ws.resumed, "no trace was seeded, so this must not be a resume"
+    (ws.root / "stream.jsonl").write_text('{"run":"killed before acting"}\n')
+
+    monkeypatch.setattr(sess, "build_cli_args", lambda w, **k: ["true"])
+    sess.run_game(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO)
+
+    archived = list(ws.root.glob("stream.*.jsonl"))
+    assert archived, "a killed attempt's stream is still a record of what it spent"
+    assert "killed before acting" in archived[0].read_text()
+
+
 def test_a_resume_records_what_it_inherited(tmp_path, monkeypatch):
     """Nothing captured what the client restored, so when a resume preserved the
     ledger but not the game it could not be reconstructed afterwards."""
