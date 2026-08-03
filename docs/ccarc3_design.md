@@ -78,6 +78,32 @@ record neither is unlikely. `client.level_revisits` is reported as a number in
 `status()` with no threshold attached, so batch 3's remaining games generate the
 data either way.
 
+**Load-bearing and undocumented — the largest external-validity risk here.**
+
+`baseline_actions` is not in the published `/api/games` schema. The
+documentation lists exactly two response fields, `game_id` and `title`; the live
+public server returns four, adding `tags` and `baseline_actions`. So the field
+this harness leans on hardest is an undocumented extra, not part of ARC's stated
+contract.
+
+How hard it leans: 22 references in the doctrine, the whole of §6 ("Budget
+against the published baseline"), the 1.0x pace warning in `client.status()`,
+`client.pace()`, and the workspace `CLAUDE.md`, which hands the array to the
+solver directly as a table row.
+
+ARC's technical report confirms baselines exist server-side — the action budget
+is *"five times the human-baseline median action count per level"* — but says
+nothing about exposing them to agents. If the semi-private set withholds the
+field, every baseline-derived signal in this harness goes silent at once, and a
+public-set score would be measuring a solver that had information the real
+evaluation does not supply.
+
+**This is testable and has not been tested.** A baseline-free arm — same games,
+`baseline_actions` withheld from `session.py` and `CLAUDE.md`, §6 and the pace
+machinery cut — measures how much of the win rate rests on it. Until that runs,
+read every figure in `docs/ccarc3_results.md` as conditional on a field that may
+not exist where it counts.
+
 **Not established, and stated here because the tempting reading is wrong.**
 
 - ~~**Which play the scorer uses.**~~ **RESOLVED 2026-08-03 — the server scores
