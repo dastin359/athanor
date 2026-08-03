@@ -148,6 +148,59 @@ def test_a_replayed_level_counts_only_the_play_that_finished(tmp_path):
     assert actions_per_level(ts, 2, cumulative=True)[0] == 5, "every action ever spent"
 
 
+def test_the_reset_that_starts_a_play_is_not_an_action(tmp_path):
+    """Measured against a live scorecard, which disagreed with this module.
+
+    Seven ``ACTION6`` calls preceded by the opening ``RESET`` came back from the
+    server as ``actions: [7]`` and ``actions_by_level: [[[1, 7]]]``. This
+    function said 8, counting the RESET. Every ``a_l`` for a level 0 in the
+    project was inflated by one.
+
+    It changed no score on the eleven games played — each level 0 was either
+    cap-bound or nowhere near a boundary — but ``(h/a)²`` is steep near the cap,
+    so on a tight level it would.
+    """
+    import json
+
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import actions_per_level
+
+    path = tmp_path / "t.jsonl"
+    with path.open("w") as fh:
+        rows = [("RESET", 0)] + [("ACTION6", 0)] * 6 + [("ACTION6", 1)]
+        for i, (action, level) in enumerate(rows):
+            fh.write(json.dumps({
+                "i": i, "level": level, "action": action, "params": {},
+                "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                "full_reset": False, "available_actions": ["ACTION6"]}) + "\n")
+    assert actions_per_level(load(path), 2)[0] == 7
+
+
+def test_a_level_reset_after_a_death_is_an_action(tmp_path):
+    """The other half, and the server counts this one.
+
+    A padded play of 13 clicks, a level reset, then 7 more was reported as 21 —
+    the reset included. Only a RESET that *starts a play* is free, so a blanket
+    "RESETs are not actions" rule would undercount every run that ever died.
+    """
+    import json
+
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import actions_per_level
+
+    path = tmp_path / "t.jsonl"
+    with path.open("w") as fh:
+        rows = [("RESET", 0)] + [("ACTION6", 0)] * 3 + [("RESET", 0)] \
+            + [("ACTION6", 0)] * 2 + [("ACTION6", 1)]
+        for i, (action, level) in enumerate(rows):
+            fh.write(json.dumps({
+                "i": i, "level": level, "action": action, "params": {},
+                "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                "full_reset": False, "available_actions": ["ACTION6"]}) + "\n")
+    # 3 clicks + the level reset + 2 clicks + the clearing click = 7
+    assert actions_per_level(load(path), 2)[0] == 7
+
+
 def test_the_two_readings_are_the_same_run_without_a_full_reset(tmp_path):
     """The distinction must cost nothing on the ordinary case."""
     import json

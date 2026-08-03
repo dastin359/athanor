@@ -288,6 +288,67 @@ def test_the_same_dead_click_twice_is_a_repeat(stub):
     assert "2 repeated one you had already seen do nothing" in c.status()
 
 
+def test_the_scorecard_is_captured_during_the_game_not_after(monkeypatch, tmp_path):
+    """Snapshotting at the end is too late — the card is already gone.
+
+    `vc33`'s card returned 404 about four minutes after its run finished, so
+    both earlier hooks (`close()` and `collect_outcome`) could miss. A level
+    advance is a moment the card certainly still exists.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    replies = []
+    monkeypatch.setattr(client_mod, "_post",
+                        lambda *a, **k: replies.pop(0) if replies else _frame())
+    card = {"environments": [{"runs": [{"level_actions": [3, 0]}]}]}
+    gets = []
+    monkeypatch.setattr(client_mod, "_get",
+                        lambda *a, **k: gets.append(a) or card)
+
+    c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
+    c.card_id = "real-card-xyz"          # not a stub, so the snapshot is live
+    av = [1]
+    replies.extend([_frame(frame=[[[1]]], available_actions=av),
+                    _frame(frame=[[[2]]], levels_completed=1, available_actions=av)])
+    c.act(1)
+    assert not gets, "no snapshot mid-level; that would be one GET per action"
+    c.act(1)                              # this one advances the level
+    assert gets, "a level advance must capture the card while it still exists"
+    assert json.loads((tmp_path / "run" / "scorecard.json").read_text()) == card
+
+
+def test_a_terminal_state_captures_the_scorecard(monkeypatch, tmp_path):
+    """WIN is the single most valuable moment to hold the card, and the run may
+    end immediately after it."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    monkeypatch.setattr(client_mod, "_post",
+                        lambda *a, **k: _frame(frame=[[[9]]], state="WIN",
+                                               available_actions=[1]))
+    gets = []
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: gets.append(a) or {"ok": 1})
+
+    c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
+    c.card_id = "real-card-xyz"
+    c.act(1)
+    assert gets, "reaching WIN must capture the card"
+
+
+def test_a_stub_card_never_reaches_the_network(monkeypatch, tmp_path):
+    """Without this guard every test that plays a game fires a real GET on each
+    level advance -- swallowed by the error handler, so it surfaces only as a
+    slower suite and a test run that quietly depends on the network."""
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    monkeypatch.setattr(client_mod, "_post",
+                        lambda *a, **k: _frame(frame=[[[2]]], levels_completed=1,
+                                               available_actions=[1]))
+    def boom(*a, **k):
+        raise AssertionError("a stub card must never issue a request")
+    monkeypatch.setattr(client_mod, "_get", boom)
+
+    c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
+    c.card_id = "card-1"
+    c.act(1)
+
+
 def test_closing_keeps_the_server_scorecard(monkeypatch, tmp_path):
     """The card is gone the instant it closes -- two card_ids from finished runs
     both 404'd while the same key still listed all 25 games. Close is the last

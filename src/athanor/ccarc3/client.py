@@ -517,6 +517,35 @@ class ArcClient:
             self.close_error = f"{type(exc).__name__}: {exc}"
             return {}
 
+    SNAPSHOT_EVERY = 50
+    """Actions between scorecard snapshots, on top of the event-driven ones."""
+
+    def _snapshot_scorecard_if_due(self, *, advanced: bool) -> None:
+        """Keep a live copy of the scorecard while the card still exists.
+
+        **Snapshotting after the run is too late.** Both the client-side hook in
+        ``close()`` and the harness-side one in ``collect_outcome`` were written
+        on the assumption that the card outlives the solver. It does not:
+        `vc33`'s card returned 404 roughly four minutes after its run ended, and
+        cards from older runs 404 as well. The only reliable moment is *during*
+        the game, which is here.
+
+        Fires on a level advance, on reaching a terminal state, and every
+        :attr:`SNAPSHOT_EVERY` actions as a backstop for a run that dies
+        mid-level. A game of nine levels costs about a dozen GETs, against
+        hundreds of action POSTs, so the overhead is noise.
+
+        The file is overwritten each time: the newest snapshot strictly
+        dominates, since the scorecard only accumulates.
+        """
+        due = (
+            advanced
+            or self.state in ("WIN", "GAME_OVER")
+            or (self.SNAPSHOT_EVERY and self.actions_used % self.SNAPSHOT_EVERY == 0)
+        )
+        if due:
+            self._snapshot_scorecard()
+
     def _snapshot_scorecard(self) -> None:
         """Persist the server's own scorecard beside the trace, before closing.
 
@@ -539,6 +568,13 @@ class ArcClient:
         snapshot is bookkeeping, and burying a real solver exception under a
         bookkeeping error is a mistake this file has already made once.
         """
+        # Stub ids belong to the test suite. Without this the action path fires a
+        # real GET on every level advance in every test that plays a game --
+        # swallowed by the handler below, so it shows up only as a slower suite
+        # (31s -> 40s when this was missing) and a test run that quietly needs
+        # the network.
+        if not self.card_id or self.card_id.startswith("card-"):
+            return
         try:
             card = self.scorecard()
         except Exception as exc:  # noqa: BLE001 -- deliberate: see docstring
@@ -726,6 +762,7 @@ class ArcClient:
         # Persist after every action: the next action usually arrives in a
         # different process, and anything not on disk is gone.
         self._save_state()
+        self._snapshot_scorecard_if_due(advanced=self.level > previous_level)
         return frame
 
     def transitions(self):

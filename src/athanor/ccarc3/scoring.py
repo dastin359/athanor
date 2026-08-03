@@ -231,8 +231,21 @@ def actions_per_level(
 
     counts: dict[int, int] = {}
     previous: int | None = None
-    for t in kept:
+    for i, t in enumerate(kept):
         source = previous if previous is not None else 0
+        # **A RESET that starts a play is not an action, and the server agrees.**
+        # Measured against a live scorecard: seven ACTION6 calls preceded by the
+        # opening RESET were reported as `actions: [7]` and
+        # `actions_by_level: [[[1, 7]]]`, not 8. A *level* reset -- a RESET while
+        # the counter is non-zero, taken after a death -- is counted, and that
+        # also matched: a padded play of 13 clicks, a level reset and 7 more came
+        # back as 21, exactly what was spent after the opening RESET.
+        #
+        # So the exclusion is precisely the play-starting RESET: the first
+        # transition of the trace, and any RESET that performs a full reset.
+        if t.action == "RESET" and (i == 0 or t.full_reset):
+            previous = t.level
+            continue
         counts[source] = counts.get(source, 0) + 1
         previous = t.level
 
