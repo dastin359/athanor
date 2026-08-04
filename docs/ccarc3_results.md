@@ -723,6 +723,63 @@ moved are the two games already known to move.** Five of seven are exact ties.
 `lp85` is another tie — E 1.0000 both ways, `raw` 1.1500 both ways, 79 clean
 actions against 95 leaked. Six exact ties in eight pairs.
 
+### The completion cap binds in 28 of 30 runs, so efficiency is almost never worth anything
+
+Prompted by a question about `tn36`: if that run had restarted and replayed
+levels 0–4 optimally, would its score have moved? **No — and not by a little.**
+
+```
+clean run as played                          raw=0.5904 cap=0.5357  E=0.5357
+levels 0-4 at their best-ever cost           raw=0.6161 cap=0.5357  E=0.5357
+levels 0-4 in ONE action each (impossible)   raw=0.6161 cap=0.5357  E=0.5357
+```
+
+The arithmetic is forced. `S_l` is clamped at 1.15, so with `k` of `n` levels
+cleared, `raw ≤ 1.15 × C` **always** — and `E = min(C, raw)`. Perfect play on the
+levels you did clear cannot lift `E` above the cap those clearings already set.
+Clearing level 5 would have been worth **+0.208**, level 6 another **+0.256**, at
+the very action costs the leaked run actually paid.
+
+**This corrects a claim made earlier in this section.** After `cd82` it said the
+replay's `raw` gain was invisible only because that game was won outright, and
+that "on any game that does *not* clear every level the cap sits below 1.0, `raw`
+becomes the binding term." That is wrong. Since `raw ≤ 1.15 × C`, `raw` exceeds
+`C` whenever the cleared levels average at or better than the human median —
+**how many levels you cleared has nothing to do with which term binds.**
+
+Measured across every scored run in the project:
+
+| binding term | runs |
+|---|---|
+| completion cap — only *clearing* helps | **28** |
+| `raw` — efficiency helps | **2** |
+
+The two exceptions are `runs3/tn36` (0.4487 against a cap of 0.7500 — the run
+that put 309 actions into level 5 and hit the old 2× action budget) and
+`ablate_leaked/sp80` (0.9785 against 1.0000 — two levels run over the human
+median). Both are cases of going *badly* over baseline, not of ordinary
+inefficiency. **In all nine clean runs under the current config, the cap binds.**
+
+Three consequences, none of them small:
+
+1. **The efficiency apparatus is scoring-irrelevant almost all the time.** Pace
+   warnings, the action budget, per-level ratios — across 104 cleared levels the
+   median was 1.70× better than the human median and 92 of 104 beat it, which is
+   exactly the regime where `raw > C` and none of it counts.
+2. **§0a's post-clear replay is usually pure cost.** It fires after clearing
+   every level, where `C = 1.0` and `raw` is already over 1.0 — so it buys
+   nothing while spending real budget. `r11l` is the clean demonstration: $18.77
+   against its pair's $12.02, 59 minutes against 38, `raw` 1.1500 either way,
+   **E identical at 1.0000**. The `cd82` replay was the same shape; its +0.12 of
+   `raw` bought +0.0000 of score.
+3. **Persistence on an unsolved level dominates everything else.** `tn36` walked
+   away from +0.208 to save actions it had no use for — 82% of its budget went
+   unspent — while the doctrine's loudest signals were all about spending less.
+
+Staged rather than applied: reordering the doctrine around "clear the next level"
+over "spend fewer actions" changes the treatment mid-arm, so it waits for the
+batch boundary alongside the replay-conditioning change already queued.
+
 **Why the mean is under 1.0, and it is one game.** Eight of nine clean runs score
 1.0000; `tn36` alone scores 0.5357. That single partial game costs the mean
 0.0516, and the reason it costs so much is the completion cap's non-linearity:
