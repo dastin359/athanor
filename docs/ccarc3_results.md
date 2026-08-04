@@ -582,10 +582,32 @@ first play"**, not "not knowing the score helps." Which games it pays on is
 therefore a question about first-play variance, and two games say nothing about
 that.
 
-Running total, cleanly scored: **2 of 24, both 1.0000.** Both leak probes clean
-across every channel — `/api/games`, `ARC_API_KEY`, `list_games(`,
-`baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and `ft09` is the first
-run where even the string `baseline_actions` is absent from the stream, the
+### `sb26` replicates its leaked run almost exactly
+
+| | E | `raw` | per-level actions | total |
+|---|---|---|---|---|
+| leaked | 1.0000 | 1.1436 | 11, 15, 15, 15, 17, 19, 17, 17 | 126 |
+| **clean** | 1.0000 | 1.1436 | **10**, 15, 15, 15, 17, 19, 17, 17 | 125 |
+| baseline | — | — | 18, 28, 18, 19, 31, 23, 58, 18 | 213 |
+
+**Seven of eight levels identical to the action**, the eighth off by one, `raw`
+equal to four decimal places. This is the tightest paired observation in the
+project and it says something the aggregate cannot: on a game the solver
+understands, the run is close to deterministic. Whatever variance produced
+`tn36`'s old +0.551 swing is not a property of every environment.
+
+`sb26` also shows where `raw` leaks below the clamp: level 8 has `h`=18 against
+`a`=17, a ratio of 1.06 that squares to 1.12 and so misses the 1.15 ceiling.
+Seven levels at the clamp and one at 1.1218 is what 1.1436 is made of. A level
+where the human is already efficient cannot be beaten enough to matter — the
+clamp only pays where the baseline is generous.
+
+Running total, cleanly scored: **4 of 25 — `cd82`, `ft09`, `s5i5`, `sb26` — all
+1.0000.** They are also the four cheapest environments in the set, so the
+unbroken row says more about the ordering than about the harness. Leak probes
+clean across every channel — `/api/games`, `ARC_API_KEY`, `list_games(`,
+`baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and from `ft09`
+onwards even the string `baseline_actions` is absent from the stream, the
 line-deletion strip having landed for it.
 
 One caveat on `ft09`'s cost line: it reads $8.57, but that covers only the second
