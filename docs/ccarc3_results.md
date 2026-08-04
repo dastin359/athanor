@@ -1665,3 +1665,55 @@ skips the routing wins.
 `r11l` also took **zero deaths on the one game where a scripted random policy
 died in 38 actions** — the solver avoided entirely a failure mode that random
 play walks straight into.
+
+### `sp80-589a99af` — **5/6 for E=0.7143**, and the first run to stop *voluntarily*
+
+Twelfth game of the baseline-free arm, and the first that neither won nor was
+cut short by a cap. It ended at `stop_reason: end_turn`, `is_error: false`, with
+**95% of its action budget and 0.8 h of its 4 h clock unused** — 137 of 2,590
+actions in 3.18 h.
+
+| | |
+|---|---|
+| E | **0.7143** (= cap; `raw` 0.8214) |
+| levels | 5 of 6 |
+| actions | 137 billed, 1 death, 0 full resets |
+| wall | 3.18 h of a 4.00 h cap · 83 s/action |
+| cost | $26.49 over 132 turns |
+
+**Every cleared level hit the 1.15 efficiency ceiling.** Not one was merely under
+baseline — all five were capped:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 11 | 9 | 10 | 23 | 40 | — |
+| human | 39 | 58 | 25 | 148 | 96 | 152 |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 0.00 |
+
+This is the completion cap binding in its purest form: `raw` (0.8214) exceeds
+`E` (0.7143) purely because level 6 is unfinished. Efficiency contributed nothing
+to the score and could not have — the 29th of 30 runs where that is true.
+
+**The stop was reasoned, not a give-up.** The solver built a flow model that
+reproduced all 13 recorded releases exactly, cleared five levels with it, then
+searched **63.7M platform configurations** on level 6 plus a relaxed run with the
+adjacency rule disabled. It concluded that the two left-facing cups each require
+the single left-sliding chute in a different row, and that every solution needs
+two cells that the "no platform orthogonally adjacent to a cup" rule forbids. Its
+own verdict: *"there's a mechanic I didn't find… I'd rather flag that gap than
+dress up a guess."*
+
+That is the behaviour the doctrine asks for, and it costs nothing: it correctly
+noted that once level 6 was unfinishable the remaining experiments were
+score-free, because completed levels' counts were already banked and the replay
+window closes once you act on a new level.
+
+**A prediction this refuted.** Mid-run, at 76 s/action, this was called as a
+second `bp35` — a run that would lose to the clock. It did not: the pace was the
+solver spending minutes per action on a genuine search, and it finished its search
+before the cap. *Slow is not the same as clock-bound*, and the earlier inference
+read one as the other.
+
+**What it does not tell us.** `sp80` ran on the pre-`b5f4651` runner, so it has no
+thinking capture and no ARC-notation action counting — `clean` tier on the audit
+page, not `latest`. Zero runs are on the current config; game 13 is the first.
