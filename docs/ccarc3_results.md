@@ -469,6 +469,22 @@ cutting those would ablate different variables.
 | `tn36` | 0.449 | **1.000** | 631 → 220 | ×0.57 |
 | `sc25` | 1.000 | 1.000 | 204 → 414 | — |
 | `s5i5` | 1.000 | 1.000 | 353 → 510 | ×1.31 |
+| `bp35` | — | **0.4667** | — → 307 | **timed out** |
+
+`bp35` is the first **untouched** environment (no control) and the first run lost
+to the **wall clock** rather than to the game. Six of nine levels, `raw` 0.4970
+*above* its cap of 0.4667, every cleared level near the human median — and
+**307 of 3255 actions used, 9%**. It ran out of the 2-hour ceiling at 23 s per
+action.
+
+That pace is ordinary: median across finished runs is 10.5 s/action, and `bp35`
+sits with `r11l` (23.8) and `lp85` (22.0). **Raising the action budget to 5×
+made actions cheap, so the solver began spending minutes on each — and the clock
+became the binding constraint instead.** Fixing one cap exposed the next.
+
+The timeout now scales as `12 s × baseline_total` (2.2 h for `bp35`, 6.1 h for
+`wa30`). **`bp35`'s 0.4667 measures this harness, not the environment** — the
+same defect as `tn36`'s old 0.449 — and it should be re-run.
 
 `sc25` is the **first genuinely baseline-free run** — `meta.json` sanitised, the
 whole-workspace leak scan clean, `CCARC3_HIDE_BASELINES=1` on the child. Everything
