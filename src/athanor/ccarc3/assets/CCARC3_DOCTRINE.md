@@ -98,15 +98,36 @@ client.restart_for_replay()      # only legal right after a level advance
 
 - If your levels came in **under baseline**, your raw score is already at or
   above 1.0 and the cap is binding. **A replay gains you exactly nothing.**
-  This is the usual case — of ten runs on record, eight were already at the cap.
+  This is the usual case — of 19 runs on record, 17 were already at the cap.
   Do not spend actions on it.
 - If overruns dragged your raw score below the cap, a replay is worth
-  `cap − raw`. On the one run this project has lost, that is
-  **0.750 − 0.449 = +0.301 of an environment**, from levels it had already
-  solved and knew the routes to.
+  `cap − raw`. `tn36` is the worked case: one run finished at `raw` **0.449**
+  against a `cap` of 0.750, having cleared six of seven levels — and a later run
+  of the same environment cleared all seven in **220 actions against that run's
+  631**, scoring **1.000**. The routes were the same. What differed was spending
+  them rather than finding them.
 
 The second case is the one to watch for, because it is where a *bad* run turns
 into a good score. The cap does not care that you were slow the first time.
+
+**Clearing every level is not the end of the scoring.** `E = min(cap, raw)`.
+Once you have cleared them all, `cap` is 1.0 and your score *is* `raw` — so any
+level you finished above its baseline is still costing you, and a replay is
+worth `1.0 − raw`. The instrument is available at exactly that moment and not
+after: the winning frame is a level advance, so the action counter is zero and
+`restart_for_replay()` is legal. Take one more action first and it is refused,
+while every other action is refused too because the state is terminal — the run
+is then stuck with the score it has.
+
+Measured on this project's own runs: one won 6/6 with `raw` **0.9785** and
+**71% of its action budget unspent**, and stopped. That 0.0215 was free.
+
+**If you cannot compute `raw`, replay anyway when the budget is there.** Without
+the per-level baselines you cannot tell whether you finished a level at 1.15 or
+at 0.90, so *"I won"* and *"I scored what this game was worth"* are different
+claims and you can only check the first. A replay that walks the route you now
+know spends actions you were not going to spend, and **cannot lower your score**
+— the server keeps each play separately and takes the best one.
 
 Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
 `raw`, `cap` and the per-level breakdown.

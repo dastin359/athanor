@@ -159,6 +159,13 @@ client = ArcClient(
     gate=gate,
     max_actions={budget},
     level_budget_multiple={level_budget_multiple!r},
+    # Report the running score in status(). With baselines available this is
+    # `raw`, its ceiling, and the completion cap; without them the cap alone,
+    # which needs no baselines because it is which levels fell, not how fast.
+    # A solver could not previously see its own score at all -- `su15` blew two
+    # levels to 8.65x and 22.75x with nothing able to tell it that its ceiling
+    # had already dropped to 0.82.
+    show_score=True,
 )
 client.open()
 
