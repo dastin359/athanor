@@ -1337,3 +1337,49 @@ def test_list_games_can_withhold_baselines_from_the_solver(monkeypatch):
     # "0" cannot silently blind a scoring run.
     monkeypatch.setenv(client_mod.HIDE_BASELINES_ENV, "0")
     assert client_mod.list_games()[0].baseline_actions == (10, 20, 30)
+
+
+def test_the_hide_flag_has_no_bypass(monkeypatch):
+    """Under the flag, *no* path in the package returns a baseline.
+
+    Both bypasses were real and both were reachable from the solver's own
+    namespace. `list_games(_unfiltered=True)` was a keyword any caller could
+    pass; `baselines_for()` ignored the flag outright and was re-exported from
+    `athanor.ccarc3`, so `dir(arc)` advertised it. `cd82` found it exactly that
+    way on its first orientation turn, without going looking.
+
+    They existed for harness-side callers, which never needed them: the runner
+    does not set the flag on itself, only on the child it spawns. So the
+    exemption bought nothing and cost the boundary.
+    """
+    raw = [{"game_id": "g1", "title": "G1", "tags": ["click"],
+            "baseline_actions": [10, 20, 30]}]
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: raw)
+    monkeypatch.setenv("ARC_API_KEY", "k")
+
+    monkeypatch.delenv(client_mod.HIDE_BASELINES_ENV, raising=False)
+    assert client_mod.baselines_for("g1") == (10, 20, 30), (
+        "the runner, which never sets the flag, is unaffected"
+    )
+
+    monkeypatch.setenv(client_mod.HIDE_BASELINES_ENV, "1")
+    with pytest.raises(PermissionError, match="withheld"):
+        client_mod.baselines_for("g1")
+
+    with pytest.raises(TypeError):
+        client_mod.list_games(_unfiltered=True)  # type: ignore[call-arg]
+
+
+def test_baselines_for_is_absent_from_the_solver_namespace():
+    """`dir(arc)` must not name it. That listing is how the leak was found.
+
+    The solver imports `athanor.ccarc3`, not `athanor.ccarc3.client`, and a
+    first-turn `dir()` on an unfamiliar package is ordinary orientation, not
+    probing. Keeping the name out of that listing is the difference between a
+    solver having to decide to go looking and being handed the answer.
+    """
+    import athanor.ccarc3 as pkg
+
+    assert "baselines_for" not in dir(pkg)
+    assert "baselines_for" not in pkg.__all__
+    assert callable(client_mod.baselines_for), "harness-side import still works"

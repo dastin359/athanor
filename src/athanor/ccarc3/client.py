@@ -188,52 +188,74 @@ package that produces a `GameInfo` from the API comes through here, so this is
 the one place the field can be withheld once.
 
 Scoped to the environment rather than a call argument because the solver's
-process is where it must apply: the *runner* needs the real numbers to build its
-queue, enforce ARC's 5n per-level rule and score the result. `session.build_cli_args`
-sets it for the child only.
+process is where it must apply: the *runner* needs the real numbers to size a
+game's budget and score the result. `session.build_cli_args` sets it for the
+child only, and nothing sets it on the runner.
 
-**Not airtight, and should not be described as such.** A solver holding the key
-can issue its own HTTP request to `/api/games`. This closes the path any solver
-would actually take — the one in its own namespace — and leaves a deliberate
-step for anything further. Check the traces, do not assume.
+**It is the whole rule, with no bypass.** `list_games` used to take an
+`_unfiltered=True` escape hatch and `baselines_for` used to ignore the flag
+outright, both so harness-side callers could still get the numbers. That was
+backwards — those callers live in a process where the flag is unset, so they
+never needed an exemption, and the exemptions were reachable from the solver's
+namespace. Both are gone: under the flag, no path in this package returns a
+baseline.
+
+**Still not airtight, and should not be described as such.** A solver holding
+the key can issue its own HTTP request to `/api/games`. What the flag closes is
+*incidental* exposure, and the distinction is not academic — `cd82` ran
+`dir(arc)` while orienting and read `baselines_for` straight out of the listing,
+having gone looking for nothing at all. Check the traces, do not assume.
 """
 
 
 def baselines_for(
     game_id: str, api_key: str | None = None, root: str = ROOT_URL
 ) -> tuple[int, ...]:
-    """One game's per-level medians, **ignoring** :data:`HIDE_BASELINES_ENV`.
+    """One game's per-level medians, for **harness-side callers only**.
 
-    The harness needs the real numbers even when the solver must not see them,
-    because ARC's 5n per-level termination is enforced *against* them — technical
-    report §4.3: *"we impose an action budget of five times the human-baseline
-    median action count per level ... the agent is terminated after 5n actions"*.
-    A baseline-free workspace that also disables that rule is not a stricter
-    experiment, it is a more permissive one.
+    The runner needs the real numbers to size a game's budget and score the
+    result; the solver must not have them. Those two live in different processes,
+    so the process is where the line is drawn: this raises under
+    :data:`HIDE_BASELINES_ENV`, which only a solver's environment carries.
 
-    Used by the generated ``session.py`` so no baseline array is ever written to
-    disk in a workspace: the numbers exist only in the client's memory, behind
-    :attr:`ArcClient.hide_baselines`. A solver could of course call this itself —
-    it is one import away — but so is a hand-rolled request to ``/api/games``.
-    The barrier is against incidental exposure, which is what actually happened:
-    twelve runs read the array out of ``meta.json`` while orienting.
+    It did not always. It was written to *ignore* the flag, on the reasoning that
+    a solver could call ``/api/games`` by hand anyway so the barrier was only ever
+    against incidental exposure. A live solver refuted that. ``cd82`` ran
+    ``dir(arc)`` on its first orientation turn -- an obvious thing to do in an
+    unfamiliar package -- and read back ``'actions_per_level', 'as_grid',
+    'baselines_for', 'block_size'``. Nothing deliberate was required: the name
+    advertises itself, and the next step is one call. That is incidental
+    exposure, precisely the thing the flag exists to stop.
+
+    Deliberately not re-exported from ``athanor.ccarc3``, so it is absent from
+    ``dir(arc)`` in the namespace a solver actually holds. Harness code imports it
+    from :mod:`athanor.ccarc3.client` by name.
     """
-    for game in list_games(api_key=api_key, root=root, _unfiltered=True):
+    if os.environ.get(HIDE_BASELINES_ENV) == "1":
+        raise PermissionError(
+            f"baselines_for() is unavailable while {HIDE_BASELINES_ENV}=1. This "
+            "process is a solver; per-level human medians are withheld from it by "
+            "design."
+        )
+    for game in list_games(api_key=api_key, root=root):
         if game.game_id == game_id:
             return tuple(game.baseline_actions)
     raise KeyError(f"{game_id} is not in the public set")
 
 
-def list_games(
-    api_key: str | None = None, root: str = ROOT_URL, *, _unfiltered: bool = False
-) -> list[GameInfo]:
+def list_games(api_key: str | None = None, root: str = ROOT_URL) -> list[GameInfo]:
     """Every public game, with its per-level baselines and action-type tags.
 
     Baselines come back empty when :data:`HIDE_BASELINES_ENV` is set — see there.
-    ``_unfiltered`` bypasses that gate and is for harness-side callers only.
+
+    There is deliberately **no bypass argument**. There was one, ``_unfiltered``,
+    for harness-side callers; it made the flag advisory, because a keyword any
+    caller can pass is not a boundary. The environment variable is now the whole
+    rule, and it is honoured in exactly one place. Harness callers are unaffected:
+    the runner never sets the flag on itself, only on the child it spawns.
     """
     raw = _get(f"{root}/api/games", _api_key(api_key))
-    hide = not _unfiltered and os.environ.get(HIDE_BASELINES_ENV) == "1"
+    hide = os.environ.get(HIDE_BASELINES_ENV) == "1"
     return [
         GameInfo(
             game_id=g["game_id"],
