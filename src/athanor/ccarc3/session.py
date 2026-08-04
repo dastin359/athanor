@@ -60,7 +60,23 @@ class Ccarc3Config:
     out_dir: Path = Path("runs/ccarc3")
     model: str = DEFAULT_MODEL
     effort: str = DEFAULT_EFFORT
-    level_budget_multiple: float = 5.0
+    level_budget_multiple: float = 0.0
+    """Per-level action cap as a multiple of that level's baseline. 0 disables it.
+
+    **Disabled on operator instruction, 2026-08-04, and the reasoning is sound.**
+    ARC's 5n rule is not a property of the game: the live API does not enforce it
+    — three level-attempts in this project ran past it, `su15` L7 to 23.6×, every
+    action accepted — and the technical report puts it in §4.3 *Leaderboards*,
+    justified by *"the computational cost of evaluating high-reasoning frontier
+    models ... tens of thousands of dollars in API costs"*. It is the organisers
+    capping their own spend, not a rule the environment imposes on an agent.
+
+    Enforcing it here only ever cost score. Worse, the harness made it invisible
+    *and* binding: with the medians withheld the solver got no ratio, no warning
+    and no counter, then had an action refused with the environment over. ARC's
+    own agents can read `baseline_actions` off the public API and compute 5n for
+    themselves, so that combination was harsher than anything ARC does.
+    """
     """Per-level cap as a multiple of that level's baseline — **the official rule**.
 
     ARC terminates an agent after 5n actions on a level with baseline n. Kept as
