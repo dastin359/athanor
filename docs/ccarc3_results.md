@@ -523,9 +523,58 @@ re-run: the twelve to `ablate_leaked/`, `bp35` to `ablate_timeout/`, ledger rows
 re-tagged so a re-run cannot land beside the run it replaces under the same batch
 name. `s5i5`'s 1.000 stands and is not re-run — a perfect score cannot improve.
 
-**Twelve pairs. Score 11.778 against 11.396 — the demoted-baseline arm is ahead
-by 0.383,** on eleven wins to the controls' eleven. **Eight** exact ties, two
-small losses, two gains. (An earlier draft said nine ties; it was eight.)
+### The first clean re-run: `cd82` — same score, half the actions
+
+`cd82` is the first game re-run under the closed boundary, and it is the first
+observation of what withholding actually costs. **It costs nothing, and the
+mechanism is not the one the section was built to look for.**
+
+| | E | `raw` | per-level actions | total | plays | turns | cost | wall |
+|---|---|---|---|---|---|---|---|---|
+| leaked | 1.0000 | 1.0296 | 38, 6, 74, 16, 16, 20 | 170 | 1 | 118 | $16.52 | 54 min |
+| **clean** | **1.0000** | **1.1500** | **5, 6, 16, 14, 13, 16** | **70** | 2 | 98 | $13.01 | 40 min |
+| baseline | — | — | 55, 8, 41, 21, 23, 23 | 171 | — | — | — | — |
+
+Identical scores, because both are pinned at the completion cap of 1.0. The
+difference is entirely in the headroom underneath it: the leaked run finished at
+`raw` 1.0296, a hair over the cap, while the clean run finished at **1.1500 —
+the theoretical maximum**, every one of the six levels clamped. It used **70
+actions to the leaked run's 170**, against a human total of 171.
+
+**The cause looks like the withheld score, not the withheld baselines.** The
+clean run played twice: 108 actions working the game out, then a replay that
+took all six levels in 71. The leaked run played once, in 171. Doctrine §0a tells
+a solver to replay after clearing, and adds *"if you cannot compute `raw`, replay
+anyway when you have the budget"* — which is exactly the branch a baseline-free
+run is forced down, because `score_now` returns `None` without baselines. The
+leaked run *could* compute `raw`, saw 1.0296 clear the cap, and stopped. Knowing
+the score told it the replay was worthless; not knowing made it replay, and the
+replay was worth 0.12 of `raw` and 100 actions.
+
+**Why that matters even though E is unchanged.** It is invisible here only
+because `cd82` was won outright, where the cap binds and swallows the gain. On
+any game that does *not* clear every level the cap sits below 1.0, `raw` becomes
+the binding term, and 1.15-vs-1.03 is the whole score. This is a mechanism that
+pays exactly where the current results are weakest — and it is an argument
+*against* `show_score`, which the operator has separately established is absent
+from the live API at test time.
+
+One observation, one game, and the cheapest environment in the set. It wants the
+other eleven before it is a finding.
+
+**Verification.** Full probe of the finished 1366-line stream: zero hits on
+`/api/games`, `ARC_API_KEY`, `list_games(`, `baselines_for`, `urllib`,
+`requests.`, `httpx` and `curl`; `cd82`'s array `55, 8, 41, 21, 23, 23` appears
+nowhere. The workspace built for the next game, `ft09`, carries no
+`baseline_actions` line at all.
+
+---
+
+**The twelve leaked pairs, retained for the variance evidence.** Score 11.778
+against 11.396 — the demoted-baseline arm is ahead by 0.383, on eleven wins to
+the controls' eleven. **Eight** exact ties, two small losses, two gains. (An
+earlier draft said nine ties; it was eight.) These are being replaced game by
+game as the clean arm runs.
 
 **And the aggregate rests on one game.** `tn36` alone is +0.551, more than the
 whole margin; without it the arm is 0.169 *behind*. Read the sign of the total
