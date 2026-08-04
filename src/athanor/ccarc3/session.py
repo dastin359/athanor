@@ -159,6 +159,14 @@ client = ArcClient(
     gate=gate,
     max_actions={budget},
     level_budget_multiple={level_budget_multiple!r},
+    # Withhold the human medians from the solver while still ENFORCING ARC's 5n
+    # per-level termination against them. Verified against the technical report
+    # §4.3: "we impose an action budget of five times the human-baseline median
+    # action count per level ... the agent is terminated after 5n actions",
+    # applied across the full evaluation set. Blanking `baseline_actions` to hide
+    # the numbers silently switched that rule off, which made every score here
+    # more permissive than a leaderboard one.
+    hide_baselines=True,
     # Report the running score in status(). With baselines available this is
     # `raw`, its ceiling, and the completion cap; without them the cap alone,
     # which needs no baselines because it is which levels fell, not how fast.

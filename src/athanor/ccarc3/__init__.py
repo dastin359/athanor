@@ -38,6 +38,7 @@ from .client import (
     ActionRefused,
     ArcClient,
     GameInfo,
+    baselines_for,
     list_games,
 )
 from .gate import GateRefusal, LevelGate
@@ -101,6 +102,7 @@ __all__ = [
     "GameInfo",
     "ActionRefused",
     "list_games",
+    "baselines_for",
     # gate
     "LevelGate",
     "GateRefusal",

@@ -40,6 +40,7 @@ __all__ = [
     "ActionRefused",
     "GateRefusal",
     "list_games",
+    "baselines_for",
 ]
 
 ROOT_URL = "https://three.arcprize.org"
@@ -198,13 +199,41 @@ step for anything further. Check the traces, do not assume.
 """
 
 
-def list_games(api_key: str | None = None, root: str = ROOT_URL) -> list[GameInfo]:
+def baselines_for(
+    game_id: str, api_key: str | None = None, root: str = ROOT_URL
+) -> tuple[int, ...]:
+    """One game's per-level medians, **ignoring** :data:`HIDE_BASELINES_ENV`.
+
+    The harness needs the real numbers even when the solver must not see them,
+    because ARC's 5n per-level termination is enforced *against* them — technical
+    report §4.3: *"we impose an action budget of five times the human-baseline
+    median action count per level ... the agent is terminated after 5n actions"*.
+    A baseline-free workspace that also disables that rule is not a stricter
+    experiment, it is a more permissive one.
+
+    Used by the generated ``session.py`` so no baseline array is ever written to
+    disk in a workspace: the numbers exist only in the client's memory, behind
+    :attr:`ArcClient.hide_baselines`. A solver could of course call this itself —
+    it is one import away — but so is a hand-rolled request to ``/api/games``.
+    The barrier is against incidental exposure, which is what actually happened:
+    twelve runs read the array out of ``meta.json`` while orienting.
+    """
+    for game in list_games(api_key=api_key, root=root, _unfiltered=True):
+        if game.game_id == game_id:
+            return tuple(game.baseline_actions)
+    raise KeyError(f"{game_id} is not in the public set")
+
+
+def list_games(
+    api_key: str | None = None, root: str = ROOT_URL, *, _unfiltered: bool = False
+) -> list[GameInfo]:
     """Every public game, with its per-level baselines and action-type tags.
 
     Baselines come back empty when :data:`HIDE_BASELINES_ENV` is set — see there.
+    ``_unfiltered`` bypasses that gate and is for harness-side callers only.
     """
     raw = _get(f"{root}/api/games", _api_key(api_key))
-    hide = os.environ.get(HIDE_BASELINES_ENV) == "1"
+    hide = not _unfiltered and os.environ.get(HIDE_BASELINES_ENV) == "1"
     return [
         GameInfo(
             game_id=g["game_id"],
