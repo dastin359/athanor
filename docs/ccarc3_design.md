@@ -107,6 +107,35 @@ public server returns four, adding `tags` and `baseline_actions`. So the field
 this harness leans on hardest is an undocumented extra, not part of ARC's stated
 contract.
 
+> **Confirmed against ARC's OpenAPI spec, 2026-08-04** (`docs.arcprize.org/arc3v1.yaml`),
+> having previously been inferred from the prose docs. Three findings, and the
+> third was a channel this project had not considered.
+>
+> 1. **`GET /api/games` declares `game_id` and `title`. That is all.** A live
+>    `curl` the same morning returned four fields including `baseline_actions`
+>    for all 25 public games. Undocumented extra, confirmed both ways.
+> 2. **No score reaches the agent mid-game.** The documented `FrameResponse` is
+>    `game_id, guid, frame, state, levels_completed, win_levels, action_input,
+>    available_actions` — no score, no baseline, no budget. **But
+>    `levels_completed` and `win_levels` are both in it, on every frame**, so the
+>    completion cap `C = Σ(1..k)/Σ(1..n)` is computable at test time from the
+>    documented contract alone. Reporting `C` to a solver gives it nothing ARC
+>    withholds; reporting `raw` would, because `raw` needs the undocumented
+>    array. `ArcClient.show_score` therefore emits only `C` whenever the
+>    baselines are absent or gated.
+> 3. **The scorecard was a plausible third channel and is not exploitable.** The
+>    spec lists `level_baseline_actions` inside `RunSummary` under
+>    `ScorecardSummary`, which would let an agent read baselines from its own
+>    card mid-play. Probed live: the per-game scorecard carries no baselines, and
+>    `/api/scorecard/{card_id}` and `/api/scorecard/summary/{card_id}` both 404 —
+>    before and after close.
+>
+> **What stays unknowable from here:** whether the semi-private set serves
+> `baseline_actions`. It is undocumented, so ARC owes nobody its continuation,
+> and that API cannot be queried from this project. The uncertainty now only cuts
+> one way, though — rollouts withhold the field regardless, so their numbers do
+> not depend on the answer.
+
 How hard it leans: 22 references in the doctrine, the whole of §6 ("Budget
 against the published baseline"), the 1.0x pace warning in `client.status()`,
 `client.pace()`, and the workspace `CLAUDE.md`, which hands the array to the
