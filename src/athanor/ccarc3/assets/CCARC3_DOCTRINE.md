@@ -528,6 +528,37 @@ uniform block structure, so `logical()` often declines to reduce at all. The
 saving that works is being **selective about which frames you look at**, not
 compressing all of them.
 
+### Any `Bash` call that plays actions must pass an explicit `timeout`.
+
+**`Bash` defaults to 120 seconds and does not warn you.** A shell `timeout 300`
+inside the command does not help — the tool's own limit fires first, at 120 s,
+and one of two things happens:
+
+- the call is **moved to the background**. Your loop keeps running and keeps
+  spending real actions on the real game, but you no longer see its output. You
+  are now flying blind on a board that is still changing.
+- the call is **killed** — `Exit code 143` — mid-loop, leaving the game in
+  whatever state the last completed action produced.
+
+Both have happened. Across ten scored games, six calls hit the cap: four went to
+the background and one was killed outright partway through a replay loop that was
+issuing `client.act(...)`.
+
+The tool accepts `timeout` in **milliseconds, up to 600000** (10 minutes). Pass it
+whenever a call drives the game or runs a search:
+
+```python
+# Bash(command=..., timeout=600000)
+from session import client, gate, arc
+for action in [1, 3, 3, 5]:
+    client.act(action)
+print(client.status())
+```
+
+If the work genuinely needs more than ten minutes, **split it** — drive a dozen
+actions, print `client.status()`, return, and continue in the next call. A loop
+you can see is worth more than a longer one you cannot.
+
 ## 9. Record what you learned at every level boundary.
 
 You will be refused the first action of a new level until you do. That is
