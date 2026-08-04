@@ -675,6 +675,22 @@ def run_cost(stream_path: Path | str) -> dict[str, Any]:
     }
 
 
+def _killing_signal(exit_code: int) -> int:
+    """The signal that killed the solver, or 0 if it exited on its own.
+
+    Two encodings, because two things report it. ``Popen.wait`` returns a
+    *negative* number when the child dies on a signal; but the solver is a node
+    CLI that installs its own handler and exits normally with ``128 + signum``,
+    so a SIGTERM arrives as **143**, an ordinary-looking exit code. Only the
+    second form has ever been observed here, and only the first is documented.
+    """
+    if exit_code < 0:
+        return -exit_code
+    if 128 < exit_code < 193:
+        return exit_code - 128
+    return 0
+
+
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
     """Read the run's result off disk — never from what the solver claims."""
     outcome = {
@@ -686,6 +702,28 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         "exit_code": exit_code,
         "timed_out": timed_out,
     }
+
+    # **A solver that was killed did not lose. It was interrupted.**
+    #
+    # `ft09` is why this exists. A container restart sent SIGTERM to the solver
+    # mid-game; the parent survived, collected the trace as it stood -- 4 of 6
+    # levels, 52 actions of a 1040 budget -- and wrote a `result.json` with
+    # `won: false`, `timed_out: false` and no error. Nothing in it says the run
+    # was cut short, and every consumer reads it as an environment that beat us.
+    # Worse, the arm's resume rule is `if prior and not prior.get("error"): skip`,
+    # so the false loss was permanent: `ft09` would never have been re-run.
+    #
+    # Marking it as an error is what makes it retryable, and the same applies to
+    # the supervisor's own quota stop, which kills solvers by design. A *timeout*
+    # is excluded deliberately: that is a real outcome under a rule we chose, and
+    # `bp35` is recorded that way on purpose.
+    sig = _killing_signal(exit_code)
+    if sig and not timed_out:
+        outcome["killed_by_signal"] = sig
+        outcome["error"] = (
+            f"solver killed by signal {sig} after {outcome.get('actions_used', 0)} "
+            f"actions — interrupted, not a result; re-run this game"
+        )
     if ws.rules_path.exists():
         book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
         outcome["mechanics_recorded"] = len(book.get("verified", []))

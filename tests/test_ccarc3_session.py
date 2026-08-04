@@ -311,6 +311,37 @@ def test_an_empty_run_collects_without_crashing(ws):
     assert out["actions_used"] == 0 and out["timed_out"] is True
 
 
+def test_a_killed_solver_is_an_error_not_a_loss(ws):
+    """`ft09`: a container restart, banked as a 4-of-6 defeat.
+
+    SIGTERM reached the solver mid-game. The parent survived, read the trace as
+    it stood, and wrote `won: false`, `timed_out: false`, no error — a
+    `result.json` that reads exactly like an environment that beat us, on 52
+    actions of a 1040 budget. The arm skips any prior result without an `error`
+    key, so the false loss would have been permanent.
+    """
+    _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]]), ("ACTION1", 1, "NOT_FINISHED", [[[2]]])])
+
+    killed = collect_outcome(ws, exit_code=143, timed_out=False)
+    assert killed["killed_by_signal"] == 15
+    assert "re-run this game" in killed["error"]
+
+    # Popen.wait's own encoding for the same event, which is the documented one
+    # even though only 143 has ever been seen here.
+    assert collect_outcome(ws, exit_code=-15, timed_out=False)["killed_by_signal"] == 15
+
+    # A timeout is a real outcome under a rule we chose — `bp35` is recorded that
+    # way deliberately — so it must NOT become retryable.
+    timeout = collect_outcome(ws, exit_code=-1, timed_out=True)
+    assert "error" not in timeout and "killed_by_signal" not in timeout
+
+    # And an ordinary exit stays clean, including the non-zero ones a solver
+    # returns when it gives up on its own.
+    for code in (0, 1, 2):
+        out = collect_outcome(ws, exit_code=code, timed_out=False)
+        assert "error" not in out, f"exit {code} is not a signal death"
+
+
 def test_the_rule_book_is_summarised_when_present(ws):
     _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]])])
     ws.rules_path.write_text(json.dumps({
