@@ -319,6 +319,47 @@ still worth playing to its budget rather than abandoned.**
 
 ## Ablation — are the human baselines load-bearing? 2026-08-03 *(in progress)*
 
+> # ⚠ The first twelve runs did not withhold the baselines. Read this first.
+>
+> **`meta.json` carried the full array into every workspace, and all twelve
+> solvers read it.** `build_workspace` writes the whole `GameInfo` to
+> `meta.json`; `strip_baselines()` rewrote `session.py`, `CLAUDE.md` and
+> `DOCTRINE.md` and never touched it. Measured, not inferred: the exact
+> per-level array appears in a tool result in **12 of 12** streams, and `tu93`
+> went further and ran
+> `bl = json.load(open('meta.json'))['baseline_actions']` followed by
+> `arc.score_run(ts, bl)` — it computed its own RHAE from the numbers the arm
+> was built to hide.
+>
+> **The root cause is a check that could only ever pass.** `strip_baselines()`
+> ended by scanning for leaks in exactly the three files it had just rewritten.
+> A leak check scoped to what you edited confirms your edits; it says nothing
+> about the artefact you shipped. It now scans every file in the workspace, and
+> that scan is tested against a leak planted in a file the function does not
+> edit — the precise class it was blind to.
+>
+> **So these twelve are not an information ablation. They are a *presentation*
+> one:** the baselines were removed from the workspace `CLAUDE.md`, from
+> doctrine §6/§6a, and from the pace line in `client.status()`, while remaining
+> in a JSON file every solver opened during orientation. That is a real and
+> interesting treatment — it asks whether the *scaffolding* around the number
+> matters once you have the number — but it is not the question the section
+> title asks, and every "withheld" below should be read as "demoted".
+>
+> **What they do establish, and it was on the wanted list.** Twelve paired
+> re-runs under near-identical information are the best evidence yet on
+> **run-to-run variance**, which `ccarc3_design.md` still lists as *not
+> established*. **Eight of twelve reproduced their control's score exactly**;
+> the four that moved were `tn36` +0.551, `tr87` +0.053, `sp80` −0.022 and
+> `su15` −0.200. Variance is small in the body and has a long tail — which is
+> also the sharpest possible caution against reading `tn36`'s swing as an
+> effect.
+>
+> **The remaining thirteen games will be genuinely baseline-free**, so this arm
+> will have two halves that are not comparable to each other. That is the lesser
+> evil: continuing with a known leak would produce twenty-five runs of a claim
+> nobody could make.
+
 **Why this exists.** `baseline_actions` is not in ARC's published `/api/games`
 schema — the docs list `game_id` and `title`; the live server also returns
 `tags` and `baseline_actions`. Every figure above was produced by a solver that
@@ -347,9 +388,9 @@ cutting those would ablate different variables.
 | `su15` | 1.000 | **0.800** | 168 → 701 | ×1.10 |
 | `tn36` | 0.449 | **1.000** | 631 → 220 | ×0.57 |
 
-**Twelve pairs. Score 11.778 against 11.396 — the baseline-free arm is ahead by
-0.383,** on eleven wins to the controls' eleven. Nine exact ties, two small
-losses, one large gain.
+**Twelve pairs. Score 11.778 against 11.396 — the demoted-baseline arm is ahead
+by 0.383,** on eleven wins to the controls' eleven. **Eight** exact ties, two
+small losses, two gains. (An earlier draft said nine ties; it was eight.)
 
 **And the aggregate rests on one game.** `tn36` alone is +0.551, more than the
 whole margin; without it the arm is 0.169 *behind*. Read the sign of the total
@@ -574,12 +615,11 @@ checked. Of the six that survive, engagement ranged from 30% of tool blocks
 (`lp85`) to 0.6% (`tn36`, then the only loss). The win/loss comparison is valid
 for all thirteen; the *why* is answerable for six.
 
-That 0.6% is worth restating now that `tn36` has been played both ways. **The
-control that lost consulted the baselines least of any run measured** — and the
-baseline-free run, which could not consult them at all, won the same environment
-in a third of the actions. Two observations, so this is a thing to look at
-again, not a finding. But it is the opposite of what the arm was built to
-detect.
+~~That 0.6% is worth restating now that `tn36` has been played both ways.~~
+**Retracted.** This said the winning run "could not consult them at all". It
+could: `meta.json` carried the array and its solver read that file, like all
+twelve. Both runs of `tn36` had the baselines available, so the comparison
+measures nothing about consulting them and the observation collapses.
 
 **Do not merge these into the headline figure.** Both arms score against the
 same 25-environment denominator, so summing the ledger without filtering on
