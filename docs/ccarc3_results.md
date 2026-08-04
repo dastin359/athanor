@@ -843,9 +843,13 @@ actions against 193 leaked. Its replay was another that bought nothing: play 1
 was already at the clamp, and the second play spent 156 of the run's 349 actions
 to move the score by 0.0000.
 
-Running total, cleanly scored: **10 of 25 — nine at 1.0000 and `tn36` at
-0.5357**, mean 0.9536; **nine pairs, seven exact ties, net −0.2643**. These are
-the ten cheapest environments in the set, so the
+`vc33` is the ninth tie on score and the widest gap underneath it: E 1.0000 both
+ways, but `raw` 1.1500 clean against 1.0268 leaked, on **167 actions against
+270**. Level 3 is the whole difference — 21 actions clean, 84 leaked.
+
+Running total, cleanly scored: **11 of 25 — ten at 1.0000 and `tn36` at
+0.5357**, mean 0.9578; **ten pairs, eight exact ties, net −0.2643**. These are
+the eleven cheapest environments in the set, so the
 run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
 than about the harness — and `tn36`, at a baseline total of 317, is the first
 game big enough to have somewhere to go wrong. Leak probes clean across every
