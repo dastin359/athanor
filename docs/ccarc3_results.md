@@ -1717,3 +1717,85 @@ read one as the other.
 **What it does not tell us.** `sp80` ran on the pre-`b5f4651` runner, so it has no
 thinking capture and no ARC-notation action counting — `clean` tier on the audit
 page, not `latest`. Zero runs are on the current config; game 13 is the first.
+
+### `tu93-0768757b` — **WON 9/9 for E=1.0000**, and the first run on the current config
+
+Thirteenth game of the baseline-free arm, third attempt at this environment (the
+first was SIGTERM'd by a container restart, the second quarantined for baseline
+exposure — see below). It is the **first run in the whole project carrying both**
+`--thinking-display summarized` **and ARC-notation action counting**.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.1259, `cap` 1.0000) |
+| levels | 9 of 9, won |
+| actions | 452 billed / 454 trace rows, against a 462 baseline total |
+| wall | 0.91 h · 4 deaths · 1 full reset · 2 playthroughs |
+| cost | $12.20 over 96 turns |
+
+#### The replay rule holds, and this is the first run where it paid
+
+Every prior replay in this project was wasted money — eight for eight, because
+play 1 was already at or above `raw` 1.0 and ARC scores best-of-plays. The rule
+derived from those was: **replay pays iff play-1 `raw` < 1.0.** `tu93` is the
+first run to satisfy the antecedent, and the consequent followed:
+
+| | actions | E | raw |
+|---|---|---|---|
+| play 1 | 268 | 0.8286 | 0.8286 |
+| play 2 | 186 | **1.0000** | **1.1259** |
+
+A gain of **+0.1714**, from a replay that cost 186 actions out of a 2,310 cap.
+Play 2 finished eight of nine levels at the 1.15 efficiency ceiling:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| agent | 18 | 10 | 19 | 17 | 29 | 28 | 14 | 21 | 29 |
+| human | 19 | 16 | 34 | 42 | 123 | 80 | 14 | 23 | 111 |
+| `S_l` | 1.11 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.00 | 1.15 | 1.15 |
+
+#### Both new instruments verified live
+
+- **Thinking capture:** 78 blocks with non-empty bodies. Every earlier run in the
+  set has zero — `redacted: true` on every THINK span.
+- **ARC-notation counting:** `trace_rows` 454 against `actions_used` 452. The
+  delta is exactly 2, one unbilled opening `RESET` per playthrough, which is
+  precisely what ARC does not bill.
+
+#### Why no earlier run has either flag
+
+Both landed in `b5f4651`, and **neither could reach a runner that was already
+running**: `session.py` is imported once at runner startup and Python caches the
+module, so editing the file changes nothing for the live process. That is the
+fourth time this project has lost a config change to import caching.
+`restart_after_sp80.sh` existed only to wait for a game boundary and relaunch,
+and `tu93` is the first game the relaunched runner started. The audit page marks
+this as the `latest` tier; the twelve runs before it are `clean` — valid scores on
+older instrumentation, not comparable on thinking volume or action counting.
+
+#### The attempt that had to be thrown away
+
+Between the interrupted run and this one sits a third, killed deliberately. Five
+and a half minutes in, that solver issued a hand-rolled
+`urllib.request` to `client.root + "/api/games"` with `client._key` and read back
+`baseline_actions` for all 25 environments, its own included
+(`[19, 16, 34, 42, 123, 80, 14, 23, 111]` — the exact array in the table above).
+The baseline watcher caught it within one 5-minute poll.
+
+**Nothing instructed it to.** `strip_baselines` already deletes §6 and §6a from
+the shipped doctrine, so the workspace copy jumps §5 → §7 and never tells the
+solver to budget against a published median. It went looking on its own, holding
+a key and knowing the API — which is capable behaviour, not misbehaviour.
+
+`CCARC3_HIDE_BASELINES=1` closes the in-process path and did its job; it cannot
+close a raw HTTP call, because `ARC_API_KEY` is in the solver's own environment
+and anything the client can read to authenticate, the solver can read too. The
+only structural fix is moving the key into a separate process behind a shim that
+forwards game actions but never `/api/games`. Until that exists the posture is
+detect-and-discard, which bounds the cost to wasted quota rather than a corrupted
+result — one reach in thirteen runs, caught in under five minutes, quarantined at
+`ablate_exposed/tu93-0768757b-exposed` with both streams intact.
+
+Deliberately **not** fixed with a doctrine prohibition: the distance between "a
+baseline exists" and "the baseline is 55" is the entire experiment, and an
+explicit ban advertises the target.
