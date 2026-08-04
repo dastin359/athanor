@@ -650,9 +650,14 @@ $26, for nothing.
 **This is the doctrine paragraph added hours earlier doing what it says.** Its
 second half reads: *"If you cannot compute `raw`, replay anyway when you have the
 budget."* The solver followed it exactly, and could not have known better — which
-is the situation the sentence describes. But the base rate is unkind:
-**17 of 19 runs on record are cap-binding**, so an unconditional replay is wasted
-roughly nine times in ten.
+is the situation the sentence describes.
+
+**And across all three replays on record the instruction is strongly positive.**
+Scoring each play separately: `su15` +0.4146, `sc25` +0.1934, `s5i5` +0.0000 —
+a mean of **+0.203 per replay**, against a cost of a few hundred actions from a
+budget that is now 5× the baseline total. Two of three bought real score. An
+earlier draft of this section treated the instruction as mostly wasteful on the
+strength of `s5i5` alone; that was one data point read without the other two.
 
 What saves it from being harmful is that it costs money rather than score, and
 only because the budget moved to 5×. Under the previous 2.0× cap (1276) this
@@ -689,11 +694,16 @@ game again:
 game in **46% of the first play's actions** and beat the human median on five of
 six levels.
 
-**Two things it does not show.** The control also scored 1.000, so the replay
-changed the *behaviour*, not the number — the completion cap was going to bind
-either way. And this run was never in danger: several ticks of live monitoring
-reported L6 climbing to 4.8× as though it were failing, when it was in its first
-play and the solver understood the position better than the observer did.
+**Correction — the replay was worth +0.1934, not nothing.** This section first
+said it "changed the behaviour, not the number", on the reasoning that the
+control also scored 1.000. That comparison cannot see the effect: the final score
+*already contains* the replay's benefit. Scoring the plays separately,
+**play 0 stood at E = 0.8066** — L1 at 1.67× and L6 at 2.16× held `raw` to 0.8066
+against a `cap` of 1.000 — and the replay lifted it to 1.000.
+
+The run was also never in danger: several ticks of live monitoring reported L6
+climbing to 4.8× as though it were failing, when it was in its first play and the
+solver understood the position better than the observer did.
 
 What it does establish is that the instruction is **followed**, unprompted, in
 exactly the state that cost `sp80` 0.0215 — win, `raw` below the cap, budget
