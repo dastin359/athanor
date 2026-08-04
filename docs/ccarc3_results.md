@@ -62,6 +62,38 @@ it hit our cap, not ARC's.
 > would not fix that; only enforcing the per-level rule does, and in the
 > baseline-free arm that rule is currently inert (see the ablation section).
 
+### How this harness differs from ARC's own conditions, on every axis at once
+
+The facts are scattered across three sections below and they point in **opposite
+directions**, which is easy to miss one at a time. Collected:
+
+| axis | ARC | here | direction |
+|---|---|---|---|
+| `baseline_actions` | served by the public API, absent from the OpenAPI spec | withheld from the solver four ways | **stricter** |
+| per-level 5n termination | enforced | **inert** — blanking the array disabled it | **more permissive** |
+| total action budget | no game-wide pool; 5n per level | 2.0 × baseline_total ≈ 40% of that | **stricter** |
+| budget disclosed to the agent | undocumented | told outright (`ACTION_BUDGET`, and again in `CLAUDE.md`) | **more generous** |
+| score during play | none in `FrameResponse` | completion cap only, derivable from `levels_completed` / `win_levels` | neutral |
+| prior knowledge | — | **471-line doctrine** learned from these 25 environments | **far more generous** |
+
+**The last row dominates everything above it.** The doctrine is not general
+reasoning advice: it is that a RESET one action after a level advance silently
+destroys the game, that the server scores the *best* play so a replay is free,
+that deaths are cheap and confusion is expensive, that rules are level-scoped
+while mechanics are game-scoped. Every one was learned by losing runs on these
+public environments. Only five lines still name a specific game, which
+undercounts it — the rules *are* the residue of those games.
+
+ARC makes the same point structurally: they ship a reference harness that scores
+**100% using human replay**, to demonstrate that prior knowledge is what a
+public-set score measures. This doctrine is a weaker form of the same thing.
+
+So "we withhold the baselines" is true and narrow. **The setup is
+information-minimal about human medians and information-rich about how to play
+ARC-AGI-3**, and the second is the larger term by far. The two middle rows are
+also simply *wrong in opposite directions* rather than conservative — one
+permits what ARC would stop, the other stops what ARC would permit.
+
 ## Where this stands against the published Opus 5 result
 
 The ARC-AGI-3 leaderboard entry for Claude Opus 5 (24 July 2026) reports
