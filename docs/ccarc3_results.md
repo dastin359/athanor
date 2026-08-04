@@ -684,8 +684,44 @@ after one death apiece. Six actions and a hundredth of `raw` between them, which
 is the ordinary case: **five of seven clean runs are within noise of their
 leaked pair, one is better (`cd82`), one is worse (`tn36`).**
 
-Running total, cleanly scored: **7 of 25 — six at 1.0000 and `tn36` at
-0.5357**, mean 0.9337. These are the seven cheapest environments in the set, so the
+### `su15` wins 9/9, which its leaked pair did not
+
+**E 1.0000 against 0.8000**, and the shape of the win is the interesting part:
+
+| level | h | clean | leaked |
+|---|---|---|---|
+| 0 | 22 | 7 | 14 |
+| 1 | 42 | 8 | 22 |
+| 2 | 26 | 13 | 16 |
+| 3 | 115 | 9 | 9 |
+| 4 | 36 | 6 | 5 |
+| 5 | 31 | 10 | 11 |
+| 6 | 8 | 7 | 7 |
+| 7 | 40 | **10** | **34** |
+| 8 | 41 | **12** | **never reached** |
+
+The clean run cleared all nine in **250 actions to the leaked run's 320-plus for
+eight**, and its final playthrough took the whole game in 83. Level 7 is where
+the two part: 10 actions against 34, and the leaked run arrived at level 8 with
+its budget and patience spent.
+
+**Paired ledger so far — seven pairs, five exact ties, one win, one loss:**
+
+| | clean | leaked | Δ |
+|---|---|---|---|
+| cd82, ft09, r11l, sb26, sc25 | 1.0000 | 1.0000 | 0.0000 |
+| **su15** | **1.0000** | 0.8000 | **+0.2000** |
+| **tn36** | 0.5357 | 1.0000 | **−0.4643** |
+
+Net −0.2643 across seven pairs, on two movements in opposite directions. Neither
+is evidence about baselines: `tn36` has now scored 0.449, 1.0000 and 0.5357 on
+three runs, and `su15` was the arm's other known high-variance environment — it
+is the game whose earlier run reproduced the ceiling bug at 23.6× on level 7,
+which is precisely the level that separates these two runs. **The two games that
+moved are the two games already known to move.** Five of seven are exact ties.
+
+Running total, cleanly scored: **8 of 25 — seven at 1.0000 and `tn36` at
+0.5357**, mean 0.9420. These are the eight cheapest environments in the set, so the
 run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
 than about the harness — and `tn36`, at a baseline total of 317, is the first
 game big enough to have somewhere to go wrong. Leak probes clean across every
