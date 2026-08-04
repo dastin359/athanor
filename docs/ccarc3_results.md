@@ -631,10 +631,59 @@ Every game here was won outright, so the cap swallowed all of it and E is 1.0000
 either way. The bet only becomes visible on a game that does *not* clear — and
 none of the five did that.
 
-Running total, cleanly scored: **5 of 25 — `cd82`, `ft09`, `s5i5`, `sb26`,
-`r11l` — all 1.0000.** They are also the five cheapest environments in the set,
-so the unbroken row says more about the cheapest-first ordering than about the
-harness. Leak probes clean across every channel — `/api/games`, `ARC_API_KEY`,
+### `tn36` — the first clean loss, and it is variance, not withholding
+
+**E = 0.5357 against the leaked run's 1.0000.** Five of seven levels, `raw`
+0.5904 above a completion cap of 0.5357, so the cap is what binds — the first
+game in the clean arm where it does.
+
+| level | h | clean `a` | leaked `a` |
+|---|---|---|---|
+| 0 | 32 | 21 | 27 |
+| 1 | 72 | **81** (S 0.79) | 38 |
+| 2 | 26 | 11 | 11 |
+| 3 | 40 | 16 | 16 |
+| 4 | 30 | 20 | 20 |
+| 5 | 55 | **gave up after 139** | 65 |
+| 6 | 62 | — | 42 |
+
+Levels 2, 3 and 4 are identical to the action. The two runs diverge on exactly
+the two levels either found hard.
+
+**It quit voluntarily, with 82% of its actions and 63% of its wall clock
+unspent** — 289 of a 1585 cap, 89 minutes of 240 — signing off with *"I've run
+out of viable hypotheses for level 5."* `exit_code` 0, `subtype: success`, not
+killed, not timed out. Idea exhaustion, not resource exhaustion.
+
+**And it was not flying blind when it did.** An initial reading of this run
+claimed the completion cap had never been surfaced; that was a grep for the
+Python identifier rather than the rendered string, and it was wrong. The solver
+saw `[cap …]` on 28 status lines, ending on `[cap 0.536 = 5/7 levels]`, together
+with the harness telling it `7/139 actions on this level changed nothing` and
+`21/139 returned the board to a state already seen`. It knew the score, it knew
+it was going in circles, and it stopped anyway.
+
+**The most likely reading is variance, and `tn36` is the worst possible game to
+read anything else into.** Its three scored runs are **0.449, 1.0000, 0.5357** —
+this is the environment whose +0.551 swing the section above already flags as the
+sharpest caution against treating a `tn36` movement as an effect. A third
+data point at a third value is confirmation of that caution, not a finding about
+baselines. The clean run was also worse on level 1 (81 actions against 38), which
+withholding does not explain: no per-level baseline was visible in *either* arm's
+level-1 decisions, since the leaked arm's numbers sat in `meta.json` rather than
+in the pace line.
+
+What it does establish is the first case where the replay bet *could* have paid
+and was never placed. §0a's instruction fires after clearing every level; a run
+that gives up at 5/7 never reaches it. That is the gap worth thinking about — not
+the missing score, which was there.
+
+Running total, cleanly scored: **6 of 25 — five at 1.0000 and `tn36` at
+0.5357**, mean 0.9226. These are the six cheapest environments in the set, so the
+run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
+than about the harness — and `tn36`, at a baseline total of 317, is the first
+game big enough to have somewhere to go wrong. Leak probes clean across every
+channel — `/api/games`, `ARC_API_KEY`,
 `list_games(`, `baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and from
 `ft09` onwards even the string `baseline_actions` is absent from the stream, the
 line-deletion strip having landed for it.
