@@ -28,17 +28,42 @@ claim and cannot be turned into one. The comparison against Opus 5's published
 public-demo numbers is like-for-like in the sense that both are public-set and
 neither is leaderboard-eligible.
 
-**2. Every run here was given 40% of the official action budget.** ARC's
-evaluation *"impose[s] an action budget of five times the human-baseline median
-action count per level. That is, for a level with a human median of n actions
-to completion, the agent is terminated after 5n actions."* That is a **per-level**
-cap of 5n. This harness used a **per-game** cap of 2.0 × the baseline total — so
-`tn36` was stopped at 634 actions where the official rule would have allowed up
-to 1585, and it was stopped having cleared 6 of 7 levels.
+**2. Runs up to and including `sc25` were given 40% of the official action
+budget. From `s5i5` (2026-08-04) they are not.** ARC's technical report §4.3:
+*"we impose an action budget of five times the human-baseline median action
+count per level. That is, for a level with a human median of n actions to
+completion, the agent is terminated after 5n actions."* That is **per level**,
+with no game-wide pool — so an agent that maxed every level would spend
+`5 × baseline_total`.
 
-The numbers below are therefore *understated* relative to what the same harness
-would score under official conditions, and `tn36`'s 0.449 is the clearest case:
-it hit our cap, not ARC's.
+This harness used a per-game cap of **2.0 ×** the baseline total, 40% of that
+ceiling. `tn36` was stopped at 634 actions where ARC would have allowed 1585,
+having cleared 6 of 7 levels. **Every figure produced before `s5i5` is therefore
+understated**, and `tn36`'s 0.449 is the clearest case: it hit our cap, not
+ARC's.
+
+The current configuration, settled 2026-08-04:
+
+| | |
+|---|---|
+| game-wide cap | **5.0 × baseline_total** — ARC's own ceiling |
+| per-level 5n cap | **none** (`e05e839`) |
+| cap disclosed to the solver | **no** (`c78e87b`) — passed via `CCARC3_MAX_ACTIONS` |
+
+**The 5n rule was briefly enforced here and then removed, on evidence.** It is
+not a property of the game: the live API does not apply it — three level-attempts
+in this project ran past it, `su15` L7 to 23.6×, every action accepted — and the
+report places it in §4.3 *Leaderboards*, justified by *"the computational cost of
+evaluating high-reasoning frontier models ... tens of thousands of dollars in API
+costs"*. It is the organisers capping their own spend. Harness results go to the
+**community leaderboard**, which the report says is self-reported and which *"the
+ARC Prize foundation will not verify"*, so nothing imposes it on us.
+
+The cap is also no longer announced. ARC's `FrameResponse` carries no budget
+field, and the report designed *away* from a per-environment allowance — *"we
+won't ... encourage AI to waste actions on levels because they're still 'under
+budget' for a given environment"*. A solver told its total paces against a number
+it would not have at test time.
 
 > **This section used to call correcting it "the single highest-value change
 > outstanding". Measured across all 19 runs on record, that overstates it.** The
@@ -73,9 +98,9 @@ directions**, which is easy to miss one at a time. Collected:
 | axis | ARC | here | direction |
 |---|---|---|---|
 | `baseline_actions` | served by the public API, absent from the OpenAPI spec | withheld from the solver four ways | **stricter** |
-| per-level 5n termination | enforced | **enforced from `s5i5` on** (`e57b007`); inert for everything before | matched *now*, more permissive before |
-| total action budget | no game-wide pool; 5n per level | 2.0 × baseline_total ≈ 40% of that | **stricter** |
-| budget disclosed to the agent | undocumented | told outright (`ACTION_BUDGET`, and again in `CLAUDE.md`) | **more generous** |
+| per-level 5n termination | applied by ARC when *they* run a model; not by the API | **none** — enforced briefly on 2026-08-04, then removed | matched to the game, not to ARC's cost control |
+| total action budget | no game-wide pool; 5n per level → `5 × baseline_total` | **5.0 × baseline_total** from `s5i5`; 2.0 × before | **matched now**, stricter before |
+| budget disclosed to the agent | no budget field in `FrameResponse` | **not disclosed** from `s5i5`; told outright before | **matched now**, more generous before |
 | score during play | none in `FrameResponse` | completion cap only, derivable from `levels_completed` / `win_levels` | neutral |
 | prior knowledge | — | **471-line doctrine** learned from these 25 environments | **far more generous** |
 
@@ -94,9 +119,9 @@ public-set score measures. This doctrine is a weaker form of the same thing.
 So "we withhold the baselines" is true and narrow. **The setup is
 information-minimal about human medians and information-rich about how to play
 ARC-AGI-3**, and the second is the larger term by far. The two middle rows are
-also simply *wrong in opposite directions* rather than conservative — one
-permits what ARC would stop, the other stops what ARC would permit. The first of
-those is now fixed; the budget row is not.
+were, until 2026-08-04, simply *wrong in opposite directions* rather than
+conservative. Both are now aligned; **the doctrine row is the one that remains,
+and it is the largest.**
 
 **And the reason to match ARC here is comparability, not compliance.** The live
 API does not enforce 5n — three level-attempts in this project blew past it,
