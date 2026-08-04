@@ -720,8 +720,20 @@ is the game whose earlier run reproduced the ceiling bug at 23.6× on level 7,
 which is precisely the level that separates these two runs. **The two games that
 moved are the two games already known to move.** Five of seven are exact ties.
 
-Running total, cleanly scored: **8 of 25 — seven at 1.0000 and `tn36` at
-0.5357**, mean 0.9420. These are the eight cheapest environments in the set, so the
+`lp85` is another tie — E 1.0000 both ways, `raw` 1.1500 both ways, 79 clean
+actions against 95 leaked. Six exact ties in eight pairs.
+
+**Why the mean is under 1.0, and it is one game.** Eight of nine clean runs score
+1.0000; `tn36` alone scores 0.5357. That single partial game costs the mean
+0.0516, and the reason it costs so much is the completion cap's non-linearity:
+`tn36` cleared **5 of 7 levels — 71% of the levels — for 53.6% of the score**,
+because `C = Σ(1..5)/Σ(1..7) = 15/28`. The two levels it did not reach were worth
+6 and 7 of the 28 weight units between them, more than the first four combined.
+Nothing is wrong with the harness or the arm; one game gave up early on an
+environment already known to swing.
+
+Running total, cleanly scored: **9 of 25 — eight at 1.0000 and `tn36` at
+0.5357**, mean 0.9484. These are the nine cheapest environments in the set, so the
 run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
 than about the harness — and `tn36`, at a baseline total of 317, is the first
 game big enough to have somewhere to go wrong. Leak probes clean across every
