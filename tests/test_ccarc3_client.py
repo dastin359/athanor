@@ -1302,3 +1302,38 @@ def test_an_action_after_the_winning_one_closes_the_replay_door_for_good(
         c.act(1)
     with pytest.raises(ActionRefused, match="only starts a new play"):
         c.restart_for_replay()
+
+
+def test_list_games_can_withhold_baselines_from_the_solver(monkeypatch):
+    """The leak channel that sanitising workspace files cannot reach.
+
+    A baseline-free arm can strip `session.py`, `CLAUDE.md`, `DOCTRINE.md` and
+    `meta.json` and still hand the solver an API key and this package — and
+    `arc.list_games()` then returns `baseline_actions` for all 25 environments
+    on request. The first twelve runs of that arm leaked through `meta.json`
+    instead and nobody checked this door was also open.
+
+    Every `GameInfo` the package builds from the API comes through here, so this
+    is the single place it can be shut. Scoped to the environment because the
+    *runner* still needs the numbers — to build its queue, to enforce ARC's 5n
+    per-level rule, and to score — while the solver's child process must not.
+    """
+    raw = [{"game_id": "g1", "title": "G1", "tags": ["click"],
+            "baseline_actions": [10, 20, 30]}]
+    monkeypatch.setattr(client_mod, "_get", lambda *a, **k: raw)
+    monkeypatch.setenv("ARC_API_KEY", "k")
+
+    monkeypatch.delenv(client_mod.HIDE_BASELINES_ENV, raising=False)
+    assert client_mod.list_games()[0].baseline_actions == (10, 20, 30)
+
+    monkeypatch.setenv(client_mod.HIDE_BASELINES_ENV, "1")
+    hidden = client_mod.list_games()
+    assert hidden[0].baseline_actions == ()
+    assert hidden[0].game_id == "g1" and hidden[0].tags == ("click",), (
+        "only the medians are withheld; the game list itself still works"
+    )
+
+    # Anything other than exactly "1" leaves it on, so a stray empty string or a
+    # "0" cannot silently blind a scoring run.
+    monkeypatch.setenv(client_mod.HIDE_BASELINES_ENV, "0")
+    assert client_mod.list_games()[0].baseline_actions == (10, 20, 30)

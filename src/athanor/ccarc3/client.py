@@ -175,15 +175,42 @@ class GameInfo:
         return max(200, int(self.baseline_total * multiple))
 
 
+HIDE_BASELINES_ENV = "CCARC3_HIDE_BASELINES"
+"""Set to ``1`` in a solver's environment to make :func:`list_games` withhold
+the per-level human medians.
+
+**The leak that sanitising workspace files cannot reach.** A baseline-free arm
+can strip `session.py`, `CLAUDE.md`, `DOCTRINE.md` and `meta.json` and still hand
+the solver an API key and this package — at which point `arc.list_games()`
+returns `baseline_actions` for all 25 environments on request. Every path in the
+package that produces a `GameInfo` from the API comes through here, so this is
+the one place the field can be withheld once.
+
+Scoped to the environment rather than a call argument because the solver's
+process is where it must apply: the *runner* needs the real numbers to build its
+queue, enforce ARC's 5n per-level rule and score the result. `session.build_cli_args`
+sets it for the child only.
+
+**Not airtight, and should not be described as such.** A solver holding the key
+can issue its own HTTP request to `/api/games`. This closes the path any solver
+would actually take — the one in its own namespace — and leaves a deliberate
+step for anything further. Check the traces, do not assume.
+"""
+
+
 def list_games(api_key: str | None = None, root: str = ROOT_URL) -> list[GameInfo]:
-    """Every public game, with its per-level baselines and action-type tags."""
+    """Every public game, with its per-level baselines and action-type tags.
+
+    Baselines come back empty when :data:`HIDE_BASELINES_ENV` is set — see there.
+    """
     raw = _get(f"{root}/api/games", _api_key(api_key))
+    hide = os.environ.get(HIDE_BASELINES_ENV) == "1"
     return [
         GameInfo(
             game_id=g["game_id"],
             title=g.get("title", ""),
             tags=tuple(g.get("tags") or ()),
-            baseline_actions=tuple(g.get("baseline_actions") or ()),
+            baseline_actions=() if hide else tuple(g.get("baseline_actions") or ()),
         )
         for g in raw
     ]
