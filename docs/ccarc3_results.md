@@ -59,8 +59,11 @@ it hit our cap, not ARC's.
 > untouched. Our cap is a single game-wide pool, so one runaway level can eat
 > the budget every later level needed — which is exactly how `su15` lost, with
 > 450 actions on two levels and nothing left for the ninth. Raising 2.0× to 5.0×
-> would not fix that; only enforcing the per-level rule does, and in the
-> baseline-free arm that rule is currently inert (see the ablation section).
+> would not fix that; only enforcing the per-level rule does. **That rule went
+> live on 2026-08-04 (`e57b007`), from `s5i5` onward** — the arm now resolves the
+> medians through `arc.baselines_for()` instead of blanking them, so
+> `hide_baselines` keeps the solver blind while `level_budget` bites. Everything
+> up to and including `sc25` ran with it inert.
 
 ### How this harness differs from ARC's own conditions, on every axis at once
 
@@ -70,7 +73,7 @@ directions**, which is easy to miss one at a time. Collected:
 | axis | ARC | here | direction |
 |---|---|---|---|
 | `baseline_actions` | served by the public API, absent from the OpenAPI spec | withheld from the solver four ways | **stricter** |
-| per-level 5n termination | enforced | **inert** — blanking the array disabled it | **more permissive** |
+| per-level 5n termination | enforced | **enforced from `s5i5` on** (`e57b007`); inert for everything before | matched *now*, more permissive before |
 | total action budget | no game-wide pool; 5n per level | 2.0 × baseline_total ≈ 40% of that | **stricter** |
 | budget disclosed to the agent | undocumented | told outright (`ACTION_BUDGET`, and again in `CLAUDE.md`) | **more generous** |
 | score during play | none in `FrameResponse` | completion cap only, derivable from `levels_completed` / `win_levels` | neutral |
@@ -92,7 +95,16 @@ So "we withhold the baselines" is true and narrow. **The setup is
 information-minimal about human medians and information-rich about how to play
 ARC-AGI-3**, and the second is the larger term by far. The two middle rows are
 also simply *wrong in opposite directions* rather than conservative — one
-permits what ARC would stop, the other stops what ARC would permit.
+permits what ARC would stop, the other stops what ARC would permit. The first of
+those is now fixed; the budget row is not.
+
+**And the reason to match ARC here is comparability, not compliance.** The live
+API does not enforce 5n — three level-attempts in this project blew past it,
+`su15` L7 at 23.6×, every action accepted. Harness-driven results go to ARC's
+**community leaderboard**, which the technical report says is self-reported and
+which "the ARC Prize foundation will not verify". Nobody would impose the cap on
+us. But Opus 5's published 40.68% is an *official*-leaderboard number produced
+under it, so running uncapped and comparing against that inflates the margin.
 
 ## Where this stands against the published Opus 5 result
 
