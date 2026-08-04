@@ -678,8 +678,14 @@ and was never placed. §0a's instruction fires after clearing every level; a run
 that gives up at 5/7 never reaches it. That is the gap worth thinking about — not
 the missing score, which was there.
 
-Running total, cleanly scored: **6 of 25 — five at 1.0000 and `tn36` at
-0.5357**, mean 0.9226. These are the six cheapest environments in the set, so the
+`sc25` follows and lands where `sb26` did — E 1.0000 either way, 124 clean
+actions against 130 leaked, `raw` 1.1500 against 1.1357, both arms replaying
+after one death apiece. Six actions and a hundredth of `raw` between them, which
+is the ordinary case: **five of seven clean runs are within noise of their
+leaked pair, one is better (`cd82`), one is worse (`tn36`).**
+
+Running total, cleanly scored: **7 of 25 — six at 1.0000 and `tn36` at
+0.5357**, mean 0.9337. These are the seven cheapest environments in the set, so the
 run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
 than about the harness — and `tn36`, at a baseline total of 317, is the first
 game big enough to have somewhere to go wrong. Leak probes clean across every
