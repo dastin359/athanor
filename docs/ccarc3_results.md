@@ -430,6 +430,11 @@ cutting those would ablate different variables.
 | `sp80` | 1.000 | **0.978** | 329 → 300 | ×1.14 |
 | `su15` | 1.000 | **0.800** | 168 → 701 | ×1.10 |
 | `tn36` | 0.449 | **1.000** | 631 → 220 | ×0.57 |
+| `sc25` | 1.000 | 1.000 | 204 → 414 | — |
+
+`sc25` is the **first genuinely baseline-free run** — `meta.json` sanitised, the
+whole-workspace leak scan clean, `CCARC3_HIDE_BASELINES=1` on the child. Everything
+above it in this table had the array in context.
 
 **Twelve pairs. Score 11.778 against 11.396 — the demoted-baseline arm is ahead
 by 0.383,** on eleven wins to the controls' eleven. **Eight** exact ties, two
@@ -585,6 +590,39 @@ well inside what this design can call noise — McNemar on a single discordant
 pair is p=0.5 — so the finding is not "the baselines are load-bearing". It is
 that the one game where a level went badly wrong is the one game the arm lost,
 and that the arm had disabled the rule which exists to stop exactly that.
+
+### `sc25` — the post-clear replay instruction fires, first time out
+
+The doctrine gained a paragraph a few hours before this run: once every level is
+cleared `cap` is 1.0, so `E` **is** `raw`, and a replay is worth `1.0 − raw` —
+take it whenever the budget is there, because without baselines you cannot tell
+whether you left anything behind. `sc25` is the first solver to read it.
+
+It won 6/6 at action 283, sat in `state=WIN` with the environment cap already at
+1.000, and instead of stopping called `restart_for_replay()` and played the whole
+game again:
+
+| | L1 | L2 | L3 | L4 | L5 | L6 | total |
+|---|---|---|---|---|---|---|---|
+| baseline | 36 | 6 | 32 | 83 | 143 | 50 | 350 |
+| first play | 60 | 7 | 29 | 38 | 41 | **108** | 283 |
+| **replay** | **13** | 6 | **14** | **25** | **36** | **36** | **130** |
+| ratio | 0.36× | 1.00× | 0.44× | 0.30× | 0.25× | 0.72× | |
+
+**`raw` 1.1357, `E` 1.0000**, 414 actions of 700, $19.24. The replay walked the
+game in **46% of the first play's actions** and beat the human median on five of
+six levels.
+
+**Two things it does not show.** The control also scored 1.000, so the replay
+changed the *behaviour*, not the number — the completion cap was going to bind
+either way. And this run was never in danger: several ticks of live monitoring
+reported L6 climbing to 4.8× as though it were failing, when it was in its first
+play and the solver understood the position better than the observer did.
+
+What it does establish is that the instruction is **followed**, unprompted, in
+exactly the state that cost `sp80` 0.0215 — win, `raw` below the cap, budget
+spare, and no way to compute how much was being left. Whether it ever converts a
+loss into a win is still untested.
 
 ### `tn36` — the arm's largest result, and the one to trust least
 
