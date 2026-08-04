@@ -30,7 +30,8 @@ def test_workspace_has_everything_the_solver_needs(ws):
 
 def test_the_action_budget_is_derived_from_the_game_not_guessed(ws):
     meta = json.loads((ws.root / "meta.json").read_text())
-    assert meta["action_budget"] == int(218 * 4.0)
+    # 5.0 is ARC's own ceiling: it has no game-wide pool, only 5n per level.
+    assert meta["action_budget"] == int(218 * 5.0)
     # **The cap is a silent guardrail: it binds but is never disclosed.** ARC's
     # FrameResponse carries no budget field and the technical report designed
     # away from a per-environment allowance, so a solver told its total paces

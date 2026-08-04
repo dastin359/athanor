@@ -77,11 +77,23 @@ class Ccarc3Config:
     own agents can read `baseline_actions` off the public API and compute 5n for
     themselves, so that combination was harsher than anything ARC does.
     """
-    budget_multiple: float = 4.0
+    budget_multiple: float = 5.0
     """Action cap as a multiple of the game's published baseline (§2.6).
 
     A flat cap cannot work: real games span 171 to 1843 baseline actions, so any
     single number either truncates the long games or wastes the short ones.
+
+    **5.0 because that is ARC's own ceiling.** ARC imposes no game-wide pool at
+    all — its limit is 5n *per level*, so an agent that maxed every level would
+    spend `5 x baseline_total`. Anything lower is a constraint ARC does not have.
+
+    The previous 2.0 was measurably distorting. Across 19 runs it bound in two —
+    `tn36`'s control at 631/634 and `su15` at 701/722 — and those are the two
+    worst scores on record; `su15` ran out on its ninth level and lost roughly
+    0.2 to the cap alone. It would not have moved any of the other seventeen by a
+    single action, whose median usage was 29%. So raising it costs money only on
+    the runaway games that were being truncated, which is exactly where
+    truncating was destroying score.
     """
 
     wall_clock_timeout_s: float = 7200.0
