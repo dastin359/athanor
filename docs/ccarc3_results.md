@@ -549,7 +549,7 @@ anyway when you have the budget"* — which is exactly the branch a baseline-fre
 run is forced down, because `score_now` returns `None` without baselines. The
 leaked run *could* compute `raw`, saw 1.0296 clear the cap, and stopped. Knowing
 the score told it the replay was worthless; not knowing made it replay, and the
-replay was worth 0.12 of `raw` and 100 actions.
+replay cost 100 actions. **What it bought is corrected below: nothing.**
 
 **Why that matters even though E is unchanged.** It is invisible here only
 because `cd82` was won outright, where the cap binds and swallows the gain. On
@@ -574,7 +574,8 @@ Both arms at the maximum `raw`, one playthrough each, seven actions apart across
 six levels. **No replay, and nothing to explain.**
 
 That is not a failed prediction so much as the boundary of the `cd82` one. The
-replay in `cd82` was worth 0.12 of `raw` because its *first* play was clumsy —
+replay in `cd82` was thought to be worth 0.12 of `raw` because its *first* play
+looked clumsy —
 170 actions, `raw` 1.0296. `ft09`'s first play was already at the clamp on every
 level, so there was no headroom for a second play to recover and the withheld
 score changed nothing. The mechanism is **"not knowing the score rescues a bad
@@ -620,7 +621,7 @@ its leaked run had already reached `raw` 1.1500 in a single play. The replay cos
 That sharpens the `cd82` reading rather than softening it. Withholding the score
 does not make the solver better; **it makes the solver replay**, because §0a's
 "replay anyway when you cannot compute `raw`" is the only branch available. That
-replay is a *bet*: it pays when the first play was clumsy (`cd82`, +0.12 `raw`)
+replay is a *bet*: it pays when the first play was clumsy (`sc25`, +0.0837 E)
 and is pure cost when it was not (`r11l`, `s5i5`). Three of five clean runs
 replayed; exactly one of those three was worth it.
 
@@ -770,11 +771,59 @@ Three consequences, none of them small:
    every level, where `C = 1.0` and `raw` is already over 1.0 — so it buys
    nothing while spending real budget. `r11l` is the clean demonstration: $18.77
    against its pair's $12.02, 59 minutes against 38, `raw` 1.1500 either way,
-   **E identical at 1.0000**. The `cd82` replay was the same shape; its +0.12 of
-   `raw` bought +0.0000 of score.
+   **E identical at 1.0000**. The `cd82` replay was the same shape, and worse than
+   reported — see the correction below.
 3. **Persistence on an unsolved level dominates everything else.** `tn36` walked
    away from +0.208 to save actions it had no use for — 82% of its budget went
    unspent — while the doctrine's loudest signals were all about spending less.
+
+### When the replay pays, measured within each run rather than across runs
+
+**Correction, and the same methodological error twice.** This section said
+`cd82`'s replay was "worth 0.12 of `raw`". It was not. That 0.12 is the gap
+between the clean run's *final* `raw` (1.1500) and its **leaked pair's** (1.0296)
+— two different runs — and attributing it to the replay repeats exactly the
+mistake already recorded for `sc25`: comparing arm to control instead of before
+to after, when the final number already contains whatever the replay did.
+
+Measured properly, by splitting each trace at its full reset:
+
+| run | plays | play 1 `raw`/E | final `raw`/E | replay changed E |
+|---|---|---|---|---|
+| nobaseline/cd82 | 2 | 1.1500 / 1.0000 | 1.1500 / 1.0000 | **+0.0000** |
+| nobaseline/lp85 | 2 | 1.1486 / 1.0000 | 1.1500 / 1.0000 | +0.0000 |
+| nobaseline/r11l | 2 | 1.1500 / 1.0000 | 1.1500 / 1.0000 | +0.0000 |
+| nobaseline/s5i5 | 2 | 1.1500 / 1.0000 | 1.1500 / 1.0000 | +0.0000 |
+| nobaseline/su15 | 2 | 1.1500 / 1.0000 | 1.1500 / 1.0000 | +0.0000 |
+| **nobaseline/sc25** | 2 | **0.9163** / 0.9163 | 1.1500 / 1.0000 | **+0.0837** |
+| **leaked/sc25** | 2 | **0.8066** / 0.8066 | 1.1357 / 1.0000 | **+0.1934** |
+| **leaked/su15** | 2 | **0.3854** / 0.3854 | 0.9200 / 0.8000 | **+0.4146** |
+
+`cd82`'s first play was **already at `raw` 1.1500**, the theoretical maximum,
+with all six levels clamped in 107 actions. The replay cut that to 70 and moved
+the score by nothing at all.
+
+**The separator is clean, 8 for 8: the replay pays if and only if play 1's `raw`
+was below 1.0.** Which is not an empirical accident but `E = min(C, raw)` restated
+— once `raw ≥ C`, and `C = 1.0` when every level clears, raising `raw` is pushing
+on the term that is not binding.
+
+Two consequences that pull in opposite directions, and both are true:
+
+- **The exact rule is "replay iff `raw < 1.0`", and a baseline-free solver cannot
+  evaluate it**, because `raw` needs the medians. §0a's substitute — *replay
+  anyway when you cannot compute `raw`* — is therefore right 1 time in 6 in the
+  clean arm and wasted the other 5.
+- **But replaying cannot lower the score.** ARC scores best-of-plays, and E is
+  monotone in levels cleared, so a wasted replay costs money and wall clock, never
+  points. Across the six clean replays it bought +0.0837 for roughly 1.5× the
+  spend on five of them. As a *score* policy under uncertainty that is defensible;
+  as a *cost* policy it is poor.
+
+So "usually pure cost" above is right about the money and wrong to imply the
+instruction is a mistake. The sharper version: §0a is a blind bet that is free in
+points and expensive in dollars, and the condition that would make it cheap is
+the one piece of information the arm deliberately withholds.
 
 Staged rather than applied: reordering the doctrine around "clear the next level"
 over "spend fewer actions" changes the treatment mid-arm, so it waits for the
