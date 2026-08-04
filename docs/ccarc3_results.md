@@ -562,6 +562,37 @@ from the live API at test time.
 One observation, one game, and the cheapest environment in the set. It wants the
 other eleven before it is a finding.
 
+### `ft09` declines to reproduce it, and that is the useful part
+
+| | E | `raw` | per-level actions | total | plays |
+|---|---|---|---|---|---|
+| leaked | 1.0000 | 1.1500 | 6, 7, 14, 21, 21, 13 | 82 | 1 |
+| **clean** | 1.0000 | 1.1500 | 4, 7, 14, 16, 21, 13 | 75 | 1 |
+| baseline | — | — | 43, 12, 23, 28, 65, 37 | 208 | — |
+
+Both arms at the maximum `raw`, one playthrough each, seven actions apart across
+six levels. **No replay, and nothing to explain.**
+
+That is not a failed prediction so much as the boundary of the `cd82` one. The
+replay in `cd82` was worth 0.12 of `raw` because its *first* play was clumsy —
+170 actions, `raw` 1.0296. `ft09`'s first play was already at the clamp on every
+level, so there was no headroom for a second play to recover and the withheld
+score changed nothing. The mechanism is **"not knowing the score rescues a bad
+first play"**, not "not knowing the score helps." Which games it pays on is
+therefore a question about first-play variance, and two games say nothing about
+that.
+
+Running total, cleanly scored: **2 of 24, both 1.0000.** Both leak probes clean
+across every channel — `/api/games`, `ARC_API_KEY`, `list_games(`,
+`baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and `ft09` is the first
+run where even the string `baseline_actions` is absent from the stream, the
+line-deletion strip having landed for it.
+
+One caveat on `ft09`'s cost line: it reads $8.57, but that covers only the second
+attempt. `run_cost` reads `stream.jsonl` alone while `ledger_facts` reads the
+trace, which carries across attempts — so a resumed run understates its spend by
+whatever the killed attempt burned, here about $5.21. Real total ≈ $13.78.
+
 **Verification.** Full probe of the finished 1366-line stream: zero hits on
 `/api/games`, `ARC_API_KEY`, `list_games(`, `baselines_for`, `urllib`,
 `requests.`, `httpx` and `curl`; `cd82`'s array `55, 8, 41, 21, 23, 23` appears
