@@ -77,13 +77,6 @@ class Ccarc3Config:
     own agents can read `baseline_actions` off the public API and compute 5n for
     themselves, so that combination was harsher than anything ARC does.
     """
-    """Per-level cap as a multiple of that level's baseline — **the official rule**.
-
-    ARC terminates an agent after 5n actions on a level with baseline n. Kept as
-    the default so runs here are comparable to the published evaluation rather
-    than to an arbitrary local choice.
-    """
-
     budget_multiple: float = 4.0
     """Action cap as a multiple of the game's published baseline (§2.6).
 
@@ -153,6 +146,7 @@ SESSION_TEMPLATE = '''\
 Every action is recorded to trace.jsonl automatically. The gate holds the first
 action of a new level until you call ``gate.acknowledge(...)``.
 """
+import os
 from pathlib import Path
 
 from athanor import ccarc3 as arc
@@ -173,15 +167,20 @@ client = ArcClient(
     trace_path=HERE / "trace.jsonl",
     info=INFO,
     gate=gate,
-    max_actions={budget},
+    # **The cap is a silent guardrail.** Read from the environment rather than
+    # written here: ARC's FrameResponse carries no budget field and the technical
+    # report designed *away* from a per-environment allowance -- "we won't ...
+    # encourage AI to waste actions on levels because they're still 'under
+    # budget' for a given environment". Telling the solver a number it would not
+    # have at test time changes how it paces itself. It still stops the run; it
+    # just does not announce itself.
+    max_actions=int(os.environ.get("CCARC3_MAX_ACTIONS", "0")),
     level_budget_multiple={level_budget_multiple!r},
-    # Withhold the human medians from the solver while still ENFORCING ARC's 5n
-    # per-level termination against them. Verified against the technical report
-    # §4.3: "we impose an action budget of five times the human-baseline median
-    # action count per level ... the agent is terminated after 5n actions",
-    # applied across the full evaluation set. Blanking `baseline_actions` to hide
-    # the numbers silently switched that rule off, which made every score here
-    # more permissive than a leaderboard one.
+    # Withhold the human medians from every solver-facing surface: the pace
+    # ratio, `pace()`, and the `raw`/ceiling half of the score block. The array
+    # itself is resolved at import and never written to a workspace file, so
+    # there is no number to `cat`. (This used to also switch ARC's 5n rule on;
+    # that cap was removed on 2026-08-04 -- see `level_budget_multiple`.)
     hide_baselines=True,
     # Report the running score in status(). With baselines available this is
     # `raw`, its ceiling, and the completion cap; without them the cap alone,
@@ -193,7 +192,6 @@ client = ArcClient(
 )
 client.open()
 
-ACTION_BUDGET = {budget}
 '''
 
 
@@ -274,6 +272,9 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
         env["ARC_API_KEY"] = key
     src = Path(__file__).resolve().parents[2]
     env["PYTHONPATH"] = f"{src}:{env.get('PYTHONPATH', '')}".rstrip(":")
+    # The guardrail still binds; it just is not announced. Passing it through the
+    # environment keeps the number out of every file the solver reads.
+    env["CCARC3_MAX_ACTIONS"] = str(budget)
 
     # Put the interpreter that actually has numpy first on PATH. The first live
     # run wasted turns on `ModuleNotFoundError: No module named 'numpy'` from
@@ -313,7 +314,6 @@ before your first action.
 | levels | {info.levels} |
 | action types | {', '.join(info.tags) or 'not published — read `available_actions`'} |
 | baseline actions per level | {list(info.baseline_actions)} |
-| your action budget | **{budget}** |
 
 The baseline is what a playthrough costs when the rules are *already known*. You
 must also discover them, hence the larger budget. But if you are several times
@@ -443,11 +443,10 @@ def _initial_prompt(info: GameInfo, budget: int, *, resumed: bool = False) -> st
             "already spent. Do not RESET to 'start clean'; that discards real "
             "progress.\n\n"
             f"Continue toward winning as many of the {info.levels} levels as you can, "
-            f"within the {budget}-action budget you are already partway through."
+            "Continue from where the trace leaves off."
         )
     return (
-        f"Play `{info.game_id}` and win as many of its {info.levels} levels as you can, "
-        f"within {budget} actions.\n\n"
+        f"Play `{info.game_id}` and win as many of its {info.levels} levels as you can.\n\n"
         "Read DOCTRINE.md first — several of its points contradict what seems obvious, "
         "and each was learned the hard way.\n\n"
         "Then `from session import client, gate, arc`, RESET, and work out the rules. "

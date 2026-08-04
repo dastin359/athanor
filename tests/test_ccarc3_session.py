@@ -31,7 +31,17 @@ def test_workspace_has_everything_the_solver_needs(ws):
 def test_the_action_budget_is_derived_from_the_game_not_guessed(ws):
     meta = json.loads((ws.root / "meta.json").read_text())
     assert meta["action_budget"] == int(218 * 4.0)
-    assert str(meta["action_budget"]) in (ws.root / "CLAUDE.md").read_text()
+    # **The cap is a silent guardrail: it binds but is never disclosed.** ARC's
+    # FrameResponse carries no budget field and the technical report designed
+    # away from a per-environment allowance, so a solver told its total paces
+    # itself against a number it would not have at test time. It reaches the
+    # client through the environment instead, where nothing the solver reads by
+    # default will show it.
+    budget = str(meta["action_budget"])
+    for name in ("CLAUDE.md", "session.py"):
+        assert budget not in (ws.root / name).read_text(), f"{name} discloses the cap"
+    assert budget not in ws.initial_prompt, "the prompt discloses the cap"
+    assert ws.env["CCARC3_MAX_ACTIONS"] == budget
 
 
 def test_a_short_game_still_gets_a_workable_floor(tmp_path):
@@ -423,7 +433,10 @@ def test_resuming_with_a_bigger_budget_keeps_the_game(tmp_path):
     second_cap = json.loads((ws2.root / "meta.json").read_text())["action_budget"]
 
     assert second_cap > first_cap
-    assert f"max_actions={second_cap}" in (ws2.root / "session.py").read_text()
+    # The raised cap reaches the client through the environment, not the file --
+    # session.py no longer names it, so a solver cannot pace against it.
+    assert ws2.env["CCARC3_MAX_ACTIONS"] == str(second_cap)
+    assert str(second_cap) not in (ws2.root / "session.py").read_text()
     assert ws2.resumed
     assert ws2.trace_path.read_text().strip(), "the actions already paid for survive"
     assert ws2.rules_path.exists(), "so does what was learned"
