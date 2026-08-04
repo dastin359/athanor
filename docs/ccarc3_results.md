@@ -359,6 +359,17 @@ still worth playing to its budget rather than abandoned.**
 > will have two halves that are not comparable to each other. That is the lesser
 > evil: continuing with a known leak would produce twenty-five runs of a claim
 > nobody could make.
+>
+> **One channel remains open, and it cannot be closed by sanitising files.** The
+> solver holds an API key and imports the package, so `arc.list_games()` returns
+> `baseline_actions` for all 25 environments on demand. Checked across every
+> baseline-free stream: **no solver has ever called it** — the one apparent hit,
+> `tu93`, was the `meta.json` read. So the channel is open and unused, which
+> makes "baseline-free" a claim about what the harness *offers*, not what it can
+> *enforce*. Closing it would mean removing `list_games` from the solver's
+> namespace, which changes the harness rather than the experiment, so it is
+> recorded rather than patched. Any future run of this arm should re-check that
+> grep before its numbers are quoted.
 
 **Why this exists.** `baseline_actions` is not in ARC's published `/api/games`
 schema — the docs list `game_id` and `title`; the live server also returns
