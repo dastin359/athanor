@@ -481,6 +481,24 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = No
         args += ["--model", config.model]
     if config.effort and _supports_flag("--effort"):
         args += ["--effort", config.effort]
+    # **Capture the model's reasoning. It costs nothing extra.**
+    #
+    # Thinking is billed inside `output_tokens` -- 73.7% of ours, ~1.58M tokens
+    # across eleven games -- and without this flag every block arrives as
+    # `thinking: ""` with only a signature. We were paying for the reasoning and
+    # discarding the text.
+    #
+    # Not guarded by `_supports_flag`, which greps `--help`, because this option
+    # is undocumented there: `--help` never mentions it and the string does not
+    # appear in the 11 MB bundle. It is nonetheless real --
+    # `--thinking-display bogusvalue` reports *"Allowed choices are summarized,
+    # omitted"* -- and passing it lifted a probe run from 0 to 347 characters of
+    # summarized thinking. An earlier sweep concluded the text was unobtainable
+    # precisely by searching for the mechanism instead of trying the flag.
+    #
+    # Safe to pass blind: this CLI exits 0 on unrecognised options, so a build
+    # without it ignores the flag rather than failing every game at launch.
+    args += ["--thinking-display", "summarized"]
     if config.permission_mode:
         # bypassPermissions maps to --dangerously-skip-permissions, which the
         # CLI refuses under root -- and a containerised harness is usually
@@ -602,10 +620,29 @@ def ledger_facts(trace_path: Path | str) -> dict[str, Any]:
     final = transitions[last_restart:]
     resets = sum(1 for t in transitions if t.full_reset)
 
+    # **Count what ARC counts.** The server does not bill the opening RESET of a
+    # play; the ledger records it, because it is a real event that returned a
+    # frame. On `cd82` that read 179 against the scorecard's 177, and per play
+    # [108, 71] against [107, 70] -- one apiece, every time.
+    #
+    # Two numbers both called "actions" is the same shape of defect as the
+    # `hypothesis`/`reasoning` mismatch: anyone comparing a result to a scorecard
+    # has to rediscover the difference and re-explain it. So `actions_used` is now
+    # the billed figure and `trace_rows` keeps the raw count.
+    #
+    # Derived from the rule, not from arithmetic that happens to match today.
+    # `len(transitions) - playthroughs` gives the right answer on every run so far
+    # and is still wrong: a mid-play RESET after a death *is* billed, so only a
+    # play's *first* transition is exempt, and only when it is actually a RESET.
+    starts = {0, *(i for i, t in enumerate(transitions) if t.full_reset)}
+    unbilled = sum(1 for i in starts
+                   if i < len(transitions) and transitions[i].action == "RESET")
+
     return {
         "levels_reached": max((t.level for t in transitions), default=0),
         "won": "WIN" in states,
-        "actions_used": len(transitions),
+        "actions_used": len(transitions) - unbilled,
+        "trace_rows": len(transitions),
         "deaths": sum(
             1
             for prev, cur in zip(["NOT_PLAYED", *states], states)
@@ -614,7 +651,8 @@ def ledger_facts(trace_path: Path | str) -> dict[str, Any]:
         "wasted_actions": sum(t.wasted for t in transitions),
         "full_resets": resets,
         "playthroughs": resets + 1,
-        "actions_final_playthrough": len(final),
+        "actions_final_playthrough": len(final) - (
+            1 if final and final[0].action == "RESET" else 0),
         "levels_reached_final_playthrough": max((t.level for t in final), default=0),
     }
 

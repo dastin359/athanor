@@ -192,7 +192,8 @@ def test_outcome_is_read_from_the_ledger_not_from_any_claim(ws):
     out = collect_outcome(ws, exit_code=0, timed_out=False)
     assert out["levels_reached"] == 1
     assert out["levels_total"] == 3
-    assert out["actions_used"] == 3
+    assert out["actions_used"] == 2, "ARC does not bill the opening RESET"
+    assert out["trace_rows"] == 3, "the ledger still records it"
     assert out["won"] is False
     assert json.loads((ws.root / "result.json").read_text())["levels_reached"] == 1
 
@@ -231,9 +232,19 @@ def test_a_full_reset_splits_the_trace_into_playthroughs(ws):
         ("ACTION1", 1, "NOT_FINISHED", [[[4]]]),
     ])
     out = collect_outcome(ws, exit_code=0, timed_out=False)
-    assert out["actions_used"] == 5, "the budget paid for all of them"
+    # **Two different quantities, and both are real.** Our budget charges every
+    # request, including each play's opening RESET, because that is what
+    # `client.actions_used` counts against `max_actions`. ARC bills neither
+    # opening RESET. Reporting one number for both is what made `cd82` read 179
+    # against the scorecard's 177.
+    assert out["trace_rows"] == 5, "the budget paid for all of them"
+    assert out["actions_used"] == 3, "ARC bills neither play's opening RESET"
     assert out["playthroughs"] == 2
-    assert out["actions_final_playthrough"] == 2, "the restart itself was billed"
+    # The old assertion here read `== 2, "the restart itself was billed"`. Our
+    # budget bills it; ARC does not. `cd82` settles which notation this field
+    # uses: the scorecard reports per-play [107, 70] where the trace holds
+    # [108, 71], so the replay's opening RESET is unbilled just like the first.
+    assert out["actions_final_playthrough"] == 1, "ARC does not bill the restart"
     # The surviving playthrough peaks *below* the discarded one on purpose. With
     # both peaking at the same level this assertion passed under a whole-trace
     # max too, and could not detect the scoping it exists to check.
@@ -249,7 +260,8 @@ def test_a_run_with_no_full_reset_reports_one_playthrough(ws):
     ])
     out = collect_outcome(ws, exit_code=0, timed_out=False)
     assert out["playthroughs"] == 1
-    assert out["actions_final_playthrough"] == out["actions_used"] == 2
+    assert out["actions_final_playthrough"] == out["actions_used"] == 1
+    assert out["trace_rows"] == 2
 
 
 def test_turns_and_cost_are_read_from_the_stream(ws):
@@ -309,6 +321,33 @@ def test_a_run_with_no_stream_reports_no_cost_rather_than_failing(ws):
 def test_an_empty_run_collects_without_crashing(ws):
     out = collect_outcome(ws, exit_code=1, timed_out=True)
     assert out["actions_used"] == 0 and out["timed_out"] is True
+
+
+def test_actions_are_counted_the_way_ARC_counts_them(ws):
+    """The opening RESET of a play is not billed; a mid-play RESET is.
+
+    `cd82` read 179 actions against the scorecard's 177, and per play [108, 71]
+    against ARC's [107, 70] -- one apiece. Two numbers both called "actions"
+    forces anyone comparing a result to a scorecard to rediscover the difference.
+
+    The rule is not `len(transitions) - playthroughs`. That arithmetic matches
+    every run recorded so far and is still wrong: a RESET taken *after a death*
+    mid-play is billed, so only a play's first transition is exempt, and only
+    when it actually is a RESET.
+    """
+    from athanor.ccarc3.session import ledger_facts
+
+    _trace(ws, [
+        ("RESET",   0, "NOT_FINISHED", [[[1]]]),   # opening RESET: not billed
+        ("ACTION1", 0, "NOT_FINISHED", [[[2]]]),
+        ("ACTION2", 0, "GAME_OVER",    [[[3]]]),
+        ("RESET",   0, "NOT_FINISHED", [[[4]]]),   # after a death: IS billed
+        ("ACTION1", 1, "NOT_FINISHED", [[[5]]]),
+    ])
+    f = ledger_facts(ws.trace_path)
+    assert f["trace_rows"] == 5, "the ledger still records every event"
+    assert f["actions_used"] == 4, "only the opening RESET is exempt"
+    assert f["playthroughs"] == 1, "a death is not a new playthrough"
 
 
 def test_a_killed_solver_is_an_error_not_a_loss(ws):
