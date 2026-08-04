@@ -468,6 +468,7 @@ cutting those would ablate different variables.
 | `su15` | 1.000 | **0.800** | 168 → 701 | ×1.10 |
 | `tn36` | 0.449 | **1.000** | 631 → 220 | ×0.57 |
 | `sc25` | 1.000 | 1.000 | 204 → 414 | — |
+| `s5i5` | 1.000 | 1.000 | 353 → 510 | ×1.31 |
 
 `sc25` is the **first genuinely baseline-free run** — `meta.json` sanitised, the
 whole-workspace leak scan clean, `CCARC3_HIDE_BASELINES=1` on the child. Everything
@@ -627,6 +628,44 @@ well inside what this design can call noise — McNemar on a single discordant
 pair is p=0.5 — so the finding is not "the baselines are load-bearing". It is
 that the one game where a level went badly wrong is the one game the arm lost,
 and that the arm had disabled the rule which exists to stop exactly that.
+
+### `s5i5` — the same instruction fires again, and this time buys nothing
+
+`s5i5` is the first run whose budget conditions match ARC's: no per-level cap, a
+game ceiling of `5 × baseline_total` (3190), and **the ceiling not disclosed to
+the solver**. It won 8/8 in 269 actions, every level under the human median, and
+its control needed 353.
+
+Then it replayed, and the replay was worth **exactly zero**:
+
+| | actions | `raw` | `cap` | **E** |
+|---|---|---|---|---|
+| play 0 | 269 | **1.1500** | 1.000 | 1.0000 |
+| play 1 | 241 | **1.1500** | 1.000 | 1.0000 |
+
+Both plays already stood at `raw = 1.15`, the theoretical maximum — the score
+could not move. The replay spent **241 actions, 47% of the run**, and $10 of its
+$26, for nothing.
+
+**This is the doctrine paragraph added hours earlier doing what it says.** Its
+second half reads: *"If you cannot compute `raw`, replay anyway when you have the
+budget."* The solver followed it exactly, and could not have known better — which
+is the situation the sentence describes. But the base rate is unkind:
+**17 of 19 runs on record are cap-binding**, so an unconditional replay is wasted
+roughly nine times in ten.
+
+What saves it from being harmful is that it costs money rather than score, and
+only because the budget moved to 5×. Under the previous 2.0× cap (1276) this
+replay would have been 40% of the allowance — the same shape that lost `su15`.
+
+**The fix is already written two paragraphs above it**, and was not applied to
+the decision: *"You also do not need a baseline to know you fumbled. The gap
+between what the route turned out to be and what you spent finding it is the
+signal."* `s5i5`'s first play had no blown level and no grinding. A solver asked
+*"did I actually fumble?"* answers no and saves 241 actions. The unconditional
+instruction should be conditioned on that self-assessment — **`sp80` is the case
+it is right about, `s5i5` is the case it is wrong about**, and telling them apart
+needs judgement the solver already has.
 
 ### `sc25` — the post-clear replay instruction fires, first time out
 
