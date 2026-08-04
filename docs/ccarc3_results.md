@@ -838,8 +838,14 @@ because `C = Σ(1..5)/Σ(1..7) = 15/28`. The two levels it did not reach were wo
 Nothing is wrong with the harness or the arm; one game gave up early on an
 environment already known to swing.
 
-Running total, cleanly scored: **9 of 25 — eight at 1.0000 and `tn36` at
-0.5357**, mean 0.9484. These are the nine cheapest environments in the set, so the
+`tr87` is a seventh tie — E 1.0000 both ways, `raw` 1.1500 both ways, 155 clean
+actions against 193 leaked. Its replay was another that bought nothing: play 1
+was already at the clamp, and the second play spent 156 of the run's 349 actions
+to move the score by 0.0000.
+
+Running total, cleanly scored: **10 of 25 — nine at 1.0000 and `tn36` at
+0.5357**, mean 0.9536; **nine pairs, seven exact ties, net −0.2643**. These are
+the ten cheapest environments in the set, so the
 run of 1.0000s that preceded `tn36` said more about the cheapest-first ordering
 than about the harness — and `tn36`, at a baseline total of 317, is the first
 game big enough to have somewhere to go wrong. Leak probes clean across every
