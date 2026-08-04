@@ -602,12 +602,41 @@ Seven levels at the clamp and one at 1.1218 is what 1.1436 is made of. A level
 where the human is already efficient cannot be beaten enough to matter — the
 clamp only pays where the baseline is generous.
 
-Running total, cleanly scored: **4 of 25 — `cd82`, `ft09`, `s5i5`, `sb26` — all
-1.0000.** They are also the four cheapest environments in the set, so the
-unbroken row says more about the ordering than about the harness. Leak probes
-clean across every channel — `/api/games`, `ARC_API_KEY`, `list_games(`,
-`baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and from `ft09`
-onwards even the string `baseline_actions` is absent from the stream, the
+### The replay is not free, and `r11l` is where that shows
+
+| game | E | `raw` | actions clean → leaked | plays | cost clean → leaked |
+|---|---|---|---|---|---|
+| cd82 | 1.0000 | 1.1500 | **70** → 170 | 2 | $13.01 → $16.52 |
+| ft09 | 1.0000 | 1.1500 | 75 → 82 | 1 | ~$13.78 → $6.17 |
+| sb26 | 1.0000 | 1.1436 | 125 → 126 | 1 | $4.72 → $4.85 |
+| r11l | 1.0000 | 1.1500 | **69** → 95 | 2 | **$18.77 → $12.02** |
+| s5i5 | 1.0000 | 1.1500 | 240 | 2 | — |
+
+`r11l` replayed, cut its actions from 95 to 69 — and gained **nothing**, because
+its leaked run had already reached `raw` 1.1500 in a single play. The replay cost
+**56% more money and 55% more wall clock** ($18.77 against $12.02, 59 min against
+38) to move a number that was already at its ceiling.
+
+That sharpens the `cd82` reading rather than softening it. Withholding the score
+does not make the solver better; **it makes the solver replay**, because §0a's
+"replay anyway when you cannot compute `raw`" is the only branch available. That
+replay is a *bet*: it pays when the first play was clumsy (`cd82`, +0.12 `raw`)
+and is pure cost when it was not (`r11l`, `s5i5`). Three of five clean runs
+replayed; exactly one of those three was worth it.
+
+Which means the honest summary so far is **not** "hiding the score helps." It is:
+hiding the score buys a replay on every game, at roughly 1.5× cost, and the
+replay is only redeemable where the completion cap does not already swallow it.
+Every game here was won outright, so the cap swallowed all of it and E is 1.0000
+either way. The bet only becomes visible on a game that does *not* clear — and
+none of the five did that.
+
+Running total, cleanly scored: **5 of 25 — `cd82`, `ft09`, `s5i5`, `sb26`,
+`r11l` — all 1.0000.** They are also the five cheapest environments in the set,
+so the unbroken row says more about the cheapest-first ordering than about the
+harness. Leak probes clean across every channel — `/api/games`, `ARC_API_KEY`,
+`list_games(`, `baselines_for`, `urllib`, `requests.`, `httpx`, `curl` — and from
+`ft09` onwards even the string `baseline_actions` is absent from the stream, the
 line-deletion strip having landed for it.
 
 One caveat on `ft09`'s cost line: it reads $8.57, but that covers only the second
