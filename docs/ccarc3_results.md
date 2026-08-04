@@ -429,16 +429,29 @@ still worth playing to its budget rather than abandoned.**
 > evil: continuing with a known leak would produce twenty-five runs of a claim
 > nobody could make.
 >
-> **One channel remains open, and it cannot be closed by sanitising files.** The
-> solver holds an API key and imports the package, so `arc.list_games()` returns
-> `baseline_actions` for all 25 environments on demand. Checked across every
-> baseline-free stream: **no solver has ever called it** — the one apparent hit,
-> `tu93`, was the `meta.json` read. So the channel is open and unused, which
-> makes "baseline-free" a claim about what the harness *offers*, not what it can
-> *enforce*. Closing it would mean removing `list_games` from the solver's
-> namespace, which changes the harness rather than the experiment, so it is
-> recorded rather than patched. Any future run of this arm should re-check that
-> grep before its numbers are quoted.
+> **One channel remained open, was recorded rather than patched, and a solver
+> walked straight into it the next morning.** The reasoning was: the solver holds
+> an API key and imports the package, so `arc.list_games()` returns
+> `baseline_actions` on demand; but a grep across every stream showed **no solver
+> had ever called it**; so the channel was open and unused, and closing it would
+> change the harness rather than the experiment. Recorded, not patched.
+>
+> That was wrong, and the specific error is worth naming: **"no solver has done
+> it yet" was treated as evidence about the channel, when it was only evidence
+> about the eleven samples drawn so far.** On 2026-08-04 `cd82` ran `dir(arc)` on
+> its first orientation turn — the obvious move in an unfamiliar package — and the
+> listing handed it `'actions_per_level', 'as_grid', 'baselines_for',
+> 'block_size'`. It went looking for nothing. The name was simply there, and by
+> then `baselines_for` had been added to the package as a *harness* helper that
+> ignored the withholding flag by design, so the array was one call away.
+>
+> A channel nobody has used is not a channel nobody will use, and adding a
+> convenience to the shared namespace widened this one while the note above said
+> it was being watched. The flag is now a real boundary — `baselines_for` raises
+> under it, `list_games` has no bypass argument, and the name is gone from
+> `dir(arc)` — so "baseline-free" is now a claim about what the harness
+> *enforces* for incidental access, while remaining unenforceable against a
+> hand-rolled HTTP request. Re-check the grep anyway before quoting numbers.
 
 **Why this exists.** `baseline_actions` is not in ARC's published `/api/games`
 schema — the docs list `game_id` and `title`; the live server also returns
@@ -482,13 +495,33 @@ sits with `r11l` (23.8) and `lp85` (22.0). **Raising the action budget to 5×
 made actions cheap, so the solver began spending minutes on each — and the clock
 became the binding constraint instead.** Fixing one cap exposed the next.
 
-The timeout now scales as `12 s × baseline_total` (2.2 h for `bp35`, 6.1 h for
-`wa30`). **`bp35`'s 0.4667 measures this harness, not the environment** — the
-same defect as `tn36`'s old 0.449 — and it should be re-run.
+The timeout now scales as `12 s × baseline_total` on a **4 h floor** (operator
+instruction, raised from 2 h). **`bp35`'s 0.4667 measures this harness, not the
+environment** — the same defect as `tn36`'s old 0.449 — and it is being re-run.
 
-`sc25` is the **first genuinely baseline-free run** — `meta.json` sanitised, the
-whole-workspace leak scan clean, `CCARC3_HIDE_BASELINES=1` on the child. Everything
-above it in this table had the array in context.
+~~`sc25` is the **first genuinely baseline-free run**.~~ **It is not, and the
+correction is smaller than it looks but worth having exactly right.** `sc25`'s
+`meta.json` had no `baseline_actions` — that fix had landed — but it still
+carried `action_budget`, which at the time was a fixed multiple of
+`baseline_total` and therefore discloses that total to anyone who divides. The
+first *fully* clean workspace is **`s5i5`**, relaunched from scratch on
+instruction a day later, followed by `bp35` and everything after.
+
+Ordered by when the workspace was actually built, rather than by queue position,
+the boundary is sharp:
+
+| built | run | `meta.json` carried |
+|---|---|---|
+| Aug 3, 08:49 → 17:41 | ft09, sb26, tr87, ls20, lp85, r11l, vc33, cd82, tu93, sp80, **su15**, **tn36** | the per-level array |
+| Aug 4, 04:07 | sc25 | `action_budget` only |
+| Aug 4, 05:57 → | s5i5, bp35, … | nothing |
+
+Two things follow. The "first twelve" above is a **chronological** claim, not a
+queue-order one — `su15` and `tn36` sit at queue positions 13 and 14 and are
+inside it, `sc25` sits at position 9 and is outside. And all thirteen are being
+re-run: the twelve to `ablate_leaked/`, `bp35` to `ablate_timeout/`, ledger rows
+re-tagged so a re-run cannot land beside the run it replaces under the same batch
+name. `s5i5`'s 1.000 stands and is not re-run — a perfect score cannot improve.
 
 **Twelve pairs. Score 11.778 against 11.396 — the demoted-baseline arm is ahead
 by 0.383,** on eleven wins to the controls' eleven. **Eight** exact ties, two
