@@ -268,19 +268,82 @@ def actions_per_level(
     return [counts.get(i, 0) if i < completed else None for i in range(n_levels)]
 
 
+def plays(transitions: Sequence["object"]) -> list[list["object"]]:
+    """Split a ledger into playthroughs, one list per play.
+
+    A full reset starts a new play — a new guid, a new ``actions`` row and a new
+    ``actions_by_level`` row server-side — so the boundaries are exactly the
+    transitions flagged ``full_reset``, excluding the one that opens the trace.
+
+    Note the flag is only partly the server's: :mod:`athanor.ccarc3.ledger` ORs
+    ``full_reset`` with "the recorded level went down", because the API returned
+    ``full_reset: False`` on a transition that took a game from level 6 to 0. A
+    new play always returns to level 0, so the fallback catches what the flag
+    misses in every case seen so far.
+    """
+    kept = list(transitions)
+    starts = [0] + [i for i, t in enumerate(kept) if t.full_reset and i > 0]
+    return [kept[a:b] for a, b in zip(starts, starts[1:] + [len(kept)])]
+
+
 def score_run(
     transitions: Sequence["object"],
     baselines: Sequence[int],
     *,
     cumulative: bool = False,
+    select: str = "best",
 ) -> EnvironmentScore:
     """RHAE score for one run, straight from its ledger and the game's baselines.
 
-    Counts the play that finished, which is what the server records and what
-    best-of-plays scoring selects — see :func:`actions_per_level`.
+    **Scores the best play, because that is what ARC scores.** This function used
+    to score the play that *finished*, on the stated grounds that doing so "is
+    what best-of-plays scoring selects". Those are not the same thing, and a live
+    card settles which one ARC uses. On a probe run of `lp85` — play 1 clearing
+    level 1 in 7 actions, play 2 deliberately fumbling it in 21 — the card came
+    back with::
+
+        runs[0].score = 2.7778     (level_scores [115.0, ...])
+        runs[1].score = 1.8204     (level_scores [ 65.5, ...])
+        environments[0].score = 2.7777777777777777
+
+    The environment took the **maximum**, not the last. Kept at
+    ``scratchpad/best_or_last/card.json``.
+
+    The two conventions agree whenever a run's last play is also its best, which
+    was true of all seventeen games scored before this changed — so no recorded
+    result moves. They came within one play of disagreeing on `ls20`, whose five
+    plays scored 0.8659, **1.1500**, 1.1270, (unfinished), **1.1500**: play 3 is a
+    *completed* play worse than its predecessor. Had the run ended there, this
+    function would have reported 1.1270 against ARC's 1.1500. The trajectory is
+    not monotone, so "last" is not a safe proxy for "best".
+
+    ``select="last"`` restores the old behaviour for comparison. ``cumulative``
+    sums every play instead and implies ``select="last"``, since summing has
+    already collapsed the plays — see :func:`actions_per_level` for why summing
+    is wrong against a per-play denominator.
     """
-    return score_environment(
-        baselines, actions_per_level(transitions, len(baselines), cumulative=cumulative)
+    if cumulative or select == "last":
+        return score_environment(
+            baselines, actions_per_level(transitions, len(baselines), cumulative=cumulative)
+        )
+    if select != "best":
+        raise ValueError(f"select must be 'best' or 'last', not {select!r}")
+
+    candidates = [
+        score_environment(baselines, actions_per_level(play, len(baselines)))
+        for play in plays(transitions)
+    ]
+    if not candidates:                       # an empty ledger still deserves a score
+        return score_environment(baselines, [None] * len(baselines))
+    # Rank by score, then by raw so two capped plays are separated by efficiency,
+    # then by fewest actions so the choice is deterministic rather than incidental.
+    return max(
+        candidates,
+        key=lambda s: (
+            s.score,
+            s.raw,
+            -sum(level.agent or 0 for level in s.levels),
+        ),
     )
 
 

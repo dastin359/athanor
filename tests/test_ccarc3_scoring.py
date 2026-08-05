@@ -292,3 +292,132 @@ def test_a_live_run_is_safe_to_check(tmp_path):
                              ("ACTION1", 1), ("ACTION1", 1), ("ACTION1", 2)])
     partial = {"cards": {"g": {"actions_by_level": [[[1, 2]]]}}}
     assert disagreements_with_server(load(path), partial, "g", 3) == []
+
+
+# --- best-of-plays --------------------------------------------------------- #
+# score_run used to score the play that finished. ARC scores the best play; a
+# probe card (scratchpad/best_or_last/card.json) shows environments[0].score
+# taking runs[0].score = 2.7778 over runs[1].score = 1.8204.
+
+
+def _replayed(tmp_path, plays_rows):
+    """A trace of several plays. Each play is [(action, level), ...].
+
+    The play boundary is a RESET whose recorded level drops, which is how the
+    ledger recognises a full reset — the API has been seen reporting
+    ``full_reset: False`` across a level-6-to-0 transition.
+    """
+    import json
+    path = tmp_path / "replayed.jsonl"
+    i = 0
+    with path.open("w") as fh:
+        for p, rows in enumerate(plays_rows):
+            for action, level in rows:
+                fh.write(json.dumps({
+                    "i": i, "level": level, "action": action, "params": {},
+                    "frames": [[[i]]], "score": level, "state": "NOT_FINISHED",
+                    "full_reset": False, "available_actions": ["ACTION1"]}) + "\n")
+                i += 1
+    return path
+
+
+def test_plays_splits_at_every_full_reset(tmp_path):
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import plays
+
+    # Two levels cleared, then back to 0 and cleared again.
+    path = _replayed(tmp_path, [
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1), ("ACTION1", 1)],
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1)],
+    ])
+    assert [len(p) for p in plays(load(path))] == [4, 3]
+
+
+def test_an_unreplayed_run_is_one_play(tmp_path):
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import plays
+
+    path = _replayed(tmp_path, [[("RESET", 0), ("ACTION1", 0), ("ACTION1", 1)]])
+    assert len(plays(load(path))) == 1
+
+
+def test_score_run_takes_the_best_play_not_the_last(tmp_path):
+    """The `ls20` shape: a good play followed by a worse completed play.
+
+    Play 1 clears the level in 1 action, play 2 takes 4. Scoring the last play
+    reports the worse number; ARC would report the better one.
+    """
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import score_run
+
+    path = _replayed(tmp_path, [
+        [("RESET", 0), ("ACTION1", 1)],
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 0), ("ACTION1", 0), ("ACTION1", 1)],
+    ])
+    ts = load(path)
+    best = score_run(ts, [4])
+    last = score_run(ts, [4], select="last")
+    assert best.raw > last.raw
+    assert best.levels[0].agent == 1        # the good play
+    assert last.levels[0].agent == 4        # the play that happened to be last
+
+
+def test_select_last_restores_the_old_behaviour(tmp_path):
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import actions_per_level, score_environment, score_run
+
+    path = _replayed(tmp_path, [
+        [("RESET", 0), ("ACTION1", 1)],
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1)],
+    ])
+    ts = load(path)
+    assert score_run(ts, [4], select="last") == score_environment(
+        [4], actions_per_level(ts, 1))
+
+
+def test_an_unreplayed_run_scores_identically_either_way(tmp_path):
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import score_run
+
+    path = _replayed(tmp_path, [[("RESET", 0), ("ACTION1", 0), ("ACTION1", 1)]])
+    ts = load(path)
+    assert score_run(ts, [4]).score == score_run(ts, [4], select="last").score
+
+
+def test_a_finished_play_beats_an_unfinished_one(tmp_path):
+    """Completion dominates efficiency: the cap is the fraction of levels won.
+
+    Play 2 is cheaper per level but stalls on level 1, so it must not win.
+    """
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import score_run
+
+    path = _replayed(tmp_path, [
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1), ("ACTION1", 2)],
+        [("RESET", 0), ("ACTION1", 1)],
+    ])
+    best = score_run(load(path), [4, 4])
+    assert best.completed == 2
+
+
+def test_select_rejects_an_unknown_value(tmp_path):
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import score_run
+
+    path = _replayed(tmp_path, [[("RESET", 0), ("ACTION1", 1)]])
+    with pytest.raises(ValueError, match="select must be"):
+        score_run(load(path), [4], select="middle")
+
+
+def test_cumulative_still_sums_every_play(tmp_path):
+    """``cumulative=True`` is the summed reading and implies last-play."""
+    from athanor.ccarc3 import load
+    from athanor.ccarc3.scoring import score_run
+
+    path = _replayed(tmp_path, [
+        [("RESET", 0), ("ACTION1", 1)],
+        [("RESET", 0), ("ACTION1", 0), ("ACTION1", 1)],
+    ])
+    ts = load(path)
+    summed = score_run(ts, [4], cumulative=True)
+    assert summed.levels[0].agent == 3       # 1 + 2 across both plays
