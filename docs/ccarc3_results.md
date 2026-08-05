@@ -2415,3 +2415,107 @@ bracket is the claim.
 | floor over all 25 (unscored counted as zero) | **90.67%** |
 
 `wa30` is the last environment, re-running now.
+
+### `wa30-ee6fef47` — **WON 9/9 at `raw` 1.1500**, every level at the ceiling, and the arm's last game
+
+Twenty-fifth scored game, the second crash-recovery win, and the largest human
+baseline in the set at 1,843 actions.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 9 of 9, won, 3 deaths |
+| actions | **667 scored** / 2,502 on the ledger over 3 plays, against a **1,843** baseline total |
+| wall | 2.34 h across two attempts · 221 turns |
+| cost | $36.25 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| agent | 45 | 58 | 93 | 52 | 101 | 57 | 50 | 145 | **66** |
+| human | 71 | 119 | 183 | 98 | 368 | 68 | 79 | 442 | **415** |
+| ratio | 0.63× | 0.49× | 0.51× | 0.53× | 0.27× | 0.84× | 0.63× | 0.33× | **0.16×** |
+
+All nine at the ceiling. Level 9 went in **66 actions against a 415 human
+median**. Three plays, monotonically improving — `raw` 1.0842 → 1.1367 → 1.1500,
+all three recorded WIN by ARC.
+
+Like `lf52`, this run had been banked as a loss: it died at 5 of 9 with `exit 1`
+in the proxy-move incident and was marked retryable by the crash guard. It came
+back a 9-of-9 sweep. The two recoveries together are worth **+1.0924**.
+
+---
+
+## The baseline-free arm: final result
+
+All 25 ARC-AGI-3 public environments, played with the human medians withheld —
+`CCARC3_HIDE_BASELINES` on, no control arm, every run scored against ARC's own
+`actions_by_level`.
+
+| | |
+|---|---|
+| environments scored | **25 of 25** |
+| wins | **22 / 25** |
+| sum `E` | **23.6667** |
+| mean `E` | 0.9467 |
+| **total score** | **94.67%** |
+| total cost | $696.19 |
+
+Published Opus 5 on the same public demo set, 24 Jul 2026, High effort: **40.68%**.
+
+### Every environment
+
+| game | E | `raw` | levels | agent actions | human | ratio |
+|---|---|---|---|---|---|---|
+| `lp85` | 1.0000 | 1.1500 | 8/8 | 79 | 388 | 0.20× |
+| `m0r0` | 1.0000 | 1.1500 | 6/6 | 190 | 1107 | **0.17×** |
+| `su15` | 1.0000 | 1.1500 | 9/9 | 82 | 361 | 0.23× |
+| `cn04` | 1.0000 | 1.1500 | 6/6 | 174 | 789 | 0.22× |
+| `r11l` | 1.0000 | 1.1500 | 6/6 | 69 | 233 | 0.30× |
+| `ar25` | 1.0000 | 1.1500 | 8/8 | 254 | 748 | 0.34× |
+| `dc22` | 1.0000 | 1.1500 | 6/6 | 434 | 1228 | 0.35× |
+| `g50t` | 1.0000 | 1.1500 | 7/7 | 307 | 879 | 0.35× |
+| `sc25` | 1.0000 | 1.1500 | 6/6 | 124 | 350 | 0.35× |
+| `ft09` | 1.0000 | 1.1500 | 6/6 | 75 | 208 | 0.36× |
+| `wa30` | 1.0000 | 1.1500 | 9/9 | 667 | 1843 | 0.36× |
+| `tr87` | 1.0000 | 1.1500 | 6/6 | 155 | 414 | 0.37× |
+| `vc33` | 1.0000 | 1.1500 | 7/7 | 167 | 447 | 0.37× |
+| `s5i5` | 1.0000 | 1.1500 | 8/8 | 240 | 638 | 0.38× |
+| `cd82` | 1.0000 | 1.1500 | 6/6 | 70 | 171 | 0.41× |
+| `ls20` | 1.0000 | 1.1500 | 7/7 | 325 | 776 | 0.42× |
+| `bp35` | 1.0000 | 1.1481 | 9/9 | 374 | 651 | 0.57× |
+| `sb26` | 1.0000 | 1.1436 | 8/8 | 125 | 213 | 0.59× |
+| `ka59` | 1.0000 | 1.1318 | 7/7 | 364 | 730 | 0.50× |
+| `tu93` | 1.0000 | 1.1259 | 9/9 | 185 | 462 | 0.40× |
+| `re86` | 1.0000 | 1.0974 | 8/8 | 928 | 1255 | 0.74× |
+| `lf52` | 1.0000 | 1.0530 | 10/10 | 941 | 1339 | 0.70× |
+| `sp80` | 0.7143 | 0.8214 | 5/6 | 93 | 518 | 0.18× |
+| `tn36` | 0.5357 | 0.5904 | 5/7 | 149 | 317 | 0.47× |
+| `sk48` | 0.4167 | 0.4792 | 5/8 | 192 | 1070 | 0.18× |
+
+### What the shape says
+
+**Efficiency is not the constraint.** Twenty-two of 25 sit at `E` 1.0000 with the
+completion cap binding, and 16 of those are at the `raw` ceiling of 1.1500 —
+meaning the score is clipped, not earned at the margin. Even the three losses
+were *efficient* on the levels they cleared: `sk48` at 0.18× and `sp80` at 0.18×
+of the human action count.
+
+**Completion is the only axis left.** The 1.333 points missing from a perfect 25
+sit entirely in three games that each cleared exactly five levels and stopped.
+None was killed, none timed out, all three exited 0 — with **5%, 18% and 12%** of
+their action budgets unspent. No run in this arm ever exhausted its budget. The
+binding constraint was never the thing the budget measures.
+
+### Caveats, stated plainly
+
+- ARC states that public-set scores are "emphatically not" a valid measure of
+  progress. This is the public demo set and the comparison inherits that caveat.
+- Every scored run was cross-checked against ARC's own `actions_by_level`;
+  `disagreements_with_server` returned empty for all of them.
+- No level in any scored run exceeded ARC's per-level 5n cap.
+- Baseline integrity: zero `ARC_API_KEY` references and zero `api/games` hits in
+  any scored run's stream. The two runs that did reach for baselines (`tu93`,
+  `bp35`) were discarded to `ablate_exposed/` and re-run clean.
+- Three results turned on harness fixes shipped mid-arm: best-of-plays scoring
+  (`re86`, +0.4167) and crash-as-interruption (`lf52` +0.5091, `wa30` +0.5833).
+  Without those three fixes the same runs would total **22.1667 → 88.67%**.
