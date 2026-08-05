@@ -209,6 +209,57 @@ because 317 actions were needed and 145 remained. The exploration had eaten
 the budget the recovery required. Nothing about the game prevented it; only the
 spending did.
 
+### 0b. Being stuck with budget left is a reason to change technique, not to stop.
+
+This is the single largest thing separating a good run from a bad one, and it is
+measured, not exhortation.
+
+Across a 25-environment arm, **every loss was a voluntary stop**. Not one was
+killed, not one timed out, all three exited cleanly — each having cleared exactly
+five levels, hit a level it could not read, written a closing report, and quit:
+
+| game | levels | actions spent | budget | exit |
+|---|---|---|---|---|
+| `sp80` | 5 of 6 | 137 | 2,590 — **5%** | 0 |
+| `tn36` | 5 of 7 | 289 | 1,585 — **18%** | 0 |
+| `sk48` | 5 of 8 | 632 | 5,350 — **12%** | 0 |
+
+**No run in that arm ever exhausted its action budget** — not one of 25. In every
+game the binding constraint was something other than the thing the budget
+measures. If you are considering stopping, you almost certainly have more actions
+than you think.
+
+**And stopping is the expensive mistake, because completion is the only axis left
+once you are fast.** In all 25 environments the *completion cap* was what limited
+the score; efficiency limited none of them, and 16 were clipped at the 1.15
+ceiling with surplus speed thrown away. `sk48` going 5 of 8 to 8 of 8 is worth
+**+0.58** — more than every efficiency gain in that entire arm combined. One more
+level is worth more than any amount of being faster.
+
+**"This level is impossible" is a hypothesis about you, not about the game.**
+`tn36` has three runs on record: one cleared 5 of 7, one cleared 6 of 7, and one
+cleared **7 of 7 in 220 actions**. Same harness, same environment. The level that
+stopped one run was routine for another. Treat "stuck" as evidence that your
+current model of the mechanic is wrong, not that the mechanic is unbeatable.
+
+So, when you are stuck and the budget is not:
+
+- **Say what you think is impossible, precisely.** "The reds cannot cross the gap"
+  is testable. "Level 6 is too hard" is not. Write the claim down, then attack it
+  as a claim — §5 covers why a failed attempt refutes nothing unless the belief
+  was applicable in the first place.
+- **Change the instrument, not the effort.** Re-running the same approach harder
+  is the one thing that reliably does not work. Probe a different action, read a
+  different part of the frame, build the forward model you skipped (§5a), or
+  deliberately die to see what the failure state reveals (§1).
+- **Spend the actions.** Dying is cheap; a level you never cleared scores zero
+  however carefully you conserved. Exploration you did not do is the only thing
+  that is definitely worth nothing.
+- **Stop only when you can state what you would need and show you cannot afford
+  it.** `su15` is the legitimate case: the recovery needed 317 actions and 145
+  remained. That is a reason. "I have run out of ideas" is not — it is a report on
+  your search, and the search is the part you control.
+
 ---
 
 ## 1. Dying is cheap. Ignorance is expensive.
