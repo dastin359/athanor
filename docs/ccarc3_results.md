@@ -2241,3 +2241,51 @@ remains the highest-value staged item.
 
 Four environments remain: `wa30`, `lf52`, `re86`, `dc22` — the last three in
 flight now.
+
+### `dc22-fdcac232` — **WON 6/6 at `raw` 1.1500**, every level at the ceiling
+
+Twenty-second scored game.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 6 of 6, won, **0 deaths** |
+| actions | **434 scored** / 1,806 on the ledger over 3 plays, against a 1,228 baseline total |
+| wall | 2.01 h · 235 turns |
+| cost | $50.58 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 20 | 42 | 45 | 62 | 110 | **155** |
+| human | 59 | 102 | 67 | 98 | 324 | **578** |
+| ratio | 0.34× | 0.41× | 0.67× | 0.63× | 0.34× | **0.27×** |
+
+The two deepest levels carry the widest margins — level 6 at **155 actions against
+a 578 human median**. This is a game where the human baseline grows steeply with
+depth and the agent's cost does not.
+
+**Sixth confirmation of the do-not-replay doctrine, and the sharpest.** Play 1 won
+all six levels at `raw` 1.1445 — below the 1.15 ceiling, so a replay was
+justified, and play 2 took it to 1.1500. Play 3 then spent a further 434 actions
+at exactly the same 1.1500. Two of three plays were correct; the third was
+provably free, and it is 24% of the run. The replay rule says *replay iff `raw` <
+1.0*, which would have refused both replays here — so this run is also the first
+case where the rule is too strict: play 1 at 1.1445 was worth improving, since
+`raw` still fed a `min(cap, raw)` that the cap had not yet pinned.
+
+That refines the staged doctrine line rather than merely confirming it: the stop
+condition is not "you won" but **"`raw` has reached 1.15, or the completion cap
+already binds"** — at which point no further play can raise `E`.
+
+### Arm standing after 22 games
+
+| | |
+|---|---|
+| scored | 22 of 25 |
+| wins | **19 / 22** |
+| sum `E` | **20.6667** |
+| mean `E` | 0.9394 |
+| floor over all 25 (unscored counted as zero) | **82.67%** |
+
+All 25 environments are now scored or in flight — `wa30`, `re86` and `lf52` are
+the last three, all running.
