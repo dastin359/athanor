@@ -45,6 +45,29 @@ GAMES = ["sp80-589a99af", "tn36-ef4dde99", "sk48-d8078629"]
 BUDGET_MULTIPLE = 5.0     # ARC's own ceiling: no game-wide pool, 5n per level
 
 
+def rotated(games: list[str]) -> list[str]:
+    """Start each pass at a different game, so one stalled run cannot starve the rest.
+
+    **Measured need.** Containers are replaced every ~30 minutes, so a pass gets
+    one short window and then dies. Running a fixed order meant `sp80` took every
+    window: it reached level 5 of 6 and then sat there for three consecutive
+    cycles at 365 actions, while `tn36` and `sk48` were never attempted once. A
+    stalled game at the head of the list silently converts a three-game
+    experiment into a one-game one.
+
+    Rotation is by a counter on disk rather than a clock, so it advances once per
+    pass and is unaffected by how long a pass survives.
+    """
+    counter = OUT / ".pass"
+    try:
+        n = int(counter.read_text().strip())
+    except (OSError, ValueError):
+        n = 0
+    counter.write_text(str(n + 1))
+    return games[n % len(games):] + games[:n % len(games)]
+
+
+
 def restore(game_id: str) -> bool:
     """Put back what a replaced container took. True if anything was restored.
 
@@ -73,7 +96,7 @@ infos = {g.game_id: g for g in list_games()}
 
 print("RE-RUN OF THE THREE LOSSES — doctrine 0b active, baselines withheld",
       flush=True)
-for gid in GAMES:
+for gid in rotated(GAMES):
     info = infos.get(gid)
     if info is None:
         print(f"{gid}: not in list_games() any more, skipping", flush=True)
