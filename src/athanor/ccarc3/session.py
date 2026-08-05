@@ -833,15 +833,28 @@ def snapshot_scorecard(ws: Workspace) -> dict[str, Any]:
     which is what a resume reads to continue the same game; a run that timed out
     and will be resumed would be broken by it.
 
-    **The card is reaped server-side once the game sits idle, and the deadline is
-    tight.** Five interrupted runs were resumed and they split perfectly on the
-    gap between the kill and the relaunch. Under ~12 minutes the card was still
-    live and the resume continued in place: ``ft09`` at 9.1 min (restored to
-    level 4, went on to finish), ``sb26`` at 11.9 min (level 5, finished). Over
-    ~44 minutes the card was gone — 404 on the scorecard and ``game not found``
-    on every ``/api/cmd`` — and the solver had to open a fresh card and replay
-    from level 0: ``bp35`` at 43.8 min, ``ka59`` at 59.9 min, ``tu93`` at
-    191.1 min, the last of those discarding a restored level 7.
+    **The card is reaped server-side once the game sits idle.** Six interrupted
+    runs have been resumed and they split cleanly on the gap between the kill and
+    the relaunch, with the boundary bracketed to **(12.2, 43.8] minutes**:
+
+    ===========  ========  ================================================
+    ``ft09``       9.1 min  card live, resumed at level 4, went on to finish
+    ``sb26``      11.9 min  card live, resumed at level 5, finished
+    ``lf52``      12.2 min  card live, resumed at level 6, **won 10 of 10**
+    ``bp35``      43.8 min  404 — fresh card, replayed from level 0
+    ``ka59``      59.9 min  404 — fresh card, replayed from level 0
+    ``tu93``     191.1 min  404 — discarded a restored level 7
+    ===========  ========  ================================================
+
+    Over the boundary the scorecard 404s and every ``/api/cmd`` answers
+    ``game not found``, so the solver must open a fresh card and start again.
+
+    An earlier version of this note put the deadline at "about 12 minutes".
+    ``lf52`` resumed at 12.2 and kept its card — one playthrough, 941 actions,
+    ARC's own card recording ``plays=1, states=['WIN']`` and not one
+    ``game not found`` in the stream. The true deadline is somewhere above 12.2
+    minutes and at or below 43.8; nothing here narrows it further, and it is not
+    a documented ARC policy, so treat the bracket as the claim.
 
     That is worse than losing the progress, because the ledger does not reset
     with the game. ``actions_used`` carries across attempts by design, so the

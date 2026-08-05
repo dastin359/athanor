@@ -2352,3 +2352,66 @@ win is exempt, which is exactly why `re86` above stays banked.
 | floor over all 25 (unscored counted as zero) | **86.67%** |
 
 `wa30` and `lf52` are re-running now.
+
+### `lf52-271a04aa` — **WON 10/10 at `raw` 1.0530**, the game that was nearly banked as a loss
+
+Twenty-fourth scored game, the longest environment in the set at ten levels, and
+the direct vindication of the crash-detection fix.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.0530, `cap` 1.0000) |
+| levels | 10 of 10, won, **0 deaths**, 1 playthrough |
+| actions | **941**, against a 1,339 baseline total |
+| wall | 3.55 h across two attempts · 366 turns |
+| cost | $77.77 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| agent | 9 | 56 | 53 | 74 | 127 | **230** | 154 | 68 | 127 | **43** |
+| human | 32 | 81 | 60 | 71 | 205 | **148** | 244 | 109 | 164 | **225** |
+| ratio | 0.28× | 0.69× | 0.88× | 1.04× | 0.62× | **1.55×** | 0.63× | 0.62× | 0.77× | **0.19×** |
+
+Eight of ten at the ceiling. Level 6 is the one real overrun at 1.55×, and level
+10 — the deepest level in the arm — went in **43 actions against a 225 human
+median**.
+
+#### This is the run the crash guard was written for
+
+`lf52` died at 6 of 10 levels with `exit 1` when a container restart moved the
+agent proxy. With no error field it was, for about fifteen minutes, a permanent
+6-of-10 **loss at E=0.4909**. Marking a non-zero exit as an interruption is what
+sent it back to the pool, and it came back a 10-of-10 win. The fix is worth
+**+0.5091** on this game alone.
+
+#### And it corrects the reap deadline recorded here
+
+The resume gap was **12.2 minutes and the card survived** — one playthrough, 941
+actions, ARC's card reading `plays=1, states=['WIN']`, and not one
+`game not found` in the stream. The note in `snapshot_scorecard` had put the
+deadline at "about 12 minutes". Six resumes now bracket it to **(12.2, 43.8]
+minutes**:
+
+| gap | outcome |
+|---|---|
+| `ft09` 9.1 min | card live, finished |
+| `sb26` 11.9 min | card live, finished |
+| **`lf52` 12.2 min** | **card live, won 10/10** |
+| `bp35` 43.8 min | 404 — replayed from level 0 |
+| `ka59` 59.9 min | 404 — replayed from level 0 |
+| `tu93` 191.1 min | 404 — discarded a restored level 7 |
+
+Nothing here narrows it further, and it is not a documented ARC policy, so the
+bracket is the claim.
+
+### Arm standing after 24 games
+
+| | |
+|---|---|
+| scored | 24 of 25 |
+| wins | **21 / 24** |
+| sum `E` | **22.6667** |
+| mean `E` | 0.9444 |
+| floor over all 25 (unscored counted as zero) | **90.67%** |
+
+`wa30` is the last environment, re-running now.
