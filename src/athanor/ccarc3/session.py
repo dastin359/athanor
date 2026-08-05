@@ -792,6 +792,22 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
             f"solver killed by signal {sig} after {outcome.get('actions_used', 0)} "
             f"actions — interrupted, not a result; re-run this game"
         )
+    # **A crash is an interruption too, and only the signal case was covered.**
+    # The guard above catches SIGTERM and friends. It does not catch a plain
+    # non-zero exit, and that is the same false loss by another route: when a
+    # container restart moved the agent proxy to a new port, three solvers died
+    # with `exit 1` on `Connection refused` mid-game. `wa30` was banked at 5 of 9
+    # levels and `lf52` at 6 of 10, both with no error field, both therefore
+    # permanently un-retryable under `if prior and not prior.get("error"): skip`.
+    #
+    # A win is exempt. `re86` also exited 1 — it had already won 8 of 8 and was
+    # partway through a replay when the network went — and that result is real.
+    # A timeout stays exempt for the reason given above.
+    elif exit_code and not timed_out and not outcome.get("won"):
+        outcome["error"] = (
+            f"solver exited {exit_code} after {outcome.get('actions_used', 0)} "
+            f"actions without winning — crashed, not a result; re-run this game"
+        )
     if ws.rules_path.exists():
         book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
         outcome["mechanics_recorded"] = len(book.get("verified", []))

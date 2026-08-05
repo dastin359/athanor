@@ -374,11 +374,50 @@ def test_a_killed_solver_is_an_error_not_a_loss(ws):
     timeout = collect_outcome(ws, exit_code=-1, timed_out=True)
     assert "error" not in timeout and "killed_by_signal" not in timeout
 
-    # And an ordinary exit stays clean, including the non-zero ones a solver
-    # returns when it gives up on its own.
-    for code in (0, 1, 2):
+    # A clean exit stays clean.
+    assert "error" not in collect_outcome(ws, exit_code=0, timed_out=False)
+
+
+def test_a_crashed_solver_is_an_error_too(ws):
+    """The signal guard missed the plainer failure: a non-zero exit.
+
+    This block used to assert that exits 1 and 2 stayed clean, on the reasoning
+    that they are "the non-zero ones a solver returns when it gives up on its
+    own". No run has ever done that -- all three voluntary give-ups in the arm
+    (`sp80`, `tn36`, `sk48`) exited 0. What actually produces exit 1 is a crash.
+
+    A container restart moved the agent proxy to a new port and three solvers
+    died on `Connection refused` mid-game. `wa30` was banked at 5 of 9 levels and
+    `lf52` at 6 of 10, neither with an error field, so under
+    `if prior and not prior.get("error"): skip` both were permanently
+    un-retryable -- the exact `ft09` failure the test above was written to
+    prevent, arriving by the one route it did not cover.
+    """
+    _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]]), ("ACTION1", 1, "NOT_FINISHED", [[[2]]])])
+
+    for code in (1, 2):
         out = collect_outcome(ws, exit_code=code, timed_out=False)
-        assert "error" not in out, f"exit {code} is not a signal death"
+        assert "re-run this game" in out["error"], f"exit {code} must be retryable"
+        assert "killed_by_signal" not in out, "a crash is not a signal death"
+
+    # A timeout is still a real outcome, whatever the exit code says.
+    assert "error" not in collect_outcome(ws, exit_code=1, timed_out=True)
+
+
+def test_a_crash_after_winning_keeps_the_win(ws):
+    """`re86` exited 1 and had already won 8 of 8.
+
+    It was partway through a replay when the network went. The win is real and
+    ARC's own card records it, so this must not be marked retryable -- re-running
+    it would discard a banked result.
+    """
+    _trace(ws, [
+        ("RESET", 0, "NOT_FINISHED", [[[1]]]),
+        ("ACTION1", 1, "WIN", [[[2]]]),
+    ])
+    out = collect_outcome(ws, exit_code=1, timed_out=False)
+    assert out["won"] is True
+    assert "error" not in out, "a crash after the win is still a win"
 
 
 def test_the_rule_book_is_summarised_when_present(ws):
