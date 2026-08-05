@@ -125,24 +125,41 @@ class Handler(BaseHTTPRequestHandler):
             return
         n = int(self.headers.get("Content-Length") or 0)
         payload = self.rfile.read(n) if n else None
+        headers = {
+            "X-API-Key": os.environ["ARC_API_KEY"],
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        # **Cookies must survive the hop, or nothing works.** ARC binds a
+        # scorecard to the HTTP *session*, not to the API key -- open a card on
+        # one connection and RESET on another and the server answers
+        # ``game <id> not found`` (see :func:`athanor.ccarc3.client.new_session`).
+        # The saved sessions carry a ``GAMESESSION`` cookie and an
+        # ``AWSALBAPP-0`` load-balancer stickiness cookie, so a proxy that builds
+        # a clean request per call makes every solver call a new session and
+        # every game unreachable the moment it is opened.
+        #
+        # This is why the proxy is not yet wired into the runner launch path: as
+        # first written it would have broken every game it touched, silently and
+        # in a way that looks exactly like ARC dropping the card.
+        cookie = self.headers.get("Cookie")
+        if cookie:
+            headers["Cookie"] = cookie
         req = urllib.request.Request(
-            UPSTREAM + self.path,
-            data=payload,
-            method=method,
-            headers={
-                "X-API-Key": os.environ["ARC_API_KEY"],
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
+            UPSTREAM + self.path, data=payload, method=method, headers=headers,
         )
+        set_cookies: list[str] = []
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 body, code = r.read(), r.getcode()
+                set_cookies = r.headers.get_all("Set-Cookie") or []
         except urllib.error.HTTPError as exc:
             # Pass the upstream status and body through unchanged. The client has
             # careful 4xx/5xx handling and retry logic; flattening errors here
-            # would break it in ways that look like game bugs.
+            # would break it in ways that look like game bugs. Cookies come back
+            # on error responses too -- an ALB re-pins on a 4xx like any other.
             body, code = exc.read(), exc.code
+            set_cookies = exc.headers.get_all("Set-Cookie") or []
         except (urllib.error.URLError, TimeoutError) as exc:
             body, code = json.dumps({"error": f"upstream: {exc}"}).encode(), 502
         # Filter on the way back, not just on the way in. Content-Length is
@@ -151,6 +168,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for value in set_cookies:
+            self.send_header("Set-Cookie", value)
         self.end_headers()
         self.wfile.write(body)
 
