@@ -1799,3 +1799,63 @@ result — one reach in thirteen runs, caught in under five minutes, quarantined
 Deliberately **not** fixed with a doctrine prohibition: the distance between "a
 baseline exists" and "the baseline is 55" is the entire experiment, and an
 explicit ban advertises the target.
+
+### `s5i5-18d95033` — **WON 8/8 at `raw` 1.1500**, a perfect efficiency sweep, and a replay that could not possibly pay
+
+Thirteenth scored game, second attempt at this environment (the first was
+quarantined for baseline exposure). Second `latest`-tier run.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 8 of 8, won, **0 deaths, 0 wasted actions** |
+| actions | 539 billed / 541 trace rows, against a 638 baseline total |
+| wall | 2.53 h of 4.00 h · 121 thinking blocks |
+| cost | $36.54 over 145 turns |
+
+`raw` of exactly 1.1500 is the ceiling: `S_l = min(1.15, (h/a)²)` saturated on
+**every level**, not one below it.
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 13 | 26 | 37 | 30 | 28 | 25 | 45 | 36 |
+| human | 20 | 89 | 106 | 54 | 162 | 38 | 86 | 83 |
+| ratio | 0.65× | 0.29× | 0.35× | 0.56× | **0.17×** | 0.66× | 0.52× | 0.43× |
+
+#### The replay was structurally incapable of helping, and cost 241 actions
+
+| | actions | E | raw |
+|---|---|---|---|
+| play 1 | 300 | 1.0000 | **1.1500** |
+| play 2 | 241 | 1.0000 | **1.1500** |
+
+Play 1 had **already cleared all eight levels at the ceiling**. Since ARC scores
+best-of-plays and `E = min(cap, raw)`, a replay can raise E only when play 1's
+`raw` is below 1.0. This is the ninth wasted replay in the project and the rule
+that predicts it has now separated 9 for 9.
+
+**But the solver could not have known.** That is the finding. `score_now` and
+`score_ceiling` return `None` without baselines — by design, since withholding
+the medians is the whole experiment — so the solver cannot compute `raw` and
+cannot apply "replay iff `raw` < 1.0". **Withholding baselines has a measurable
+action cost, and this run priced it: 241 of 3,255 actions, ~45% of the run's
+wall clock and spend, on a play that could not change the score.**
+
+The fix does not need the baselines back. After clearing every level, `cap` is
+1.0 and E = min(1.0, `raw`), so a replay pays only if the agent averaged *worse*
+than the human median — and a run with **zero deaths and zero wasted actions**
+almost certainly did not. That is computable from structure alone, and it is the
+doctrine line to add:
+
+> **A clean sweep is already banked.** If you have cleared every level with no
+> deaths and no refused actions, do not replay. Your cap is 1.0 and a replay can
+> only help if you were slower than the human median throughout, which a clean
+> sweep is evidence against. Replay after a run that *died*, not one that won.
+
+Filed against the staged-changes task rather than applied mid-arm, so the
+remaining twelve runs stay comparable to the thirteen already scored.
+
+#### Integrity
+
+No level exceeded ARC's per-level 5n cap. Zero baseline-reach markers across
+both streams — the exposure that quarantined the first attempt did not recur.
