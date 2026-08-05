@@ -2056,3 +2056,72 @@ The floor of 65.00% requires no extrapolation — it assumes the eight unplayed
 environments score zero — and stands against the 40.68% published for Opus 5 on
 the public demo set (24 Jul 2026, High effort). ARC states public-set scores are
 "emphatically not" a valid measure of progress, and that caveat applies here.
+
+### `sk48-d8078629` — **5/8 for E=0.4167**, and the pattern every loss in the arm shares
+
+Eighteenth scored game, and the first loss since the arm went baseline-free.
+
+| | |
+|---|---|
+| E | **0.4167** (`raw` 0.4792, `cap` **0.4167** — the cap binds) |
+| levels | 5 of 8, **0 deaths** |
+| actions | **192 scored** / 632 on the ledger over 2 plays, against a 1,070 baseline total |
+| wall | 2.37 h · 155 turns |
+| cost | $45.75 |
+
+Every level it *reached* was at the ceiling, and not narrowly:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 14 | 40 | 33 | 36 | 69 | — | — | — |
+| human | 61 | 177 | 101 | 103 | 230 | 181 | 125 | 92 |
+| ratio | 0.23× | 0.23× | 0.33× | 0.35× | 0.30× | — | — | — |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 0.00 | 0.00 | 0.00 |
+
+Nothing here is an efficiency failure. `raw` 0.4792 is low purely because three levels
+score zero; on the five it cleared it was between three and four times faster than
+the human median. The whole loss is completion.
+
+The replay was textbook: exploration cost 429 actions across five levels, the solver
+restarted at a legal boundary and walked the known routes in 192, and `raw` rose
+0.4161 → 0.4792. Thirteenth confirmation of the replay rule. Zero disagreements with
+ARC on every level it scored.
+
+#### Every loss in this arm is a voluntary stop, not an exhausted budget
+
+`sk48` ended with **632 of 5,350 actions used — 12%**. It was not killed, did not time
+out, and exited 0. It wrote a closing report explaining that level 6 requires pushing
+red blocks through a gap that neither chain can enter, and stopped.
+
+That is not an isolated call. It is what all three losses have in common:
+
+| game | E | levels | budget used | exit | wall |
+|---|---|---|---|---|---|
+| `sp80` | 0.7143 | 5/6 | **137 / 2,590 — 5%** | 0 | 3.18 h |
+| `tn36` | 0.5357 | 5/7 | **289 / 1,585 — 18%** | 0 | 1.48 h |
+| `sk48` | 0.4167 | 5/8 | **632 / 5,350 — 12%** | 0 | 2.37 h |
+
+None timed out. None was signal-killed. **No run in the arm has ever exhausted its
+action budget** — in eighteen games the binding constraint has never once been the
+thing the budget measures. Fifteen games stopped because they won; three stopped
+because the solver concluded it was stuck, with 82–95% of its actions unspent.
+
+This is now the largest recoverable loss on the board. The three losses hold 1.333 of
+the 1.667 points missing from a perfect eighteen. Taking `sk48` alone from 5/8 to 8/8
+is worth **+0.58** — more than every efficiency gain in the arm put together, since
+efficiency is already capped at 1.15 nearly everywhere and `E` is capped at 1.0.
+
+Filed as a doctrine item alongside the do-not-replay line: **a stuck level with budget
+remaining is a reason to change technique, not to stop.** The counterpart to
+"dying is cheap" is that concluding is expensive, and only one of the two is currently
+written down.
+
+### Arm standing after 18 games
+
+| | |
+|---|---|
+| scored | 18 of 25 |
+| wins | **15 / 18** |
+| sum `E` | **16.6667** |
+| mean `E` | 0.9259 |
+| floor over all 25 (unscored counted as zero) | **66.67%** |
