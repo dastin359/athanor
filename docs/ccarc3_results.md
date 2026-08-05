@@ -1957,3 +1957,102 @@ No level exceeded ARC's per-level 5n cap (0 real refusals; an earlier heartbeat
 alert reporting one was a false positive — it matched the f-string in
 `client.py:968` that the solver had read, not a runtime message). Zero
 baseline-reach markers; no `ARC_API_KEY` mention anywhere in the stream.
+
+### `ls20-9607627b` — **WON 7/7 at `raw` 1.1500**, and the run that nearly broke the scorer
+
+Sixteenth scored game. Every one of seven levels at the 1.15 ceiling.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 7 of 7, won, 1 death, 0 wasted actions |
+| actions | **325 scored** / 2,116 on the ledger over **5 plays**, against a 776 baseline total |
+| wall | 2.27 h · 186 turns |
+| cost | $33.71 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 13 | 45 | 49 | 43 | 50 | 72 | **53** |
+| human | 22 | 123 | 73 | 84 | 96 | 192 | **186** |
+| ratio | 0.59× | 0.37× | 0.67× | 0.51× | 0.52× | 0.38× | **0.28×** |
+
+#### The scorer's "final play" convention is not ARC's "best play" convention
+
+`score_run` counts the play that finished, and its docstring asserts that this is
+"what best-of-plays scoring selects". `ls20` is the first run with enough plays to
+test that, and it shows the two are **not** equivalent — it just happened to agree
+here:
+
+| play | actions | `raw` | state |
+|---|---|---|---|
+| 1 | 757 | 0.8659 | WIN |
+| 2 | 349 | **1.1500** | WIN |
+| 3 | 440 | **1.1270** | WIN |
+| 4 | 245 | — | NOT_FINISHED (5/7) |
+| 5 | 325 | **1.1500** | WIN |
+
+Play 3 is a *completed* play that scored **worse** than play 2. Had the run stopped
+there, our scorer would have reported 1.1270 while ARC's best-of-plays would score
+1.1500. The trajectory is not monotone, so "last" is not a safe proxy for "best".
+Filed as a scorer correction; it changes no result recorded so far, because every
+run's final play has happened to be its best.
+
+#### Third and fourth confirmation of the do-not-replay doctrine
+
+Play 2 reached `raw` 1.1500 — the arithmetic maximum. Plays 3, 4 and 5 cost a
+further **1,010 actions, 48% of the run**, and could not raise E by construction.
+Same for `cn04` below. With `s5i5` and `ar25` that is four independent
+confirmations of the staged doctrine line — *a clean sweep with no deaths is
+already banked, do not replay* — which remains the highest-value unshipped item.
+
+The replay rule itself holds: play 1 scored 0.8659 < 1.0, so the **first** replay
+was correctly taken. It is the third, fourth and fifth that were free.
+
+#### Integrity
+Zero disagreements with ARC: `actions_by_level` matches our trace on all seven
+levels. No level exceeded the per-level 5n cap. Zero baseline-reach markers.
+
+### `cn04-2fe56bfb` — **WON 6/6 at `raw` 1.1500** on 0.22× the human action total
+
+Seventeenth scored game, and the widest efficiency margin in the arm so far.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 6 of 6, won, 0 deaths, 0 wasted actions |
+| actions | **174 scored** / 564 on the ledger over 2 plays, against a **789** baseline total |
+| wall | 1.93 h · 142 turns |
+| cost | $29.86 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 14 | 29 | 20 | **29** | 44 | 38 |
+| human | 29 | 54 | 85 | **300** | 208 | 113 |
+| ratio | 0.48× | 0.54× | 0.24× | **0.10×** | 0.21× | 0.34× |
+
+Level 4 is the standout of the whole arm: **29 actions against a 300 human
+median**, one tenth. The scored play finished the entire game in 174 actions
+against a human total of 789.
+
+Replay rule again correct — play 1 scored 0.8910 < 1.0 and the replay took it to
+1.1500, from 390 actions to 174. That is **12 for 12**.
+
+#### Integrity
+Zero disagreements with ARC on all six levels. No 5n cap hits. Zero baseline-reach
+markers.
+
+### Arm standing after 17 games
+
+| | |
+|---|---|
+| scored | 17 of 25 |
+| wins | **15 / 17** |
+| sum `E` | **16.2500** |
+| mean `E` | 0.9559 |
+| floor over all 25 (unscored counted as zero) | **65.00%** |
+
+Only two games are not wins: `sp80` (5/6, E 0.7143) and `tn36` (5/7, E 0.5357).
+The floor of 65.00% requires no extrapolation — it assumes the eight unplayed
+environments score zero — and stands against the 40.68% published for Opus 5 on
+the public demo set (24 Jul 2026, High effort). ARC states public-set scores are
+"emphatically not" a valid measure of progress, and that caveat applies here.
