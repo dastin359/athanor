@@ -2289,3 +2289,66 @@ already binds"** — at which point no further play can raise `E`.
 
 All 25 environments are now scored or in flight — `wa30`, `re86` and `lf52` are
 the last three, all running.
+
+### `re86-8af5384d` — **WON 8/8 at `raw` 1.0974**, and the first game the best-of-plays fix saved
+
+Twenty-third scored game. It is also the run that proves the scoring change
+shipped earlier today was not academic.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.0974, `cap` 1.0000) |
+| levels | 8 of 8, won, **0 deaths** |
+| actions | **928 scored** / 1,248 on the ledger over 2 plays, against a 1,255 baseline total |
+| wall | 2.35 h · 201 turns |
+| cost | $39.13 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 25 | 36 | 49 | 66 | **63** | 64 | 374 | 251 |
+| human | 26 | 42 | 86 | 108 | **189** | 139 | 424 | 241 |
+| ratio | 0.96× | 0.86× | 0.57× | 0.61× | **0.33×** | 0.46× | 0.88× | 1.04× |
+
+Six of eight at the ceiling. Level 8 is the only one above the human median, at
+1.04×, on the hardest level of a 1,255-action game.
+
+#### The scoring convention decided this result
+
+| convention | E | `raw` | levels |
+|---|---|---|---|
+| **best of plays** (current) | **1.0000** | 1.0974 | **8 / 8** |
+| last play (previous) | 0.5833 | 0.6708 | 6 / 8 |
+
+Play 1 won all eight levels in 928 actions. Play 2 was a replay, 257 actions and
+six levels in, when a container restart moved the agent proxy to a new loopback
+port and the solver died on `Connection refused`. Under the old convention the
+run would be scored on that severed replay and recorded as a 6-of-8 **loss at
+0.5833**. ARC's own card says otherwise — `states: ['WIN', 'NOT_FINISHED']` — and
+takes the maximum.
+
+**A +0.4167 swing on one game.** When the change landed the note here read "no
+recorded result moves, every run's final play has so far also been its best".
+That is no longer true, and the first counterexample is worth more than every
+efficiency gain recorded in the arm.
+
+#### The same restart cost two games, and nearly banked them as losses
+
+`wa30` (GAME_OVER at 5 of 9) and `lf52` (NOT_FINISHED at 6 of 10) died in the same
+event, both with `exit 1` and no error field. `collect_outcome` marks
+signal-killed runs retryable — that guard was written for `ft09` — but a plain
+non-zero exit fell straight through it, so both would have been banked
+permanently as losses under `if prior and not prior.get("error"): skip`. Fixed:
+a non-zero exit that is not a timeout and did not win is now an interruption. A
+win is exempt, which is exactly why `re86` above stays banked.
+
+### Arm standing after 23 games
+
+| | |
+|---|---|
+| scored | 23 of 25 |
+| wins | **20 / 23** |
+| sum `E` | **21.6667** |
+| mean `E` | 0.9420 |
+| floor over all 25 (unscored counted as zero) | **86.67%** |
+
+`wa30` and `lf52` are re-running now.
