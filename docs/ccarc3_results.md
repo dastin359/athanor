@@ -1895,3 +1895,65 @@ highest-value item in the staged set.
 
 #### Integrity
 No level exceeded ARC's per-level 5n cap. Zero baseline-reach markers.
+
+### `ka59-38d34dbb` — **WON 7/7 at `raw` 1.1318**, and the run that corrected how a lost card is scored
+
+Fifteenth scored game, and the most instructive one so far: it was killed by the
+~8h session rotation at level 3, lost its scorecard to a server-side reap, and
+won anyway.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1318**, `cap` 1.0000) |
+| levels | 7 of 7, won, 0 deaths, 0 wasted actions |
+| actions | **364 scored** / 504 on the ledger, against a 730 baseline total |
+| wall | 1.34 h across two attempts · 167 turns |
+| cost | $22.50 |
+
+Six of seven levels at the 1.15 ceiling:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 35 | 40 | 36 | 46 | 20 | 87 | **100** |
+| human | 28 | 109 | 51 | 51 | 33 | 132 | **326** |
+| ratio | 1.25× | 0.37× | 0.71× | 0.90× | 0.61× | 0.66× | **0.31×** |
+| `S_l` | 0.64 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+Level 1 is the only one below the cap, and it is the cheapest level in the game —
+7 actions over the human median on a 28-action level. Level 7 is the standout:
+**100 actions against a 326 human median**.
+
+#### A lost card costs budget, not score — and that corrects an earlier claim
+
+The rotation SIGTERMed this solver at 03:09:12 with 141 actions spent and level 3
+reached. It was relaunched 59.9 minutes later, which is well past the window in
+which ARC keeps an idle game: the scorecard 404'd and every `/api/cmd` answered
+`game not found`. The solver opened a fresh card and replayed.
+
+It had been reported here that those re-played actions inflate the RHAE
+denominator — that this run would be scored on 504. **That is wrong**, and this
+run is the proof. `actions_per_level` counts the play that finished, matching
+ARC's own best-of-plays selection, so the score is computed on **364**. The 140
+actions of the reaped play cost budget and 60 minutes of wall clock, and nothing
+else. `scorecard.json` confirms it independently: `total_plays: 1`,
+`total_actions: 364` — ARC never saw the lost play at all.
+
+Stronger still, `disagreements_with_server` returns **empty**: our trace and
+ARC's `actions_by_level` agree on all seven levels, `[35, 40, 36, 46, 20, 87,
+100]`. This is the first run to check every level against the server rather than
+trusting the trace, and the two are identical.
+
+#### The replay was reconstructed, not blundered
+
+Rather than re-explore, the solver wrote `notes/replay.py` and `notes/run.py` — a
+driver that re-executes the *recorded effective actions* against the fresh card,
+dropping actions whose frame did not change and checking each replayed frame
+against the recording. That is why a rerun of a 141-action position cost so
+little and still reached the ceiling on six levels. The technique was invented
+in-run and is a candidate for the harness proper.
+
+#### Integrity
+No level exceeded ARC's per-level 5n cap (0 real refusals; an earlier heartbeat
+alert reporting one was a false positive — it matched the f-string in
+`client.py:968` that the solver had read, not a runtime message). Zero
+baseline-reach markers; no `ARC_API_KEY` mention anywhere in the stream.
