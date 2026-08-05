@@ -123,6 +123,13 @@ class Ccarc3Config:
     out_dir continues the same game rather than paying for the first N actions
     twice. Making that the default is deliberate; making it silent would not
     be, hence the flag and the log line.
+
+    Resuming restores the local side completely — ``card_id``, ``level``,
+    ``actions_used`` and cookies all come back off ``trace.state.json``, and
+    ``resume_state.json`` records exactly what was inherited. It cannot restore
+    the *server* side: ARC reaps an idle game, and past ~12 minutes the card is
+    gone and the resume becomes a replay from level 0 on the old action count.
+    See :func:`snapshot_scorecard` for the measurements. Resume promptly.
     """
 
     extra_cli_args: tuple[str, ...] = ()
@@ -808,8 +815,27 @@ def snapshot_scorecard(ws: Workspace) -> dict[str, Any]:
 
     **Deliberately does not close the card.** ``close()`` deletes the state file,
     which is what a resume reads to continue the same game; a run that timed out
-    and will be resumed would be broken by it. Cards appear to be reaped
-    server-side anyway — two from finished runs returned 404 the same day.
+    and will be resumed would be broken by it.
+
+    **The card is reaped server-side once the game sits idle, and the deadline is
+    tight.** Five interrupted runs were resumed and they split perfectly on the
+    gap between the kill and the relaunch. Under ~12 minutes the card was still
+    live and the resume continued in place: ``ft09`` at 9.1 min (restored to
+    level 4, went on to finish), ``sb26`` at 11.9 min (level 5, finished). Over
+    ~44 minutes the card was gone — 404 on the scorecard and ``game not found``
+    on every ``/api/cmd`` — and the solver had to open a fresh card and replay
+    from level 0: ``bp35`` at 43.8 min, ``ka59`` at 59.9 min, ``tu93`` at
+    191.1 min, the last of those discarding a restored level 7.
+
+    That is worse than losing the progress, because the ledger does not reset
+    with the game. ``actions_used`` carries across attempts by design, so the
+    re-played actions land on the denominator RHAE divides by while the numerator
+    starts again: ``bp35`` spent 175 actions reaching level 4, then 84 more to
+    get back to level 2, and is scored on 259.
+
+    So a resume is only cheap if it is *prompt*. Anything that relaunches an
+    interrupted run should do so immediately and hold its claim while it does,
+    rather than releasing the game to whatever picks it up next.
 
     Why bother: ``actions_by_level`` is the server's per-level action count,
     which is exactly what RHAE scores and which :mod:`athanor.ccarc3.scoring`
