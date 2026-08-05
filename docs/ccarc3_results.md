@@ -1859,3 +1859,39 @@ remaining twelve runs stay comparable to the thirteen already scored.
 
 No level exceeded ARC's per-level 5n cap. Zero baseline-reach markers across
 both streams — the exposure that quarantined the first attempt did not recur.
+
+### `ar25-0c556536` — **WON 8/8 at `raw` 1.1500**, second perfect efficiency sweep
+
+Fourteenth scored game, third `latest`-tier run, and the first scored under the
+two-wide claiming pool.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 8 of 8, won, 0 deaths |
+| actions | 529 billed / 531 trace rows, against a 748 baseline total |
+| wall | 0.70 h · 72 thinking blocks |
+| cost | $11.98 |
+
+Every level at the 1.15 ceiling, several by a wide margin:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 15 | 12 | 40 | 22 | 28 | 53 | 37 | 47 |
+| human | 32 | 50 | 75 | 37 | 89 | 159 | **233** | 73 |
+
+Level 7 is the standout: **37 actions against a 233 human median**, 0.16×.
+
+**Tenth wasted replay, and the rule is now 10 for 10.** Play 1 finished all eight
+levels at `raw` 1.1500 — already the maximum — so play 2's 255 actions could not
+raise E under best-of-plays scoring. Same mechanism as `s5i5`: without baselines
+the solver cannot compute `raw` and so cannot apply "replay iff `raw` < 1.0". The
+structural stand-in already filed against the staged-changes task — *a clean sweep
+with no deaths is already banked, do not replay* — would have saved 255 of 3,740
+actions here, about 48% of the run.
+
+Two independent confirmations in two consecutive games make that doctrine line the
+highest-value item in the staged set.
+
+#### Integrity
+No level exceeded ARC's per-level 5n cap. Zero baseline-reach markers.
