@@ -2166,3 +2166,78 @@ baseline-reach markers.
 | sum `E` | **17.6667** |
 | mean `E` | 0.9298 |
 | floor over all 25 (unscored counted as zero) | **70.67%** |
+
+### `bp35-0a0ad940` — **WON 9/9 at `raw` 1.1481**, and clean this time
+
+Twentieth scored game, and the one that needed re-running. `bp35`'s first attempt
+was the second baseline exposure in this project: it printed the game-id list
+after reaching `/api/games` with the key from its own environment. That run was
+discarded to `ablate_exposed/`. This is the replacement, and it is clean —
+**zero `ARC_API_KEY` mentions, zero `api/games` references, zero 5n cap hits** in
+the entire stream.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1481**, `cap` 1.0000) |
+| levels | 9 of 9, won, 6 deaths |
+| actions | **374 scored** / 1,278 on the ledger over 3 plays, against a 651 baseline total |
+| wall | 3.89 h · 230 turns |
+| cost | $57.49 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| agent | 19 | 43 | 34 | 27 | 31 | 54 | 43 | 45 | 78 |
+| human | 21 | 48 | 44 | 38 | 33 | 87 | 86 | 131 | 163 |
+| ratio | 0.90× | 0.90× | 0.77× | 0.71× | 0.94× | 0.62× | 0.50× | 0.34× | 0.48× |
+
+Eight of nine at the ceiling; level 5 misses at 0.94×. This is the tightest
+baseline in the set — a 651-action human total across nine levels — so the margins
+are thinner than elsewhere and the run still cleared it.
+
+Three plays, monotonically improving: `raw` 1.1161 → 1.1365 → **1.1481**, all three
+recorded WIN. The only run in the arm where every play won and each was better
+than the last, which is exactly the shape that makes best-of-plays and last-play
+agree by luck rather than by construction.
+
+### `m0r0-492f87ba` — **WON 6/6 at `raw` 1.1500** on 0.17× the human action total
+
+Twenty-first scored game, and the widest margin in the arm — beating `cn04`'s 0.22×.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 6 of 6, won, **0 deaths** |
+| actions | **190 scored** / 456 on the ledger over 2 plays, against a **1,107** baseline total |
+| wall | 0.70 h · 101 turns |
+| cost | $13.20 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 15 | 23 | 53 | 11 | **45** | 43 |
+| human | 30 | 111 | 203 | 26 | **500** | 237 |
+| ratio | 0.50× | 0.21× | 0.26× | 0.42× | **0.09×** | 0.18× |
+
+Level 5 is the single widest margin recorded here: **45 actions against a 500
+human median**, one eleventh. The whole game fell in 190 actions against a human
+total of 1,107, for $13.20 — the cheapest win in the arm by a wide margin.
+
+**Fifth confirmation of the do-not-replay doctrine.** Play 1 already reached `raw`
+1.1500, the arithmetic maximum. Play 2's 190 actions could not raise `E` by
+construction, and were spent anyway because without baselines the solver cannot
+compute `raw` and so cannot apply "replay iff `raw` < 1.0". With `s5i5`, `ar25`,
+`ls20` and `cn04` that is five independent confirmations of the same unshipped
+line — *a clean sweep with no deaths is already banked, do not replay* — which
+remains the highest-value staged item.
+
+### Arm standing after 21 games
+
+| | |
+|---|---|
+| scored | 21 of 25 |
+| wins | **18 / 21** |
+| sum `E` | **19.6667** |
+| mean `E` | 0.9365 |
+| floor over all 25 (unscored counted as zero) | **78.67%** |
+
+Four environments remain: `wa30`, `lf52`, `re86`, `dc22` — the last three in
+flight now.
