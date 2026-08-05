@@ -2519,3 +2519,25 @@ binding constraint was never the thing the budget measures.
 - Three results turned on harness fixes shipped mid-arm: best-of-plays scoring
   (`re86`, +0.4167) and crash-as-interruption (`lf52` +0.5091, `wa30` +0.5833).
   Without those three fixes the same runs would total **22.1667 → 88.67%**.
+
+### Caveat on the three losses: `tn36` has a 7/7 run on record
+
+The arm scored `tn36` at **E=0.5357, 5 of 7 levels**. A *different* run of the
+same environment, recorded in `results.jsonl`, cleared **7 of 7 in 220 actions at
+`rhae` 1.0000** — and a third finished 6 of 7 in 631 actions at 0.4487. Three
+runs of one environment, scoring 1.0000, 0.5357 and 0.4487.
+
+That is the worked example the shipped doctrine uses for replaying (§0a: "one run
+finished at `raw` 0.449 ... a later run cleared all seven in 220 actions against
+that run's 631"), and it is accurate — both runs exist on disk.
+
+It also means **the arm's three losses should not be read as a capability
+ceiling.** `tn36` is direct evidence that the same harness, on the same
+environment, can score anywhere from 0.45 to 1.00 run to run. The arm reports one
+run per environment, which is the correct discipline for a benchmark number, but
+it makes the 94.67% a single draw rather than an expected value. The honest
+reading of `sp80` 0.7143, `tn36` 0.5357 and `sk48` 0.4167 is *these three runs
+stopped early*, not *these three environments are hard*.
+
+Establishing which would take repeated runs per environment, which this arm did
+not do.
