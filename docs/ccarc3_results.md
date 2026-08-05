@@ -2125,3 +2125,44 @@ written down.
 | sum `E` | **16.6667** |
 | mean `E` | 0.9259 |
 | floor over all 25 (unscored counted as zero) | **66.67%** |
+
+### `g50t-5849a774` — **WON 7/7 at `raw` 1.1500**, every level at the ceiling
+
+Nineteenth scored game.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 7 of 7, won, 1 death |
+| actions | **307 scored** / 1,097 on the ledger over 2 plays, against an 879 baseline total |
+| wall | 3.03 h · 186 turns |
+| cost | $47.88 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 17 | 31 | 68 | **35** | 64 | 49 | 43 |
+| human | 78 | 175 | 179 | **230** | 96 | 54 | 67 |
+| ratio | 0.22× | 0.18× | 0.38× | **0.15×** | 0.67× | 0.91× | 0.64× |
+
+Level 4 is the standout — **35 actions against a 230 human median**.
+
+Fourteenth confirmation of the replay rule, and one of its clearest cases: play 1
+won all seven levels but only at `raw` 0.8941, below 1.0 and so worth replaying.
+Play 2 walked the known routes in 307 actions against play 1's 790 and landed at
+the 1.1500 ceiling. Both plays are recorded WIN, so this is also the second run
+where best-of-plays and last-play would agree only because the last play happened
+to be the better one.
+
+#### Integrity
+Zero disagreements with ARC on all seven levels. No 5n cap hits. Zero
+baseline-reach markers.
+
+### Arm standing after 19 games
+
+| | |
+|---|---|
+| scored | 19 of 25 |
+| wins | **16 / 19** |
+| sum `E` | **17.6667** |
+| mean `E` | 0.9298 |
+| floor over all 25 (unscored counted as zero) | **70.67%** |
