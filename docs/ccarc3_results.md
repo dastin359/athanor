@@ -2264,18 +2264,18 @@ The two deepest levels carry the widest margins — level 6 at **155 actions aga
 a 578 human median**. This is a game where the human baseline grows steeply with
 depth and the agent's cost does not.
 
-**Sixth confirmation of the do-not-replay doctrine, and the sharpest.** Play 1 won
-all six levels at `raw` 1.1445 — below the 1.15 ceiling, so a replay was
-justified, and play 2 took it to 1.1500. Play 3 then spent a further 434 actions
-at exactly the same 1.1500. Two of three plays were correct; the third was
-provably free, and it is 24% of the run. The replay rule says *replay iff `raw` <
-1.0*, which would have refused both replays here — so this run is also the first
-case where the rule is too strict: play 1 at 1.1445 was worth improving, since
-`raw` still fed a `min(cap, raw)` that the cap had not yet pinned.
+**Sixth confirmation of the do-not-replay doctrine.** Play 1 won all six levels at
+`raw` 1.1445, play 2 reached 1.1500, play 3 spent a further 434 actions at exactly
+1.1500. **All three plays scored E=1.0000, so plays 2 and 3 were both free** —
+887 actions, 49% of the run, that could not move the number.
 
-That refines the staged doctrine line rather than merely confirming it: the stop
-condition is not "you won" but **"`raw` has reached 1.15, or the completion cap
-already binds"** — at which point no further play can raise `E`.
+An earlier version of this entry got that wrong. It claimed play 1 at 1.1445 was
+"worth improving, since `raw` still fed a `min(cap, raw)` that the cap had not yet
+pinned", and concluded the standing rule *replay iff `raw` < 1.0* was too strict.
+The cap **had** pinned it: clearing every level makes `cap` exactly 1.0, so
+`E = min(1.0, raw)` and every `raw` at or above 1.0 scores the same 1.0000.
+Raising `raw` from 1.1445 to 1.1500 buys nothing. The standing rule was right and
+the proposed refinement was an arithmetic error.
 
 ### Arm standing after 22 games
 

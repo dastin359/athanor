@@ -111,9 +111,12 @@ The second case is the one to watch for, because it is where a *bad* run turns
 into a good score. The cap does not care that you were slow the first time.
 
 **Clearing every level is not the end of the scoring.** `E = min(cap, raw)`.
-Once you have cleared them all, `cap` is 1.0 and your score *is* `raw` — so any
-level you finished above its baseline is still costing you, and a replay is
-worth `1.0 − raw`. The instrument is available at exactly that moment and not
+Once you have cleared them all `cap` is exactly 1.0, so your score is `raw`
+**only while `raw` is below 1.0** — above it the cap pins you at 1.0000 and extra
+efficiency is discarded. A replay is therefore worth `1.0 − raw`, which is
+negative once you are past 1.0: nothing. A run that finished at `raw` 1.1445 and
+replayed twice to reach 1.1500 scored 1.0000 all three times and spent 49% of its
+actions doing it. The instrument is available at exactly that moment and not
 after: the winning frame is a level advance, so the action counter is zero and
 `restart_for_replay()` is legal. Take one more action first and it is refused,
 while every other action is refused too because the state is terminal — the run
@@ -128,6 +131,18 @@ at 0.90, so *"I won"* and *"I scored what this game was worth"* are different
 claims and you can only check the first. A replay that walks the route you now
 know spends actions you were not going to spend, and **cannot lower your score**
 — the server keeps each play separately and takes the best one.
+
+Measured across the 25-environment baseline-free arm, where no solver could
+compute `raw`: blind replay **paid three times** — `tu93` 0.8286 → 1.0000,
+`cn04` 0.8910 → 1.0000, `g50t` 0.8941 → 1.0000, about +0.12 `E` each — and was
+wasted roughly seven times, where play 1 was already at or above 1.0. The waste
+is real in actions and wall clock and **zero in score**, so the bet paid: about
++0.35 `E` across the arm for no score risk. It is only a good bet while actions
+are cheap. **No run in that arm ever exhausted its action budget** — the three
+that lost stopped voluntarily with 82–95% unspent — so nothing was traded away.
+If your budget is tight, or a deadline can cut the run mid-replay, spend the
+actions on an unreached level instead: completion moves `cap`, and `cap` is the
+term that was binding in all 25 environments.
 
 Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
 `raw`, `cap` and the per-level breakdown.
