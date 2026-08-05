@@ -4,8 +4,11 @@ The whole point of `arc_proxy` is that `/api/games` -- the endpoint that carries
 `baseline_actions` for all 25 environments -- is unreachable from a solver. That
 property lives entirely in one regex tuple, so it is worth pinning directly.
 """
+import json
+
 import pytest
 
+from athanor.ccarc3 import arc_proxy
 from athanor.ccarc3.arc_proxy import _allowed
 
 ALLOWED = [
@@ -44,3 +47,76 @@ def test_query_string_is_stripped_before_matching():
     # non-matching path past the anchored regexes.
     assert not _allowed("/api/games?x=1".split("?", 1)[0])
     assert _allowed("/api/cmd/RESET?x=1".split("?", 1)[0])
+
+
+# --- response filtering ---------------------------------------------------- #
+# Closing the allowlist was not sufficient: /api/scorecard/close is a call every
+# solver makes, and its body carries level_baseline_actions for every level.
+
+CLOSE_BODY = {
+    "card_id": "26ac1c56-e8b9-4f0b-862c-22271e201316",
+    "score": 2.7777777777777777,
+    "total_actions": 28,
+    "tags_scores": [{"id": "click", "score": 2.777, "actions": 7}],
+    "environments": [{
+        "id": "lp85-305b61c3",
+        "score": 2.7777777777777777,
+        "actions": 28,
+        "levels_completed": 1,
+        "runs": [{
+            "guid": "0f964409-4919-4322-b244-1556786515f2",
+            "actions": 7,
+            "state": "NOT_FINISHED",
+            "level_actions": [7, 0, 0],
+            "level_baseline_actions": [17, 38, 31],
+            "level_scores": [115.0, 0.0, 0.0],
+            "score": 2.777,
+        }],
+    }],
+}
+
+
+def _round_trip(payload):
+    return json.loads(arc_proxy._filtered(json.dumps(payload).encode()))
+
+
+def test_close_response_loses_every_baseline_field():
+    out = _round_trip(CLOSE_BODY)
+    flat = json.dumps(out)
+    for banned in ("level_baseline_actions", "level_scores", "tags_scores"):
+        assert banned not in flat, f"{banned} survived the filter"
+
+
+def test_score_fields_are_stripped_at_every_depth():
+    # ARC's score is 100*min(1.15, (h/a)^2) and the solver knows its own `a`,
+    # so a surviving score inverts back to the human median.
+    out = _round_trip(CLOSE_BODY)
+    assert "score" not in out
+    assert "score" not in out["environments"][0]
+    assert "score" not in out["environments"][0]["runs"][0]
+
+
+def test_the_fields_the_client_needs_survive():
+    out = _round_trip(CLOSE_BODY)
+    assert out["card_id"] == CLOSE_BODY["card_id"]
+    assert out["total_actions"] == 28
+    env = out["environments"][0]
+    assert env["id"] == "lp85-305b61c3"
+    assert env["levels_completed"] == 1
+    run = env["runs"][0]
+    assert run["level_actions"] == [7, 0, 0]     # our own actions are not secret
+    assert run["guid"] and run["state"] == "NOT_FINISHED"
+
+
+def test_actions_by_level_survives():
+    # snapshot_scorecard reads this and RHAE is checked against it.
+    body = {"cards": {"lp85": {"actions_by_level": [[[1, 7], [2, 45]]],
+                               "total_actions": 45, "states": ["WIN"]}}}
+    assert _round_trip(body) == body
+
+
+def test_non_json_body_passes_through_unchanged():
+    # A truncated or empty 5xx body must reach the client untouched; the client
+    # has careful error handling and cannot contain the fields anyway.
+    for raw in (b"", b"upstream exploded", b"{not json"):
+        assert arc_proxy._filtered(raw) == raw

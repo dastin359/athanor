@@ -48,6 +48,58 @@ def _allowed(path: str) -> bool:
     return any(p.match(path) for p in ALLOW)
 
 
+# **An allowlisted endpoint still leaks the baselines, so responses are filtered
+# too.** Closing the allowlist was not enough: `POST /api/scorecard/close` is a
+# call every solver legitimately makes, and its response body carries, per run,
+#
+#     "level_actions":          [21, 0, 0, ...]
+#     "level_baseline_actions": [17, 38, 31, 16, 41, 60, 26, 159]
+#     "level_scores":           [65.53, 0.0, ...]
+#
+# -- the human medians for every level of the game, handed over verbatim. That is
+# exactly what `CCARC3_HIDE_BASELINES` withholds. Measured on a real card kept at
+# scratchpad/best_or_last/card.json.
+#
+# `level_scores` has to go with them: ARC's score is 100*min(1.15, (h/a)^2) and the
+# solver knows its own `a`, so a score inverts straight back to `h`. The aggregate
+# `score` fields go too -- a solver has no legitimate use for its own RHAE while
+# the run is in progress, and that is the number the arm is built to withhold.
+#
+# Nothing in client.py reads any of these; `close()` is called for its side effect
+# and `snapshot_scorecard` reads `actions_by_level`, which is untouched.
+HIDDEN_FIELDS = frozenset({
+    "level_baseline_actions",
+    "baseline_actions",
+    "level_scores",
+    "score",
+    "scores",
+    "tags_scores",
+})
+
+
+def _strip(node):
+    """Recursively drop every baseline-bearing field from a decoded JSON body."""
+    if isinstance(node, dict):
+        return {k: _strip(v) for k, v in node.items() if k not in HIDDEN_FIELDS}
+    if isinstance(node, list):
+        return [_strip(v) for v in node]
+    return node
+
+
+def _filtered(body: bytes) -> bytes:
+    """Strip baselines from a response, passing anything unparseable through.
+
+    Deliberately fail-open on a body that is not JSON: the client has careful
+    error handling and an empty or truncated 5xx body must reach it unchanged.
+    A non-JSON body cannot contain the fields anyway.
+    """
+    try:
+        decoded = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    return json.dumps(_strip(decoded)).encode()
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -93,6 +145,9 @@ class Handler(BaseHTTPRequestHandler):
             body, code = exc.read(), exc.code
         except (urllib.error.URLError, TimeoutError) as exc:
             body, code = json.dumps({"error": f"upstream: {exc}"}).encode(), 502
+        # Filter on the way back, not just on the way in. Content-Length is
+        # recomputed below from the filtered body, so this must happen first.
+        body = _filtered(body)
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
