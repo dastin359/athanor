@@ -43,7 +43,18 @@ __all__ = [
     "baselines_for",
 ]
 
-ROOT_URL = "https://three.arcprize.org"
+# **Redirectable, so the key can live somewhere the solver cannot read it.**
+# Unset (every run to date, and every solver currently in flight) this is the live
+# API and nothing changes. Set, it points at `arc_proxy`, which holds the real key
+# and forwards only the four endpoints a solver needs -- refusing `/api/games`,
+# the one that carries `baseline_actions`.
+#
+# **This module is re-imported on every action.** The workspace tells the solver
+# "each `python -c ...` is a new process", so a change here is live for games
+# already running, not just future ones. Both branches below therefore have to be
+# safe for a solver mid-game: with `ARC_API_KEY` set and this env var unset, the
+# behaviour is byte-identical to before.
+ROOT_URL = os.environ.get("CCARC3_ARC_ROOT") or "https://three.arcprize.org"
 
 _TERMINAL = ("WIN", "GAME_OVER")
 
@@ -137,9 +148,15 @@ def _send(
 
 def _api_key(explicit: str | None = None) -> str:
     key = explicit or os.environ.get("ARC_API_KEY", "")
-    if not key:
-        raise RuntimeError("no ARC_API_KEY; the live API returns 401 without one")
-    return key
+    if key:
+        return key
+    # Behind the proxy the solver has no key by design -- that is the whole point,
+    # since a key in its environment is what let two runs fetch `/api/games` by
+    # hand. The proxy injects the real one. Send a placeholder so the request
+    # still carries the header the API expects.
+    if os.environ.get("CCARC3_ARC_ROOT"):
+        return "proxied"
+    raise RuntimeError("no ARC_API_KEY; the live API returns 401 without one")
 
 
 @dataclass(frozen=True)

@@ -297,6 +297,29 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     if (venv_bin / "python3").exists() or (venv_bin / "python").exists():
         env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}".rstrip(":")
 
+    # **Take the ARC key away from the solver.**
+    #
+    # `CCARC3_HIDE_BASELINES` closes the in-process route to the human medians and
+    # cannot close the deliberate one: with `ARC_API_KEY` in its environment a
+    # solver can `urllib` its way to `/api/games`, which returns `baseline_actions`
+    # for all 25 environments. `tu93` printed its own array verbatim; `bp35` did
+    # the same call six minutes in. Both were caught by the watcher and both had
+    # to be thrown away, which is detection paying for prevention's absence.
+    #
+    # With `CCARC3_PROXY_URL` set, the client is pointed at `arc_proxy` -- which
+    # holds the real key, forwards the four endpoints a solver needs, and refuses
+    # `/api/games` -- and the key is removed from the solver's environment
+    # entirely. A hand-rolled request then has nothing to authenticate with.
+    #
+    # Unset, nothing changes: the key stays and the client talks to ARC directly.
+    # That is deliberate, because this module is read fresh by every `python -c`
+    # the solver runs, so a hard switch would break games already in flight.
+    proxy = os.environ.get("CCARC3_PROXY_URL")
+    if proxy:
+        env["CCARC3_ARC_ROOT"] = proxy
+        env.pop("ARC_API_KEY", None)
+        env.pop("ARCPRIZE_API_KEY", None)
+
     return Workspace(
         root=root,
         config=config,
