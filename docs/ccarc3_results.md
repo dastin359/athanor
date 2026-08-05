@@ -2541,3 +2541,48 @@ stopped early*, not *these three environments are hard*.
 
 Establishing which would take repeated runs per environment, which this arm did
 not do.
+
+## Provenance and what can still be audited
+
+The numbers above are reproducible from this file. The **raw traces are not**, for
+12 of the 25 environments, and that needs stating plainly rather than discovered
+later.
+
+**What happened.** The scratchpad holding the run directories was never in git —
+deliberately, because the ARC API key lives there. On 2026-08-05 the container
+rolled back three times to an earlier snapshot. The repository survived every one
+of them: work was pushed as it was made, and each rollback was recovered by
+fast-forwarding from `origin/claude/athanor-cc-harness-variant-jpqw7t`, which was
+always ahead. The scratchpad had no such second copy.
+
+**What is gone.** `trace.jsonl`, `scorecard.json` and `stream.jsonl` for `ar25`,
+`bp35`, `cn04`, `dc22`, `g50t`, `ka59`, `lf52`, `m0r0`, `re86`, `s5i5`, `sk48`
+and `wa30`. Thirteen run directories survive, from the arm's earlier state.
+
+**What survives, and where.**
+
+| artefact | status |
+|---|---|
+| every per-level table, per-play `raw`, and the 94.67% total | this file, committed |
+| harness, scorer, proxy, tests | the repo, committed |
+| span-level traces for all 25 games | **only** in the published artifact page |
+| raw `trace.jsonl` for 13 games | scratchpad, volatile |
+| raw `trace.jsonl` for the other 12 | gone |
+
+**Consequence for the audit trail.** Every scored run was checked against ARC's
+own `actions_by_level` at the time it was scored, and `disagreements_with_server`
+returned empty for all 25 — but that check cannot now be *re-run* for the 12
+whose scorecards are gone. The claim rests on the record in this file, not on
+re-derivation.
+
+**Do not regenerate the trace-audit artifact from a rolled-back container.** The
+generator reads the scratchpad; with 13 run directories it produces a 13-game
+page, and republishing that to the same URL would overwrite the 25-game version —
+which is the only remaining copy of the missing traces. The tooling
+(`refresh_audit.sh`, `gen_trace_audit.py`, `build_spans.py`) was itself lost in
+the rollback and has been left absent on purpose.
+
+**The lesson, which is the general one.** Anything worth keeping has to be pushed,
+not merely written. The repository came through three rollbacks without losing a
+line because every change was committed and pushed the moment it was made; the
+scratchpad lost half an arm's evidence because it was only ever on disk.
