@@ -2692,7 +2692,7 @@ Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
 |---|---|---|---|
 | `sp80` | 0.7143 (5/6) | **1.0000 (6/6)** | **+0.2857** |
 | `tn36` | 0.5357 (5/7) | **1.0000 (7/7)** | **+0.4643** |
-| `sk48` | 0.4167 (5/8) | running | — |
+| `sk48` | 0.4167 (5/8) | running — 2 of 8 cleared, 146 actions | — |
 
 Both recovered environments were losses for the same reason and both cleared on a
 second attempt with §0b in the doctrine. If `sk48` follows, the arm total moves
@@ -2702,3 +2702,40 @@ three points are already banked, taking it to **24.4167, or 97.67%**.
 The honest caveat stands from the `tn36` variance note: these are single draws.
 What they establish is that the three environments were never beyond the harness
 — which is what the arm's loss column could not distinguish.
+
+#### What `sk48` has to reach, and why the bar is level 6
+
+`cap` is what binds this environment, so the re-run's score is decided by level
+count alone — the efficiency it is already banking cannot move it. `cap(k)` for
+`k` of 8 levels is `sum(1..k)/36`:
+
+| levels | 5 (arm) | 6 | 7 | 8 |
+|---|---|---|---|---|
+| `cap` | 0.4167 | 0.5833 | 0.7778 | 1.0000 |
+| delta vs arm | — | **+0.1667** | **+0.3611** | **+0.5833** |
+
+So **six of eight is the bar**: anything less repeats the arm's result, and each
+level past it is worth more than the last. `raw` will clear whichever `cap`
+applies — on the two levels re-run so far the solver spent 89 and 44 actions
+against human medians of 61 and 177 — so `E = cap` at every row above.
+
+A weak level does not change that. Level 1 cost 89 against a 61 median, an
+`S_l` of 0.470 and the first sub-1.0 level in either re-run. On a full clear it
+is still worth 1.0000: `raw` = (0.470 + 1.15x35)/36 = 1.131, above the `cap` of
+1.0. This is §0a's arithmetic again — under a full clear, efficiency is free and
+only completion is paid for.
+
+#### The card survived the container replacement
+
+Worth recording because it contradicts what `tools/rerun_losses.py` claimed. The
+restore→resume loop was built assuming a replacement always costs the ARC card,
+so a restore would carry `rules.json` but replay from level 0. `sk48` crossed the
+02:48:15Z replacement on card `57690598-daed-4fac-8b18-e8bb34734288` and resumed
+on the same card — zero `full_reset` markers, one continuous play, level
+0 → 1 → 2. The restore buys back the game, not only the notes.
+
+That tightens the reap bracket from (12.2, 43.8] to **(13.6, 43.8]** minutes. It
+is a lower bound rather than a measurement: evidence preserves on a 5-minute
+poll, and the ledger sat at 87 actions from 02:41:25Z through 02:54:59Z and was
+growing again by 03:00:07Z, so the idle gap was at least 13.6 minutes and
+possibly ~19. Both claims are corrected in the source (`817bfbf`).
