@@ -52,16 +52,34 @@ from athanor.ccarc3 import Ccarc3Config  # noqa: E402
 from athanor.ccarc3.client import list_games  # noqa: E402
 from athanor.ccarc3.session import run_game   # noqa: E402
 
-# Shortest arm wall time first: bank what can finish before betting a window on
-# what probably cannot.
+# The five interrupted-but-winning environments first, shortest arm wall time
+# first within them: bank what can finish before betting a window on what
+# probably cannot.
 GAMES = [
     "sb26-7fbdac44",   # 8 levels, 0.29 h in the arm
     "ft09-0d8bbf25",   # 6 levels, 0.54 h
     "ka59-38d34dbb",   # 7 levels, 1.34 h
     "wa30-ee6fef47",   # 9 levels, 2.34 h
     "lf52-271a04aa",   # 10 levels, 3.55 h
+    # **Then the three losses, which is the decisive experiment.** sp80, tn36 and
+    # sk48 have been run on the current doctrine -- their re-runs carried 0b -- but
+    # never *cleanly*: 12, 3 and 4 solver launches, each restoring rules.json from
+    # the losing arm run. So "0b works" and "a second look at your own notes works"
+    # are still confounded, and this is the only configuration that separates them.
+    # Their arm losses (0.7143, 0.5357, 0.4167) predate 0b by a day and serve as
+    # the control.
+    "sp80-589a99af",   # 6 levels, 3.18 h in the arm, lost 5/6
+    "tn36-ef4dde99",   # 7 levels, 1.48 h, lost 5/7
+    "sk48-d8078629",   # 8 levels, 2.37 h, lost 5/8
 ]
 BUDGET_MULTIPLE = 5.0
+
+# **Long enough for the longest game, not the default 2 h.** The driver inherited
+# Ccarc3Config's 7200 s, and `lf52` took 3.55 h in the arm -- so it would have hit
+# the cap on every attempt, been correctly marked interrupted by the wall-clock
+# guard, discarded, and retried forever without ever banking. A game that cannot
+# finish should fail because the box died, not because the harness cut it off.
+WALL_CLOCK_S = 6 * 3600
 
 
 def workspace_of(attempt_dir: pathlib.Path, game_id: str) -> pathlib.Path:
@@ -114,7 +132,25 @@ def verdict(game_dir: pathlib.Path) -> tuple[str, dict | None]:
 
 
 def attempts_so_far(game_dir: pathlib.Path) -> int:
+    """Every attempt directory, used only to number the next one uniquely."""
     return len(list(game_dir.glob("attempt_*")))
+
+
+def completed_attempts(game_dir: pathlib.Path, game_id: str) -> int:
+    """Attempts that actually ran to a verdict, for prioritising the queue.
+
+    Counting directories instead punishes a game for infrastructure it did not
+    cause: an attempt killed by a container replacement -- or by this driver
+    being restarted to pick up a code change -- leaves a directory behind with no
+    result.json. `ka59` was demoted below two far less feasible games on exactly
+    that basis, its only "attempt" being six seconds old when I stopped the
+    driver. A game should fall down the queue for failing, not for being
+    interrupted.
+    """
+    if not game_dir.is_dir():
+        return 0
+    return sum(1 for a in game_dir.glob("attempt_*")
+               if (a / game_id / "result.json").exists())
 
 
 def main() -> int:
@@ -134,7 +170,18 @@ def main() -> int:
     # quota forever otherwise, and MAX_PASSES makes the give-up point explicit and
     # visible in the log rather than implicit in whoever stops watching.
     for pass_no in range(1, MAX_PASSES + 1):
-        outstanding = [g for g in GAMES if not (OUT / g / "clean_result.json").exists()]
+        # **Fewest attempts first, GAMES order as the tie-break.** A plain GAMES
+        # walk starves the tail: the driver dies with its container, and on
+        # relaunch it starts again at the first outstanding game, so a game that
+        # can never finish in one window takes every window and nothing behind it
+        # is ever tried. That is exactly how a fixed order once converted a
+        # three-game experiment into a one-game one in rerun_losses.py. With all
+        # counts at zero this is identical to GAMES order, so the five keep their
+        # priority until one of them starts failing repeatedly.
+        outstanding = sorted(
+            (g for g in GAMES if not (OUT / g / "clean_result.json").exists()),
+            key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
+        )
         if not outstanding:
             print("\nall five have a clean run", flush=True)
             break
@@ -188,6 +235,7 @@ def one_pass(games: list[str], infos: dict) -> None:
                 gid,
                 out_dir=run_dir,
                 budget_multiple=BUDGET_MULTIPLE,
+                wall_clock_timeout_s=WALL_CLOCK_S,
                 # Never resume. A resumed attempt is exactly what disqualified
                 # these five, so inheriting anything would defeat the point.
                 fresh=True,
