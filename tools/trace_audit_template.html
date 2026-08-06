@@ -1,0 +1,699 @@
+<title>CCARC3 — solver trace audit</title>
+<style>
+/* Emerald. The neutrals carry the hue -- paper, rules and ink are all tinted
+   green rather than grey -- and the dominant accent (turn bars, selection, focus)
+   is emerald. `--tool` stays amber as the complement, because two greens for
+   "model" and "tool" would erase the distinction the waterfall is built on, and
+   `--good` is a lighter mint so the `latest` tier does not read as just another
+   turn bar. */
+:root {
+  --ink:        #08201A;
+  --ink-soft:   #3D5C50;
+  --ink-faint:  #6B8B7C;
+  --paper:      #F2F8F4;
+  --panel:      #FFFFFF;
+  --rule:       #D3E5DA;
+  --rule-soft:  #E6F1EA;
+  --llm:        #0E9F6E;
+  --llm-wash:   #0E9F6E22;
+  --tool:       #B87613;
+  --tool-wash:  #E8A33D33;
+  --chain:      #6E8C7E;
+  --bad:        #C0333F;
+  --bad-wash:   #C0333F1F;
+  --good:       #12855A;
+  --say:        #0E8C8C;
+  --think:      #6E5AA8;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink:       #D7EFE3;
+    --ink-soft:  #8CAB9C;
+    --ink-faint: #5C7A6C;
+    --paper:     #061410;
+    --panel:     #0B1F18;
+    --rule:      #17362B;
+    --rule-soft: #0F2820;
+    --llm:       #34D399;
+    --llm-wash:  #34D3992E;
+    --tool:      #E9A83D;
+    --tool-wash: #E9A83D2E;
+    --chain:     #6E8C7E;
+    --bad:       #FF7A85;
+    --bad-wash:  #FF7A852B;
+    --good:      #7DE8B0;
+    --say:       #38D3D3;
+    --think:     #A79BF0;
+  }
+}
+:root[data-theme="dark"] {
+  --ink:#D7EFE3; --ink-soft:#8CAB9C; --ink-faint:#5C7A6C; --paper:#061410;
+  --panel:#0B1F18; --rule:#17362B; --rule-soft:#0F2820; --chain:#6E8C7E;
+  --llm:#34D399; --llm-wash:#34D3992E; --tool:#E9A83D; --tool-wash:#E9A83D2E;
+  --bad:#FF7A85; --bad-wash:#FF7A852B; --good:#7DE8B0; --say:#38D3D3; --think:#A79BF0;
+}
+:root[data-theme="light"] {
+  --ink:#08201A; --ink-soft:#3D5C50; --ink-faint:#6B8B7C; --paper:#F2F8F4;
+  --panel:#FFFFFF; --rule:#D3E5DA; --rule-soft:#E6F1EA; --chain:#6E8C7E;
+  --llm:#0E9F6E; --llm-wash:#0E9F6E22; --tool:#B87613; --tool-wash:#E8A33D33;
+  --bad:#C0333F; --bad-wash:#C0333F1F; --good:#12855A; --say:#0E8C8C; --think:#6E5AA8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+p.prose { font-family: var(--sans); font-size: 14px; line-height: 1.65; max-width: 68ch; color: var(--ink-soft); }
+p.prose strong { color: var(--ink); font-weight: 600; }
+code { font-family: var(--mono); background: var(--rule-soft); padding: 1px 5px; border-radius: 3px; font-size: .92em; }
+
+/* ---- header ---- */
+header { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 8px; }
+h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+.sub { color: var(--ink-faint); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+.provenance {
+  display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 16px;
+  font-size: 11.5px; color: var(--ink-faint);
+}
+.provenance b { color: var(--ink-soft); font-weight: 600; }
+
+/* ---- section headings ---- */
+h2 {
+  font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 600;
+  margin: 44px 0 14px; padding-bottom: 7px; border-bottom: 1px solid var(--rule);
+}
+
+/* ---- stat tiles ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+.tile { background: var(--paper); padding: 14px 16px; }
+.tile .k { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); }
+.tile .v { font-size: 22px; font-weight: 600; letter-spacing: -.02em; margin-top: 4px; }
+.tile .n { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+.tile .started { opacity: .7; letter-spacing: .02em; }
+.tile[data-k] { cursor: pointer; transition: background .12s; }
+.tile[data-k]:hover { background: var(--rule-soft); }
+.tile[data-k]:focus-visible { outline: 2px solid var(--llm); outline-offset: -2px; }
+.tile.sel { background: var(--llm-wash); }
+.tile .tier { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+              font-weight: 600; margin-top: 9px; }
+.tile .cfg { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.cf { font-size: 8.5px; letter-spacing: .04em; padding: 1px 4px; border-radius: 2px;
+      border: 1px solid var(--rule); color: var(--ink-faint); opacity: .55;
+      text-decoration: line-through; }
+.cf.on { color: var(--ink-soft); border-color: var(--ink-faint); opacity: 1;
+         text-decoration: none; }
+
+/* ---- split bar ---- */
+.split { display: flex; height: 46px; border: 1px solid var(--rule); overflow: hidden; }
+.split div { display: flex; align-items: center; padding: 0 14px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.split .a { background: var(--llm-wash); color: var(--llm); border-right: 1px solid var(--rule); }
+.split .b { background: var(--tool-wash); color: var(--tool); }
+
+/* ---- game chips ---- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--mono); font-size: 12px; padding: 6px 11px; cursor: pointer;
+  background: transparent; color: var(--ink-soft);
+  border: 1px solid var(--rule); border-radius: 2px;
+}
+.chip:hover { border-color: var(--ink-faint); color: var(--ink); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chip:focus-visible { outline: 2px solid var(--llm); outline-offset: 2px; }
+.chip .e { color: var(--ink-faint); margin-left: 7px; }
+.chip[aria-pressed="true"] .e { color: var(--paper); opacity: .7; }
+.chip.lost { border-left: 3px solid var(--bad); }
+
+/* ---- waterfall ---- */
+.wf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 14px 0 8px; flex-wrap: wrap; }
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-faint); }
+.legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+/* Tree left, payload right. Stacked, reading a 3,000-char tool input meant
+   scrolling the tree off-screen, so you lost the row you were inspecting the
+   moment you inspected it. Two independently-scrolling columns keep the span you
+   clicked visible next to what it contains. */
+/* Height and split live on documentElement, not on the pane, so they survive
+   every re-render -- selecting a different game rebuilds the tree but never
+   touches :root. Same trick as --shot-h, and the same reason: a size you chose
+   should outlive the thing you chose it on. */
+/* Grab the edge, don't aim a slider at it. `resize: vertical` is the browser's
+   own handle (bottom-right corner) and needs `overflow` to be non-visible to
+   apply at all; the gutter between the columns is a real element you drag. Both
+   sizes persist on :root + localStorage, because renderWF() replaces the tree's
+   innerHTML on every selection and anything stored on the pane would reset. */
+/* Four real edge handles, not the browser's single corner. `resize: vertical`
+   only ever offers bottom-right, so widening or growing upward was impossible.
+   Width and the two offsets can go negative against the 1180px wrap, letting the
+   pane bleed outside it -- a span tree is wider than prose wants to be. */
+.tracepane { position: relative;
+             display: grid; grid-template-columns: var(--wf-split, 53%) 6px minmax(0, 1fr);
+             background: var(--rule); border: 1px solid var(--rule);
+             align-items: stretch;
+             height: var(--wf-h, 620px); min-height: 240px;
+             width: var(--wf-w, auto);
+             margin-left: var(--wf-ml, 0px); margin-top: var(--wf-mt, 0px);
+             overflow: hidden; }
+/* Absolutely-positioned children are out of grid flow, so these do not become
+   grid items and the three-column layout is untouched. */
+.eh { position: absolute; z-index: 5; background: transparent; transition: background .1s; }
+.eh:hover, .eh.drag { background: var(--llm); opacity: .55; }
+.eh-n { top: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.eh-s { bottom: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.eh-w { left: 0; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+.eh-e { right: 0; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+body.sizing { user-select: none; }
+.tracepane > .wf, .tracepane > .detail { border: none; min-width: 0; height: 100%; overflow: auto; }
+.tracepane > .detail { max-height: none; }
+.wf { background: var(--paper); }
+.gutter { cursor: col-resize; background: var(--rule); transition: background .1s; }
+.gutter:hover, .gutter.drag { background: var(--llm); }
+/* While dragging, stop the panes from eating the pointer or selecting text. */
+body.splitting { cursor: col-resize; user-select: none; }
+/* The name column was a fixed 420px, which in a half-width pane left nothing for
+   the bar. Fractional, with a floor, so it shrinks before the timeline does. */
+.row { display: grid; grid-template-columns: minmax(150px, 1.6fr) minmax(60px, 1fr) 58px;
+       align-items: center; gap: 10px;
+       padding: 2px 10px; border-bottom: 1px solid var(--rule-soft); cursor: pointer; }
+/* Stack under 900px, but do NOT re-cap the heights here -- that would silently
+   override a height the reader chose, on exactly the screens where it matters. */
+/* Stacked, a vertical gutter resizes nothing and the fixed height would crush two
+   panes into one viewport. Drop the handle, let the column grow, and cap each
+   pane on its own. */
+@media (max-width: 900px) {
+  /* Also reset width and the two offsets: a width dragged wide on a desktop is
+     stored, and would otherwise force a horizontal scrollbar on a phone. */
+  .tracepane { grid-template-columns: 1fr; height: auto; overflow: visible;
+               width: auto; margin-left: 0; margin-top: 0; }
+  .gutter, .eh { display: none; }
+  .tracepane > .wf { height: auto; max-height: 60vh; }
+  .tracepane > .detail { height: auto; max-height: 70vh; }
+}
+.row:hover { background: var(--rule-soft); }
+.row[aria-selected="true"] { background: var(--llm-wash); }
+.row:focus-visible { outline: 2px solid var(--llm); outline-offset: -2px; }
+.nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
+.badge { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px;
+         border-radius: 2px; margin-left: 6px; border: 1px solid currentColor; opacity: .85; }
+.b-saydo { color: var(--say); }
+.b-do    { color: var(--ink-faint); }
+.b-say   { color: var(--good); }
+.nm .kindmark { display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; }
+.track { position: relative; height: 15px; }
+.bar { position: absolute; top: 3px; height: 9px; min-width: 2px; border-radius: 1px; }
+.dur { text-align: right; font-size: 11px; color: var(--ink-faint); }
+.row.err .dur { color: var(--bad); font-weight: 600; }
+
+/* ---- detail ---- */
+.detail { border: 1px solid var(--rule); border-top: none; padding: 14px 16px; background: var(--rule-soft); min-height: 96px; }
+.detail .t { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.detail dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0 0 10px; font-size: 11.5px; }
+.detail dt { color: var(--ink-faint); }
+/* A turn's components, stacked full-width. Tried side-by-side first: at ~32% of
+   an already half-width pane, a JSON payload wraps to one token per line and the
+   third column falls off the edge. Vertical gives each payload the full width and
+   costs only scrolling, which the pane does anyway. */
+.cols { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.col { border: 1px solid var(--rule); background: var(--paper); padding: 8px 10px;
+       min-width: 0; }
+.col.bad { border-color: var(--bad); }
+.colhead { display: flex; justify-content: space-between; gap: 8px; font-size: 10px;
+           letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+           border-bottom: 1px solid var(--rule-soft); padding-bottom: 5px; margin-bottom: 2px; }
+.col .pane { margin-top: 8px; }
+.col pre { max-height: 320px; overflow: auto; }
+.pane { margin-top: 12px; }
+.shot { background: var(--paper); border: 1px solid var(--rule); padding: 10px; overflow: auto; }
+.shot img { display: block; max-width: 100%; max-height: var(--shot-h, 420px);
+            image-rendering: pixelated; margin: 0 auto; }
+.sizer { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .06em;
+         text-transform: uppercase; color: var(--ink-faint); }
+.sizer input[type=range] { width: 130px; accent-color: var(--llm); cursor: pointer; }
+.sizer input[type=range]:focus-visible { outline: 2px solid var(--llm); outline-offset: 3px; }
+.sizer output { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right;
+                text-transform: none; letter-spacing: 0; }
+.note { font-family: var(--sans); font-size: 11.5px; line-height: 1.55; color: var(--ink-faint);
+        border-left: 2px solid var(--rule); padding-left: 10px; margin: 10px 0; max-width: 78ch; }
+.note b { color: var(--ink-soft); }
+.pane .lbl { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+             display: flex; justify-content: space-between; margin-bottom: 4px; }
+.detail pre { margin: 0; padding: 10px 12px; background: var(--paper); border: 1px solid var(--rule);
+              font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+              max-height: 420px; overflow: auto; color: var(--ink); }
+
+/* ---- findings ---- */
+.finding { border-left: 3px solid var(--rule); padding: 2px 0 2px 16px; margin: 18px 0; }
+.finding.warn { border-left-color: var(--bad); }
+.finding.ok { border-left-color: var(--good); }
+.finding h3 { font-size: 13px; margin: 0 0 5px; font-weight: 600; letter-spacing: -.01em; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.scroll { overflow-x: auto; }
+th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+th { color: var(--ink-faint); font-weight: 600; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; border-bottom: 1px solid var(--rule); }
+td:first-child, th:first-child { text-align: left; }
+tr.bad td { color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media (max-width: 700px) { .row { grid-template-columns: 170px 1fr 54px; } .wrap { padding: 28px 14px 60px; } }
+</style>
+
+<div class="wrap">
+<header>
+  <h1>CCARC3 solver trace audit</h1>
+  <div class="sub">Span trees rebuilt from saved <code>claude -p</code> streams · baseline-free arm</div>
+  <div class="provenance" id="prov"></div>
+</header>
+
+<p class="prose">
+  Every game the harness runs is a <code>claude -p</code> session recorded with
+  <code>--output-format stream-json --verbose</code>. That NDJSON is the only place the
+  parent/child structure exists, so these span trees are reconstructed from it rather than
+  from any telemetry exporter — <strong>nothing was re-run to produce this page.</strong>
+  A span's parent is the tool named by its <code>parent_tool_use_id</code>, or the session
+  root when it has none.
+</p>
+
+<h2>Where the wall clock actually goes</h2>
+<div class="split" id="split"></div>
+<p class="prose" style="margin-top:14px">
+  <strong>82% of a solver's wall clock is spent waiting on the model</strong>, not running its
+  own code. The agent writes a great deal of Python — 949 <code>Bash</code> calls across ten
+  games — but at a 1.36 s median, most of which is interpreter start-up and
+  <code>import numpy</code> on 64×64 grids. Sustained local work is
+  <strong>15% of one core per solver</strong>, so concurrency is limited by model latency and
+  quota, not by CPU.
+</p>
+
+<h2>Per game</h2>
+<div class="tiles" id="tiles"></div>
+
+<h2>Span tree</h2>
+<div class="chips" id="chips"></div>
+<div class="wf-head">
+  <div class="legend">
+    <span><i style="background:var(--llm)"></i>turn (LLM)</span>
+    <span><i style="background:var(--tool)"></i>tool</span>
+    <span><i style="background:var(--say)"></i>text</span>
+    <span><i style="background:var(--think)"></i>thinking</span>
+    <span><i style="background:var(--bad)"></i>error / timeout</span>
+    <span id="wfmeta"></span>
+  </div>
+  <div class="legend">
+    <span>click a span for detail · drag the divider or the bottom-right corner to resize</span>
+  </div>
+</div>
+<div class="tracepane" id="tracepane">
+  <div class="wf" id="wf"></div>
+  <div class="gutter" id="gutter" role="separator" aria-orientation="vertical"
+       tabindex="0" aria-label="resize tree and payload"></div>
+  <div class="eh eh-n" data-edge="n" aria-hidden="true"></div>
+  <div class="eh eh-s" data-edge="s" aria-hidden="true"></div>
+  <div class="eh eh-w" data-edge="w" aria-hidden="true"></div>
+  <div class="eh eh-e" data-edge="e" aria-hidden="true"></div>
+  <div class="detail" id="detail"><div class="t">No span selected</div>
+    <div style="color:var(--ink-faint);font-size:11.5px">Pick a row on the left to see its model, tokens, input and result.</div>
+  </div>
+</div>
+
+<h2>What the traces show</h2>
+<div id="findings"></div>
+
+</div>
+
+<script>
+const DATA = __DATA_JSON__;
+const RUNS = __RUNS_JSON__;
+
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => s >= 60 ? `${(s/60).toFixed(1)}m` : `${s.toFixed(s<10?2:1)}s`;
+
+// provenance
+let L=0,S=0,U=0;
+for (const g of Object.values(DATA)) for (const a of g.attempts) { L+=a.lines; S+=a.spans.length; U+=a.unparseable; }
+$("prov").innerHTML = [
+  ["stream lines parsed", L.toLocaleString()],
+  ["spans built", S.toLocaleString()],
+  ["unparseable", U],
+  ["games", Object.keys(DATA).length],
+].map(([k,v])=>`${k} <b>${v}</b>`).join("");
+
+// split bar
+const MODEL=82.3, LOCAL=17.7;
+$("split").innerHTML =
+  `<div class="a" style="flex:${MODEL}">model latency ${MODEL}% · 6.80 h</div>` +
+  `<div class="b" style="flex:${LOCAL}">local tools ${LOCAL}% · 1.46 h</div>`;
+
+// tiles
+// A run pulled out of the arm still belongs on the page, but its number must not
+// read like a score. `tu93` was published as E=0.6222 / won=false — a 7/9 defeat
+// it never suffered, because a container restart SIGTERM'd it mid-game. The
+// harness marks that `error`; this view ignored the field.
+const STATUS = {
+  scored:      {label: "",            colour: null},
+  interrupted: {label: "interrupted", colour: "var(--bad)"},
+  exposed:     {label: "exposed",     colour: "var(--tool)"},
+  timeout:     {label: "wall clock",  colour: "var(--tool)"},
+};
+// Ten tiles reading 1.0000 look like one experiment. They are not: the wall
+// clock, the baseline exposure and two instrumentation flags all moved *during*
+// this arm. TIER answers "is this number comparable to one produced today?"
+// before you read the number.
+const TIER = {
+  latest:   {label: "latest",     colour: "var(--good)",      note: "current config"},
+  clean:    {label: "clean",      colour: "var(--ink-faint)", note: "valid score, older instrumentation"},
+  pre4h:    {label: "pre-4h",     colour: "var(--tool)",      note: "ran under the old 2 h wall clock"},
+  excluded: {label: "not a score", colour: "var(--bad)",      note: "pulled out of the arm"},
+};
+const CFG = [["nobase","baselines withheld"],["wall4h","4 h wall clock"],
+             ["think","thinking captured"],["arcn","ARC-notation actions"]];
+
+const cfgStrip = r => CFG.map(([k, title]) =>
+  `<span class="cf${r.cfg && r.cfg[k] ? " on" : ""}" title="${title}: ${r.cfg && r.cfg[k] ? "yes" : "no"}">${k}</span>`
+).join("");
+
+$("tiles").innerHTML = RUNS.map(r => {
+  const st = STATUS[r.status] || STATUS.scored;
+  const ti = TIER[r.tier] || TIER.clean;
+  const val = r.E == null ? "—" : r.E.toFixed(4);
+  const col = r.E == null ? "var(--ink-faint)" : (r.E < 1 ? "var(--bad)" : "var(--ink)");
+  const edge = st.colour || (r.tier === "latest" ? "var(--good)" : null);
+  // The tile and the chip name the same 14 runs. Making only the chip clickable
+  // meant reading a tile, then hunting the matching chip in a second list below.
+  return `
+  <div class="tile" data-k="${r.id}" role="button" tabindex="0"
+       title="Show the span tree for ${r.game}"${edge ? ` style="border-left:3px solid ${edge}"` : ""}>
+    <div class="k">${r.game}${st.label ? ` <span style="color:${st.colour}">· ${st.label}</span>` : ""}</div>
+    <div class="v" style="color:${col}">${val}</div>
+    <div class="n">${r.levels} · ${r.actions} acts · ${fmt(r.wall)} · $${r.cost.toFixed(2)}</div>
+    <div class="n started">${r.started_local ? `started ${r.started_local}` : "start time unknown"}</div>
+    <div class="tier" style="color:${ti.colour}" title="${ti.note}">${ti.label}</div>
+    <div class="cfg">${cfgStrip(r)}</div>
+  </div>`;
+}).join("");
+
+// chips
+const keys = Object.keys(DATA);
+$("chips").innerHTML = keys.map((k,i) => {
+  const r = RUNS.find(x=>x.id===k);
+  const lab = r.E == null ? "—" : r.E.toFixed(3);
+  return `<button class="chip${r.status !== "scored" ? ' lost' : ''}" data-k="${k}" aria-pressed="${i===0}" title="${r.status}">${k.slice(0,4)}<span class="e">${lab}</span></button>`;
+}).join("");
+
+let selected = null;
+
+// The span list for whatever game is showing. showDetail() needs it to find a
+// turn's children — they are linked by `parent`, and without the list a turn can
+// only ever describe itself.
+let CUR = [];
+
+function renderWF(key) {
+  const g = DATA[key];
+  const att = g.attempts[g.attempts.length-1];
+  const spans = att.spans;
+  CUR = spans;
+  const total = Math.max(...spans.map(s => s.t + (s.dur||0))) || 1;
+  $("wfmeta").textContent = `${spans.length} spans · ${att.lines} lines · ${g.attempts.length} attempt${g.attempts.length>1?'s':''}`;
+
+  const rows = spans.slice().sort((a,b) => a.t - b.t || a.depth - b.depth);
+  $("wf").innerHTML = rows.map((s,i) => {
+    const isErr = s.err || s.orphan || (s.name==="Bash" && s.dur >= 119 && s.dur <= 126);
+    const col = isErr ? "var(--bad)" : ({LLM:"var(--llm)", TOOL:"var(--tool)",
+      SAY:"var(--say)", THINK:"var(--think)"}[s.kind] || "var(--ink-faint)");
+    const left = (s.t/total)*100, w = Math.max(((s.dur||0)/total)*100, 0.25);
+    let nm = s.name;
+    if (s.kind === "TOOL" && s.head) nm += ` <span style="color:var(--ink-faint)">${esc(s.head)}</span>`;
+    else if (s.kind === "LLM" && s.ttype) nm += ` <span class="badge b-${s.ttype.replace("+","")}">${s.ttype}</span>`;
+    else if (s.kind === "SAY") nm += ` <span style="color:var(--ink-faint)">${s.chars.toLocaleString()} chars</span>`;
+    else if (s.kind === "THINK") nm += ` <span style="color:var(--ink-faint)">${
+        s.est ? "\u2248" + s.est.toLocaleString() + " tokens" : "volume unknown"
+      }${s.redacted ? " · text withheld" : ""}</span>`;
+    return `<div class="row${isErr?' err':''}" data-i="${i}" role="button" tabindex="0" aria-selected="false">
+      <div class="nm" style="padding-left:${s.depth*11}px">
+        <i class="kindmark" style="background:${col}"></i>${nm}</div>
+      <div class="track"><div class="bar" style="left:${left}%;width:${w}%;background:${col}"></div></div>
+      <div class="dur">${s.dur!=null?fmt(s.dur):'—'}</div>
+    </div>`;
+  }).join("");
+
+  [...$("wf").querySelectorAll(".row")].forEach(el => {
+    const pick = () => {
+      $("wf").querySelectorAll('[aria-selected="true"]').forEach(x=>x.setAttribute("aria-selected","false"));
+      el.setAttribute("aria-selected","true");
+      showDetail(rows[+el.dataset.i]);
+    };
+    el.addEventListener("click", pick);
+    el.addEventListener("keydown", e => { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); pick(); } });
+  });
+  showDetail(null);
+}
+
+function showDetail(s) {
+  if (!s) {
+    $("detail").innerHTML = `<div class="t">No span selected</div>
+      <div style="color:var(--ink-faint);font-size:11.5px">Pick a row above to see its content.</div>`;
+    return;
+  }
+  const rows = [["kind", s.kind], ["start", fmt(s.t)], ["duration", s.dur!=null?fmt(s.dur):"unclosed"]];
+  if (s.model) rows.push(["model", s.model]);
+  if (s.kind === "LLM") {
+    rows.push(["content blocks", `${s.blocks}${s.calls && s.calls.length ? ` · calls ${s.calls.join(", ")}` : ""}`]);
+  }
+  if (s.usage) {
+    const u = s.usage, tot = u.input + u.cache_create + u.cache_read;
+    rows.push(["session input", `${tot.toLocaleString()} (${u.input.toLocaleString()} uncached · ` +
+      `${u.cache_read.toLocaleString()} cache read · ${u.cache_create.toLocaleString()} cache write)`]);
+    rows.push(["session output", u.output.toLocaleString()]);
+  }
+  if (s.cost != null) rows.push(["session cost", `$${s.cost.toFixed(2)}`]);
+  if (s.num_turns != null) rows.push(["turns", s.num_turns]);
+  if (s.subtype) rows.push(["result", `${s.subtype}${s.is_error?" (error)":""}`]);
+  if (s.orphan) rows.push(["\u26a0", "no tool_result — stream ended first"]);
+  if (s.err) rows.push(["\u26a0", "tool reported is_error"]);
+
+  if (s.kind === "THINK") {
+    rows.push(["thinking tokens", s.est ? `\u2248${s.est.toLocaleString()}` : "not counted"]);
+    rows.push(["signature", `${(s.sig||0).toLocaleString()} chars`]);
+  }
+  if (s.kind === "LLM" && s.think_tokens) rows.push(["thinking tokens", `\u2248${s.think_tokens.toLocaleString()}`]);
+  if (s.think_tokens != null && s.kind === "CHAIN") rows.push(["thinking tokens", `\u2248${s.think_tokens.toLocaleString()} (peak block ${(s.think_peak||0).toLocaleString()})`]);
+  if (s.kind === "SAY" || s.kind === "THINK") rows.push(["content", `${s.chars.toLocaleString()} chars`]);
+  const thinkNote = (s.kind === "THINK" && s.redacted)
+    ? `<div class="note"><b>The text is withheld; the size is not.</b> Every thinking block arrives
+       with <code>thinking: ""</code> — stripped by Claude Code's <code>stream-json</code> emitter,
+       not by API redaction (the type is <code>thinking</code>, not <code>redacted_thinking</code>)
+       and not by this harness. It is gone from all 149 session files on the machine, and
+       <code>--include-partial-messages</code> does not recover it either.
+       <b>But the token counter does survive</b>, as <code>system/thinking_tokens</code> events that
+       reset at each block and sit immediately before it — which is where the
+       \u2248${(s.est||0).toLocaleString()} above comes from. Signature length, by contrast, is not a
+       usable proxy: its correlation with block wall time is +0.006.</div>` : "";
+  // The per-turn-token-count note used to print here on every LLM span. It is a
+  // paragraph of standing caveat, identical on all 1,578 turns, sitting between
+  // you and the payload you clicked for. The fact still holds -- usage on an
+  // `assistant` event is a streaming partial that never settles -- but it belongs
+  // in the findings below the tree, not stamped on every selection.
+  const note = "";
+
+  // **A turn shows all of its parts at once.** Selecting a turn used to describe
+  // only the turn, so reading one meant clicking its thinking, then its text,
+  // then each tool call, losing the previous payload every time. The components
+  // are already children of the turn; lay them out side by side and one click
+  // reads the whole turn.
+  const kids = s.kind === "LLM" ? CUR.filter(x => x.parent === s.id) : [];
+  const KIND = {THINK: "thinking", SAY: "assistant text", TOOL: "tool"};
+  // `> 0`, not `> 1`. A turn span carries no payload of its own -- `input`/`out`
+  // live on the child -- so gating on "more than one component" left the 309
+  // single-component turns showing metadata and nothing else, which is the exact
+  // problem this block exists to fix.
+  const columns = kids.length ? `<div class="cols">${kids.map(k => {
+    const body = [pane("input", k.input), imgPane(k), pane("output", k.out),
+                  pane("text", k.text), pane("thinking", k.thinking)].join("");
+    const head = `${KIND[k.kind] || k.kind}${k.kind === "TOOL" ? ` · ${esc(k.name)}` : ""}`;
+    const meta = k.dur != null ? fmt(k.dur) : "";
+    return `<div class="col${k.err ? " bad" : ""}">
+      <div class="colhead"><span>${head}</span><span>${meta}</span></div>
+      ${body || `<div class="note">no payload — ${
+        k.kind === "THINK" && k.redacted ? "thinking body stripped by the CLI" : "empty"}</div>`}
+    </div>`;
+  }).join("")}</div>` : "";
+
+  // When the columns render, they already carry every payload this turn has --
+  // the turn's own `text` IS the SAY child's text, so printing both showed the
+  // same string twice, once above the columns and once inside them.
+  const own = columns ? "" :
+    `${pane("input", s.input)}${imgPane(s)}${pane("output", s.out)}` +
+    `${pane("assistant text", s.text)}${pane("thinking", s.thinking)}`;
+
+  $("detail").innerHTML =
+    `<div class="t">${s.name}</div>
+     <dl>${rows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+     ${note}${thinkNote}${own}${columns}`;
+}
+// **One size for every image, remembered.** The control writes a CSS variable on
+// :root rather than styling the current <img>, so changing it here retargets every
+// image on the page -- and persists across selections and reloads, because having
+// to redrag the slider on each span is the whole annoyance.
+let shotH = 420;
+try { shotH = parseInt(localStorage.getItem("ccarc3.shotH")) || 420; } catch (e) {}
+document.documentElement.style.setProperty("--shot-h", shotH + "px");
+
+// Span-tree geometry. Persisted like --shot-h, and set on :root for the same
+// reason: renderWF() replaces the tree's innerHTML on every selection, so a size
+// stored on the pane itself would reset each time you clicked a different game.
+const tracePane = document.getElementById("tracepane");
+const gutter = document.getElementById("gutter");
+const store = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const load  = (k, d) => { try { return parseFloat(localStorage.getItem(k)) || d; } catch (e) { return d; } };
+
+// Geometry is four numbers, all on :root so they survive renderWF() replacing the
+// tree's innerHTML. `w: 0` means "auto" -- fill the wrap -- until dragged once.
+const geom = {
+  w:  load("ccarc3.wfW", 0),
+  h:  load("ccarc3.wfH", 620),
+  ml: load("ccarc3.wfML", 0),
+  mt: load("ccarc3.wfMT", 0),
+};
+function applyGeom() {
+  const s = document.documentElement.style;
+  s.setProperty("--wf-h", Math.round(geom.h) + "px");
+  s.setProperty("--wf-w", geom.w ? Math.round(geom.w) + "px" : "auto");
+  s.setProperty("--wf-ml", Math.round(geom.ml) + "px");
+  s.setProperty("--wf-mt", Math.round(geom.mt) + "px");
+}
+function saveGeom() {
+  store("ccarc3.wfW", Math.round(geom.w));  store("ccarc3.wfH", Math.round(geom.h));
+  store("ccarc3.wfML", Math.round(geom.ml)); store("ccarc3.wfMT", Math.round(geom.mt));
+}
+let splitPct = Math.min(85, Math.max(20, load("ccarc3.wfSplit", 53)));
+document.documentElement.style.setProperty("--wf-split", splitPct + "%");
+applyGeom();
+
+// One handler for all four edges. Dragging N or W has to move the offset as well
+// as the size, or the opposite edge walks across the screen while you drag.
+let drag = null;
+tracePane.addEventListener("pointerdown", (e) => {
+  const h = e.target.closest(".eh"); if (!h) return;
+  e.preventDefault();
+  h.setPointerCapture(e.pointerId);
+  h.classList.add("drag");
+  document.body.classList.add("sizing");
+  drag = {edge: h.dataset.edge, x: e.clientX, y: e.clientY, el: h,
+          // w may be 0 ("auto"); measure what auto actually resolved to.
+          w: geom.w || tracePane.getBoundingClientRect().width,
+          h: geom.h, ml: geom.ml, mt: geom.mt};
+});
+tracePane.addEventListener("pointermove", (e) => {
+  if (!drag || !drag.el.hasPointerCapture(e.pointerId)) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (drag.edge === "e") geom.w = Math.max(420, drag.w + dx);
+  if (drag.edge === "s") geom.h = Math.max(240, drag.h + dy);
+  if (drag.edge === "w") { const w = Math.max(420, drag.w - dx); geom.ml = drag.ml + (drag.w - w); geom.w = w; }
+  if (drag.edge === "n") { const t = Math.max(240, drag.h - dy); geom.mt = drag.mt + (drag.h - t); geom.h = t; }
+  applyGeom();
+});
+tracePane.addEventListener("pointerup", (e) => {
+  if (!drag) return;
+  if (drag.el.hasPointerCapture(e.pointerId)) drag.el.releasePointerCapture(e.pointerId);
+  drag.el.classList.remove("drag");
+  document.body.classList.remove("sizing");
+  drag = null;
+  saveGeom();
+});
+
+function setSplit(pct) {
+  splitPct = Math.min(85, Math.max(20, pct));
+  document.documentElement.style.setProperty("--wf-split", splitPct + "%");
+}
+gutter.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  gutter.setPointerCapture(e.pointerId);       // keeps events coming if the
+  gutter.classList.add("drag");                // pointer outruns a 6px target
+  document.body.classList.add("splitting");
+});
+gutter.addEventListener("pointermove", (e) => {
+  if (!gutter.hasPointerCapture(e.pointerId)) return;
+  const r = tracePane.getBoundingClientRect();
+  setSplit((e.clientX - r.left) / r.width * 100);
+});
+gutter.addEventListener("pointerup", (e) => {
+  if (gutter.hasPointerCapture(e.pointerId)) gutter.releasePointerCapture(e.pointerId);
+  gutter.classList.remove("drag");
+  document.body.classList.remove("splitting");
+  store("ccarc3.wfSplit", Math.round(splitPct));
+});
+// Keyboard, because a 6px drag target is not an accessible control on its own.
+gutter.addEventListener("keydown", (e) => {
+  const d = e.key === "ArrowLeft" ? -2 : e.key === "ArrowRight" ? 2 : 0;
+  if (!d) return;
+  e.preventDefault(); setSplit(splitPct + d); store("ccarc3.wfSplit", Math.round(splitPct));
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "shotsize") return;
+  shotH = +e.target.value;
+  document.documentElement.style.setProperty("--shot-h", shotH + "px");
+  const out = document.getElementById("shotout");
+  if (out) out.textContent = shotH + "px";
+  try { localStorage.setItem("ccarc3.shotH", shotH); } catch (err) {}
+});
+
+function imgPane(s) {
+  // The tool_result for a Read of an image is the literal string "[image]" — the
+  // picture is never in the stream. These files were written by the model itself
+  // (arc.png) and still sit beside the trace, so the frame it looked at can be
+  // shown rather than described. No filename was read twice across the arm, so
+  // the file on disk is the one that Read returned.
+  if (s.img) return `<div class="pane"><div class="lbl"><span>image the model saw</span>` +
+    `<span class="sizer"><label for="shotsize">size</label>` +
+    `<input id="shotsize" type="range" min="160" max="1400" step="20" value="${shotH}">` +
+    `<output id="shotout">${shotH}px</output></span></div>` +
+    `<div class="shot"><img src="${s.img}" alt="grid frame the solver rendered"></div></div>`;
+  if (s.kind === "TOOL" && /\.png|\.jpe?g/i.test(s.input || ""))
+    return `<div class="pane"><div class="lbl"><span>image the model saw</span></div>` +
+      `<div class="note">File is no longer on disk — this workspace was rebuilt after the run ` +
+      `(101 of 175 image reads across the arm). The stream only ever carried <code>[image]</code>.</div></div>`;
+  return "";
+}
+function pane(label, body) {
+  if (!body) return "";
+  const n = body.length;
+  return `<div class="pane"><div class="lbl"><span>${label}</span>` +
+         `<span>${n.toLocaleString()} chars${n > 3000 ? " · scroll" : ""}</span></div>` +
+         `<pre>${esc(body)}</pre></div>`;
+}
+const esc = (t) => String(t).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+// One selection path, two ways in — a tile above or a chip below. Keeping them
+// as separate handlers let the two lists disagree about what was selected.
+function selectGame(k, scroll) {
+  if (!DATA[k]) return;
+  $("chips").querySelectorAll(".chip").forEach(x =>
+    x.setAttribute("aria-pressed", String(x.dataset.k === k)));
+  $("tiles").querySelectorAll(".tile").forEach(x =>
+    x.classList.toggle("sel", x.dataset.k === k));
+  renderWF(k);
+  if (scroll) document.getElementById("wf").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+$("chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if (b) selectGame(b.dataset.k, false);
+});
+$("tiles").addEventListener("click", e => {
+  const t = e.target.closest(".tile"); if (t) selectGame(t.dataset.k, true);
+});
+$("tiles").addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const t = e.target.closest(".tile"); if (!t) return;
+  e.preventDefault(); selectGame(t.dataset.k, true);
+});
+selectGame(keys[0], false);
+
+// findings
+$("findings").innerHTML = "\n<div class=\"finding warn\">\n  <h3>The Bash tool's 120 s default truncates in-game action loops</h3>\n  <p class=\"prose\">Six tool calls sit at 120.0&ndash;120.4 s &mdash; the shape of a cap, not of work.\n  A shell <code>timeout 300</code> inside the command does not help; the tool's own limit fires first.\n  Four were moved to the background, so the loop kept spending real actions while the solver could no\n  longer see the output; one was killed outright with <code>exit 143</code> partway through a replay\n  loop issuing <code>client.act()</code>.\n  <strong>Every affected run still scored 1.0000</strong>, so this is lost wall clock and lost\n  observability, not lost points. Doctrine \u00a78 now requires an explicit\n  <code>timeout</code> (ceiling 600000 ms) on any call that drives the game.</p>\n  <div class=\"scroll\"><table>\n    <thead><tr><th>game</th><th>duration</th><th style=\"text-align:left\">command</th></tr></thead>\n    <tbody><tr class='bad'><td>bp35</td><td>129.6s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>dc22</td><td>123.0s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>re86</td><td>122.4s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"timeout 600 python -c \\\"\\nimport sys; sys.path.insert(0,'notes')\\nfrom auto</td></tr><tr class='bad'><td>g50t</td><td>120.4s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>r11l</td><td>120.2s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>su15</td><td>120.2s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>r11l</td><td>120.1s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>tr87</td><td>120.1s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>tr87</td><td>120.0s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>wa30</td><td>119.0s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>wa30</td><td>117.8s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr><tr class='bad'><td>su15</td><td>117.5s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"task_id\": \"bycsncs4r\",\n \"block\": true,\n \"timeout\": 600000\n}</td></tr><tr class='bad'><td>wa30</td><td>116.4s</td><td style='text-align:left;white-space:normal;font-size:11px'>{\n \"command\": \"cd /tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/sc</td></tr></tbody>\n  </table></div>\n</div>\n\n<div class=\"finding ok\">\n  <h3>The ARC API has never pushed back</h3>\n  <p class=\"prose\">Across 17,889 stream lines and ten games: zero HTTP errors, zero rate limits, zero\n  retries. Every apparent hit on <code>429</code> or <q>rate limit</q> turned out to be either the\n  number 429 in an action count or Claude's own quota telemetry. Scorecards are opened per run, so\n  concurrent games would not collide on the ARC side.</p>\n</div>\n\n<div class=\"finding\">\n  <h3>98 tool calls returned <code>is_error</code>, and none of them mattered</h3>\n  <p class=\"prose\">Spread evenly across all ten games, these are ordinary failed probes &mdash;\n  a syntax slip in an ad-hoc script, a gate refusal, a wrong action shape. The doctrine treats\n  refutation as information, and the traces bear that out: no run's score tracks its error count.</p>\n</div>\n\n<div class=\"finding warn\">\n  <h3>The model's reasoning is missing from the stream, and it is the CC harness dropping it</h3>\n  <p class=\"prose\">All <b>883</b> thinking blocks arrive with <code>thinking: \"\"</code> \u2014 but each\n  carries a signature of <b>356 to 71,664 characters</b>, and a signature is computed over the\n  thinking text. A fixed-size signature would not vary 200&times;, so the model demonstrably produced\n  substantial reasoning. The block type is <code>thinking</code>, not <code>redacted_thinking</code>,\n  which rules out API-level redaction; the body is being stripped by Claude Code's\n  <code>stream-json</code> emitter on the way out.</p>\n  <p class=\"prose\">It is stripped <em>everywhere</em>, not just here: zero non-empty thinking blocks\n  across all <b>149</b> session files on this machine, including interactive ones. Adding\n  <code>--include-partial-messages</code> does not help either \u2014 the <code>thinking_delta</code>\n  events it emits carry <code>thinking: \"\"</code> and an <code>estimated_tokens</code> counter in\n  place of the text, with the real payload going out as a <code>signature_delta</code> we cannot\n  decrypt. So the content is genuinely gone, for past runs and future ones alike.</p>\n  <p class=\"prose\"><b>The volume is not gone, and it was already on disk.</b> Those same\n  <code>estimated_tokens</code> counters arrive as <code>system/thinking_tokens</code> events in\n  every stream we saved \u2014 <b>1.65 million thinking tokens across eleven games</b>, recoverable with\n  no re-run. Signature length is <em>not</em> a usable stand-in (its correlation with block wall time\n  is +0.006), but this counter is the real measure, and it is on the session span of every game.</p>\n  <p class=\"prose\">The first thing it shows is uncomfortable: <b><code>tn36</code>, the only run that\n  scored below 1.0, thought the most of any game</b> \u2014 334,091 thinking tokens and a 25,900 peak,\n  against a ten-game median near 113,000. It did not fail for want of deliberation.</p>\n</div>\n\n<div class=\"finding\">\n  <h3>962 of 972 turns act; only 10 stop to talk</h3>\n  <p class=\"prose\">Turns split three ways: <b>794 call a tool and say nothing</b>, <b>168 say\n  something and call a tool</b> \u2014 those are where the model explains itself, and they are the ones\n  worth reading \u2014 and exactly <b>10 are text with no call</b>, one per game, always the last. There\n  are no thinking-only turns and no empty ones. The solver never pauses to narrate mid-run, and the\n  pattern is uniform: <code>su15</code> at 199 turns behaves like <code>sb26</code> at 29.</p>\n</div>\n\n<div class=\"finding\">\n  <h3>No solver has ever spawned a subagent</h3>\n  <p class=\"prose\">Zero <code>Task</code> or <code>Agent</code> calls across all ten games, so every\n  one of the 11250 spans belongs to the\n  main agent and the tree is two deep, never three. An earlier draft of this page claimed otherwise:\n  385 events do carry <code>parent_tool_use_id</code>, which looks like subagent nesting, but every\n  one is a <code>tool_progress</code> update rather than a turn. Counting the field is not the same as\n  counting agents.</p>\n  <p class=\"prose\">The 11 <code>TaskOutput</code> calls are not delegation either &mdash; they are the\n  solver retrieving output from <em>backgrounded Bash calls</em>, which is the downstream cost of the\n  120 s cap above. At a 38 s median they are the second most expensive tool in the set, and they exist\n  only because a loop got detached.</p>\n</div>\n";
+</script>
+
+</script>
