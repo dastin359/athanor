@@ -43,6 +43,60 @@ SCRATCH = pathlib.Path(
 )
 
 
+def live_workspaces() -> set[str]:
+    """Every workspace a running process is currently sitting in.
+
+    **This restore wrote a banked result on top of a run that was in flight.**
+    Attempt directories are numbered per game, so a re-run of a game whose
+    previous attempt was preserved reuses `attempt_1` — and the restore, seeing
+    no `clean_result.json`, faithfully copied the old run's `result.json`,
+    `trace.jsonl` and `scorecard.json` over the live solver's own. The result
+    was a workspace holding one run's outcome and another run's trace, and a
+    `clean_result.json` that told the driver to skip the game it was mid-way
+    through playing.
+
+    Idempotence is not enough when the destination is being written by someone
+    else. Nothing here touches a directory that a live process has open.
+    """
+    live = set()
+    for proc in pathlib.Path("/proc").glob("[0-9]*"):
+        try:
+            cwd = (proc / "cwd").resolve()
+        except (OSError, RuntimeError):
+            continue
+        live.add(str(cwd))
+    return live
+
+
+def card_corroborates(src: pathlib.Path, result: dict) -> str:
+    """Empty when ARC's own card agrees with the result, else why it does not.
+
+    The scorecard is the authoritative per-level count and the only independent
+    check on a run. A card that stopped updating mid-game still leaves a
+    plausible-looking `result.json` — the first clean rollout finished 8/8 while
+    its card froze at level 3, because a proxy bug was 404ing the reads and
+    actions are not card-scoped. Banking that means banking a score no source
+    but ourselves can confirm.
+
+    Two sources that should agree, compared. It is the only failure mode that
+    has actually been caught here.
+    """
+    card_gz = src / "scorecard.json.gz"
+    if not card_gz.exists():
+        return "no scorecard preserved"
+    try:
+        card = json.loads(gzip.open(card_gz).read())
+    except (OSError, ValueError):
+        return "scorecard unreadable"
+    entry = (card.get("cards") or {}).get(result.get("game_id")) or {}
+    done = entry.get("levels_completed") or []
+    best = max(done) if done else 0
+    reached = result.get("levels_reached") or 0
+    if best < reached:
+        return f"card shows {best} levels, result claims {reached}"
+    return ""
+
+
 def baselines_in(src: pathlib.Path) -> str:
     """Name the first preserved file that still hands over a baseline, if any.
 
@@ -77,6 +131,7 @@ def main() -> int:
         print("no preserved clean rollouts yet")
         return 0
 
+    live = live_workspaces()
     restored, present, skipped = [], 0, []
     for game_dir in sorted(EVIDENCE.iterdir()):
         if not game_dir.is_dir():
@@ -102,8 +157,14 @@ def main() -> int:
             if leaked := baselines_in(src):
                 skipped.append(f"{gid}/{attempt.name} (contaminated: {leaked})")
                 continue
+            if why := card_corroborates(src, result):
+                skipped.append(f"{gid}/{attempt.name} (uncorroborated: {why})")
+                continue
 
             dst = out / gid / attempt.name / gid
+            if str(dst.resolve()) in live:
+                skipped.append(f"{gid}/{attempt.name} (a solver is running there)")
+                break
             if not args.dry_run:
                 dst.mkdir(parents=True, exist_ok=True)
                 for gz in src.glob("*.gz"):

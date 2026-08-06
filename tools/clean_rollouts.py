@@ -71,8 +71,16 @@ from athanor.ccarc3.session import run_game   # noqa: E402
 # strip itself was never broken -- it raises if one file still holds a baseline.
 # It was simply never wired in, which fails *successfully* and is invisible in
 # every log. assert_installed() turns that into an abort.
-ab.install()
-ab.assert_installed()
+#
+# **Called from main(), not at import.** At module scope it made importing this
+# file start a proxy and demand an API key, so `verdict()` -- the function that
+# decides whether a run counts -- could not be imported to test. That is the same
+# shape as the strip's own queue-at-import, and it is the reason the strip went
+# untested for its whole life. Logic that decides what is admissible has to be
+# reachable without launching anything.
+def install_strip() -> None:
+    ab.install()
+    ab.assert_installed()
 
 # The five interrupted-but-winning environments first, shortest arm wall time
 # first within them: bank what can finish before betting a window on what
@@ -193,7 +201,42 @@ def verdict(game_dir: pathlib.Path) -> tuple[str, dict | None]:
         return "unreadable", None
     if data.get("error"):
         return "interrupted", data
+    if why := uncorroborated(game_dir, data):
+        return f"uncorroborated ({why})", data
     return "clean", data
+
+
+def uncorroborated(game_dir: pathlib.Path, data: dict) -> str:
+    """Why ARC's own card disagrees with the result, or "" when it agrees.
+
+    **A run nobody but us can confirm is not a clean run.** `scorecard.json` is
+    the server's per-level count and the only source independent of our own
+    trace; RHAE is scored from it. When a proxy bug started 404ing the reads, the
+    first rollout of `sb26` finished 8/8 in 124 actions with a card frozen at
+    level 3 -- and nothing else showed a symptom, because actions carry a `guid`
+    and are not card-scoped. The game plays perfectly and the numbers you score
+    from stop moving.
+
+    So the card is checked against the result before a run is banked, rather than
+    scored from later and hoped over. `levels_completed` is the comparison, not
+    the action count: our ledger and ARC's have always differed by a few actions
+    for reasons already documented, but a card that has seen fewer levels than we
+    claim to have cleared is a card that stopped listening.
+    """
+    card_file = game_dir / "scorecard.json"
+    if not card_file.exists():
+        return "no scorecard"
+    try:
+        card = json.loads(card_file.read_text())
+    except json.JSONDecodeError:
+        return "scorecard unreadable"
+    entry = (card.get("cards") or {}).get(data.get("game_id")) or {}
+    done = entry.get("levels_completed") or []
+    best = max(done) if done else 0
+    reached = data.get("levels_reached") or 0
+    if best < reached:
+        return f"card {best} vs result {reached} levels"
+    return ""
 
 
 def attempts_so_far(game_dir: pathlib.Path) -> int:
@@ -219,6 +262,7 @@ def completed_attempts(game_dir: pathlib.Path, game_id: str) -> int:
 
 
 def main() -> int:
+    install_strip()
     OUT.mkdir(parents=True, exist_ok=True)
     infos = {g.game_id: g for g in list_games()}
     print("CLEAN ONE-SHOT ROLLOUTS — fresh every time, interrupted attempts discarded",
@@ -319,7 +363,10 @@ def one_pass(games: list[str], infos: dict) -> None:
                   f"{data['levels_reached']}/{data['levels_total']}, "
                   f"won={data['won']}, {data.get('actions_used')} actions", flush=True)
         else:
-            reason = (data or {}).get("error", state)
+            # `.get("error", state)` returns None rather than the fallback:
+            # `collect_outcome` writes the key with a null value on a clean exit,
+            # so the default never applies and a discard printed "— None".
+            reason = (data or {}).get("error") or state
             print(f"    discarded after {mins:.0f} min — {reason}", flush=True)
 
 
