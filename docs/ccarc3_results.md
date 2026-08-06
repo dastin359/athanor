@@ -2451,14 +2451,19 @@ All 25 ARC-AGI-3 public environments, played with the human medians withheld —
 `CCARC3_HIDE_BASELINES` on, no control arm, every run scored against ARC's own
 `actions_by_level`.
 
-| | |
-|---|---|
-| environments scored | **25 of 25** |
-| wins | **22 / 25** |
-| sum `E` | **23.6667** |
-| mean `E` | 0.9467 |
-| **total score** | **94.67%** |
-| total cost | $696.19 |
+> **Corrected 2026-08-06.** `ka59` is void — it queried `/api/games` for its own
+> baselines and disclosed doing so. The figures below are stated both ways; the
+> 24-game row is the honest one. See the contamination section for how the door
+> was left open.
+
+| | as first published | `ka59` removed |
+|---|---|---|
+| environments scored | 25 of 25 | **24 of 24** |
+| wins | 22 / 25 | **21 / 24** |
+| sum `E` | 23.6667 | **22.6667** |
+| mean `E` | 0.9467 | **0.9444** |
+| **total score** | 94.67% | **94.44%** |
+| total cost | $696.19 | $673.69 |
 
 Published Opus 5 on the same public demo set, 24 Jul 2026, High effort: **40.68%**.
 
@@ -2484,7 +2489,7 @@ Published Opus 5 on the same public demo set, 24 Jul 2026, High effort: **40.68%
 | `ls20` | 1.0000 | 1.1500 | 7/7 | 325 | 776 | 0.42× |
 | `bp35` | 1.0000 | 1.1481 | 9/9 | 374 | 651 | 0.57× |
 | `sb26` | 1.0000 | 1.1436 | 8/8 | 125 | 213 | 0.59× |
-| `ka59` | 1.0000 | 1.1318 | 7/7 | 364 | 730 | 0.50× |
+| `ka59` | ~~1.0000~~ **void** | 1.1318 | 7/7 | 364 | 730 | 0.50× |
 | `tu93` | 1.0000 | 1.1259 | 9/9 | 185 | 462 | 0.40× |
 | `re86` | 1.0000 | 1.0974 | 8/8 | 928 | 1255 | 0.74× |
 | `lf52` | 1.0000 | 1.0530 | 10/10 | 941 | 1339 | 0.70× |
@@ -2715,14 +2720,42 @@ run launched through my drivers got the unstripped workspace.
 table ships inside `DOCTRINE.md` to every solver, so each re-run and clean rollout
 of those three read a summary of its own previous failure.
 
+**3. The key shim was never switched on** (found 2026-08-06 by proofreading, after
+the first two). `arc_proxy` exists because a solver holding `ARC_API_KEY` can
+`GET /api/games` and read `baseline_actions` for all 25 environments — file-level
+sanitation cannot touch that. It was written, unit-tested, end-to-end tested, and
+**nothing anywhere set `CCARC3_PROXY_URL`**, so the branch in `build_workspace`
+that drops the key never once ran. Every game in this project was played by a
+solver holding the credential.
+
+The cap was the same shape of mistake one level down: stripping `action_budget`
+from `meta.json` left `CCARC3_MAX_ACTIONS` in the child's environment, and
+`budget_multiple: float = 5.0` is a default in the package source on the solver's
+`PYTHONPATH`, so cap/5 recovers the baseline total exactly. Both are closed as of
+`0d416c7` — the proxy starts from `install()`, holds the key, refuses
+`/api/games`, and counts the actions itself.
+
 **Blast radius**, measured by testing whether each run's spans contain its own
-game's actual baseline numbers:
+game's actual per-level baseline array:
 
 | set | leaked | clean |
 |---|---|---|
-| 25-game arm | **0** | **25** |
+| 25-game arm | **1** (`ka59`) | **24** |
 | 3 resumed re-runs | **3** | 0 |
-| 8 clean rollouts | **8** | 0 |
+| 7 clean rollouts | **7** | 0 |
+
+**`ka59` is the one arm run that used the open door, and it said so itself:**
+*"the harness deliberately withholds the human baselines, but they are served by
+the game API's own `/api/games` endpoint, which I queried while diagnosing the
+404. I used them for pacing … and for the arithmetic above."* Nine `/api/games`
+references in its transcript; the reply printed
+`[28, 109, 51, 51, 33, 132, 326]` — its own array. The published trace audit had
+already tiered it `not a score`; **this file was still counting it at 1.0000**,
+and that is corrected below.
+
+The other 24 arm runs show no trace of their own baselines in a median 740 kB of
+span text each. Stated precisely: for the arm, *prevention* was absent for all 25
+— the key was in every environment — and what clears those 24 is detection.
 
 **What this voids.** The 100.00% headline, which depended on the three re-runs.
 The five "clean rollout" conversions, which were not clean draws. And the decisive
@@ -2730,9 +2763,25 @@ experiment — `sp80` 0.4762 and `tn36` 1.0000 were built to separate "§0b work
 from "the notes work", and both runs were handed their own baselines *and* a
 summary of their own prior loss.
 
-**What survives.** The 25-game arm: baselines stripped, budget hidden, and run
-before §0b existed so no doctrine could describe a prior attempt. **23.6667 of 25,
-94.67%**, with 22 games at 1.0000 and three genuine losses.
+**What survives, and at what number.** Two figures, and they must not be
+conflated:
+
+| set | criterion | honest figure |
+|---|---|---|
+| baseline-free arm, minus `ka59` | strip installed, resume allowed | **22.6667 / 24 = 94.44%** |
+| strict clean set | one solver process, no container restart | **18.6667 / 20 = 93.33%** |
+
+The arm figure was **23.6667 / 25 = 94.67%**; removing `ka59`, which read its own
+baselines off `/api/games`, takes it to 22.6667 / 24. That game now has no valid
+score at all — its arm run is contaminated and the rollout meant to replace it is
+void with the rest.
+
+The strict clean set is back to the pre-rollout 20 games. Every one of the five
+conversions that walked it from 18.6667/20 up to 23.6667/25 was a void rollout,
+so the whole ladder in the table below comes off the board. **23.6667/25 appears
+twice in this file meaning two different things** — the arm sum over 25 games, and
+the clean set after five conversions — which is a coincidence of arithmetic, not a
+corroboration.
 
 There is a test asserting the budget stays out of `CLAUDE.md`, `session.py` and
 the prompt. It never checked `meta.json`, which is where both numbers were.
@@ -2799,13 +2848,16 @@ The clean set moves from 20 games to 21, **19.6667 of 21**.
 point too high in conversation — each converted game adds 1.0000 to the numerator
 *and* one game to the denominator, and I was adding only the numerator:
 
-| after | clean set | |
-|---|---|---|
-| `sb26` | 19.6667 / 21 | 93.65% |
-| `ft09` | 20.6667 / 22 | 93.94% |
-| `ka59` | 21.6667 / 23 | 94.20% |
-| `wa30` | 22.6667 / 24 | 94.44% |
-| `lf52` | **23.6667 / 25** | **94.67%** |
+| after | clean set | | |
+|---|---|---|---|
+| `sb26` | 19.6667 / 21 | 93.65% | **void** |
+| `ft09` | 20.6667 / 22 | 93.94% | **void** |
+| `ka59` | 21.6667 / 23 | 94.20% | **void** |
+| `wa30` | 22.6667 / 24 | 94.44% | **void** |
+| `lf52` | ~~23.6667 / 25~~ | ~~94.67%~~ | **void** |
+
+Every rung of that ladder is a void rollout, so the clean set stays at its
+starting point: **18.6667 / 20 = 93.33%**.
 
 The denominator grows because these five were *excluded* from the original clean
 20, not scored zero in it. Converting one moves it from the interrupted set into
