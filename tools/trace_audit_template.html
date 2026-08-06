@@ -380,6 +380,9 @@ const TIER = {
   clean:    {label: "clean",      colour: "var(--ink-faint)", note: "valid score, older instrumentation"},
   pre4h:    {label: "pre-4h",     colour: "var(--tool)",      note: "ran under the old 2 h wall clock"},
   excluded: {label: "not a score", colour: "var(--bad)",      note: "pulled out of the arm"},
+  // Measured, not asserted: the run's own per-level baselines appear somewhere
+  // in its transcript, so it was not playing the game the arm is scoring.
+  void:     {label: "contaminated", colour: "var(--bad)",     note: "solver could read its own baselines — not a valid draw"},
 };
 const CFG = [["nobase","baselines withheld"],["wall4h","4 h wall clock"],
              ["think","thinking captured"],["arcn","ARC-notation actions"]];
@@ -393,7 +396,10 @@ $("tiles").innerHTML = RUNS.map(r => {
   const ti = TIER[r.tier] || TIER.clean;
   const val = r.E == null ? "—" : r.E.toFixed(4);
   const col = r.E == null ? "var(--ink-faint)" : (r.E < 1 ? "var(--bad)" : "var(--ink)");
-  const edge = st.colour || (r.tier === "latest" ? "var(--good)" : null);
+  // Contamination outranks the status stripe: a void run's score is not a
+  // result, so the tile must not read as one at a glance.
+  const edge = r.tier === "void" ? "var(--bad)"
+             : st.colour || (r.tier === "latest" ? "var(--good)" : null);
   // The tile and the chip name the same 14 runs. Making only the chip clickable
   // meant reading a tile, then hunting the matching chip in a second list below.
   return `

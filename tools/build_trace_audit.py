@@ -30,6 +30,7 @@ import datetime as dt
 import gzip
 import json
 import pathlib
+import re
 import statistics
 import sys
 
@@ -343,6 +344,49 @@ def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
     return row
 
 
+def mark_contaminated(data: dict, runs: list) -> list[str]:
+    """Void every run whose solver could read its own game's baselines.
+
+    **The tier was a label; this makes it a measurement.** `clean` on these tiles
+    only ever meant "one solver process, no container restart" -- an
+    infrastructure property. It was never a contamination check, so when the
+    baseline strip turned out not to be installed for the re-runs and rollouts,
+    ten void runs sat on the page wearing a green badge that read as
+    endorsement.
+
+    The test is the per-level array itself, searched for in everything the solver
+    saw or said. Not the total and not the budget: both are numbers that occur by
+    coincidence in a 700 kB span dump, and a false void is as bad as a false
+    clean. The array is not a coincidence -- if it is in the transcript, the
+    solver was handed it.
+
+    Needs the live `/api/games` to know the arrays. Without it nothing is marked,
+    and the page says so rather than quietly downgrading the check.
+    """
+    try:
+        sys.path.insert(0, str(REPO / "src"))
+        from athanor.ccarc3 import list_games  # noqa: PLC0415
+
+        base = {g.game_id: list(g.baseline_actions) for g in list_games()}
+    except Exception as exc:  # noqa: BLE001
+        print(f"    contamination check SKIPPED ({exc.__class__.__name__}): "
+              f"baselines unreachable, tiers left as they were", file=sys.stderr)
+        return []
+
+    voided = []
+    for rid, entry in data.items():
+        arr = base.get(rid.split("@")[0])
+        if not arr:
+            continue
+        pattern = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in arr) + r"\s*[\])]"
+        if re.search(pattern, json.dumps(entry.get("attempts", []))):
+            voided.append(rid)
+    for row in runs:
+        if row.get("id") in voided and row.get("tier") != "excluded":
+            row["tier"] = "void"
+    return sorted(voided)
+
+
 def summarise(data: dict) -> dict:
     """Headline figures, derived from the spans actually on the page."""
     bash: list[float] = []
@@ -466,7 +510,12 @@ def main() -> int:
         print(f"  {gid}: {verb}, {len(entry['attempts'])} attempt(s), {spans} spans")
         added.append(gid)
 
-    if added and not args.no_save:
+    voided = mark_contaminated(data, runs)
+    if voided:
+        print(f"VOID: {len(voided)} run(s) could read their own baselines — "
+              f"{', '.join(voided)}")
+
+    if (added or voided) and not args.no_save:
         with gzip.open(STORE / "spans.json.gz", "wt") as fh:
             json.dump(data, fh)
         with gzip.open(STORE / "runs.json.gz", "wt") as fh:

@@ -47,15 +47,28 @@ mkdir -p "$SP"
 ln -sf "$REPO/tools/refresh_audit.sh" "$SP/refresh_audit.sh"
 
 # 3+4. Fingerprint and banked results.
+#
+# **Failures are reported, not swallowed.** These two restores are what stop a
+# replacement from presenting finished games as unstarted, so a driver relaunched
+# after one silently re-runs them -- the exact failure the last block of this
+# script refuses to tolerate from `refresh_audit.sh`. `2>/dev/null` here read as
+# "nothing to restore" whether that was true or the script had crashed.
 bash "$REPO/tools/box_fingerprint.sh" >/dev/null 2>&1 && echo "fingerprint logged"
-python3 "$REPO/tools/restore_banked_results.py" 2>/dev/null | head -1
-# Same problem, different experiment: the rollout driver reads its banked
-# markers off the scratchpad, so a replacement makes finished games look
-# unstarted. Restores only attempts that finished without an error.
-python3 "$REPO/tools/restore_clean_rollouts.py" 2>/dev/null | head -1
+for restore in restore_banked_results restore_clean_rollouts; do
+  # The rollout driver reads its banked markers off the scratchpad too, and
+  # restores only attempts that finished without an error.
+  if out="$(python3 "$REPO/tools/$restore.py" 2>&1)"; then
+    echo "$out" | head -1
+  else
+    echo "restore: $restore.py FAILED -- finished games may look unstarted"
+    echo "$out" | tail -3
+  fi
+done
 
 # What is running, argv-element-exact -- a substring match finds this script.
-for name in supervisor.sh ablate_baselines.py rerun_losses.py preserve_evidence.sh; do
+# `clean_rollouts.py` is the driver actually in use; it was missing from this
+# list, so a wake-up after a replacement could not see whether it had survived.
+for name in clean_rollouts.py ablate_baselines.py rerun_losses.py preserve_evidence.sh; do
   n=0
   for d in /proc/[0-9]*; do
     [ -r "$d/cmdline" ] || continue
