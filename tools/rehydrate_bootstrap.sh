@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Bootstrap for tools/rehydrate_box.sh, kept OUTSIDE the repo on purpose.
+# Bootstrap for tools/rehydrate_box.sh. Seed a copy into the scratchpad; keep
+# this one in the repo as the copy of record.
 #
-# A container replacement rewinds the working tree to the image commit, which
-# deletes tools/rehydrate_box.sh along with everything else added since. The
-# recovery script cannot restore itself, so the two git commands that fetch it
-# back have to live somewhere the rollback does not reach. The scratchpad has
-# survived every replacement so far; the repo tree has survived none.
+# A container replacement rewinds the working tree to an image snapshot, deleting
+# tools/rehydrate_box.sh along with everything else added since, so the recovery
+# script cannot restore itself. These are the two git commands that fetch it back.
+#
+# **The scratchpad is not a safe haven, and an earlier version of this comment
+# said it was.** It claimed "the scratchpad has survived every replacement so far;
+# the repo tree has survived none." The next replacement falsified it: AUTOPILOT.md
+# and quota.sh were still there, and this file — written forty minutes earlier —
+# was gone. The scratchpad reverts to a snapshot exactly like the repo tree does;
+# older files survive because they predate it, not because the directory is
+# durable. `rerun_losses/` disappeared the same way.
+#
+# So there is no on-disk location that reliably survives a replacement, and the
+# honest recovery procedure is: run these two git commands by hand, because
+# **origin is the only store that has never lost anything.** Seeding a copy here
+# still helps within one box's lifetime; it just cannot be relied on across one.
 #
 # Deliberately minimal: fetch, fast-forward, hand off. Everything else belongs
-# in the repo copy where it is version-controlled.
+# in tools/rehydrate_box.sh where it is version-controlled.
 set -uo pipefail
 REPO=/home/user/athanor
 BRANCH=claude/athanor-cc-harness-variant-jpqw7t
