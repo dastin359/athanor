@@ -2702,8 +2702,8 @@ discard costs quota and wall clock but never score.
 | `ft09` | 1.0000 (interrupted) | **1.0000 (6/6)** | **clean, banked** |
 | `ka59` | 1.0000 (interrupted) | **1.0000 (7/7)** | **clean, banked** |
 | `wa30` | 1.0000 (interrupted) | **1.0000 (9/9)** | **clean, banked** |
-| `lf52` | 1.0000 (interrupted) | — | running |
-| `sp80` | **0.7143 (5/6)** | — | queued — the decisive three |
+| `lf52` | 1.0000 (interrupted) | **1.0000 (10/10)** | **clean, banked** |
+| `sp80` | **0.7143 (5/6)** | — | **running** — the decisive three |
 | `tn36` | **0.5357 (5/7)** | — | queued |
 | `sk48` | **0.4167 (5/8)** | — | queued |
 
@@ -2750,7 +2750,8 @@ point too high in conversation — each converted game adds 1.0000 to the numera
 | `sb26` | 19.6667 / 21 | 93.65% |
 | `ft09` | 20.6667 / 22 | 93.94% |
 | `ka59` | 21.6667 / 23 | 94.20% |
-| `wa30` | **22.6667 / 24** | **94.44%** |
+| `wa30` | 22.6667 / 24 | 94.44% |
+| `lf52` | **23.6667 / 25** | **94.67%** |
 
 The denominator grows because these five were *excluded* from the original clean
 20, not scored zero in it. Converting one moves it from the interrupted set into
@@ -2838,6 +2839,53 @@ preceding frame was a `WIN` or level advance.
 **Fourth clean run, fourth exact agreement with ARC**: 3,505 vs 3,505. With
 130/130, 98/98 and 385/385, every uninterrupted run now matches the server and
 every interrupted one does not.
+
+#### `lf52` clean rollout — **1.0000 (10/10)**, and all five interrupted games converted
+
+The longest game in the set and the one I predicted could not finish in a single
+window: 3.55 h in the arm against a box lifetime whose median was 35 minutes at
+the time. The box lasted, and it came in at 2.9 h.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.0183, `cap` 1.0000) |
+| levels | 10 of 10, 0 deaths, **0 resets, 1 play** |
+| actions | **966** vs a 1,339 human total, ledger and ARC agreeing exactly |
+| wall | 177 min, single process, exit 0, $64.26 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ratio | 2.29× | **0.74×** | 1.02× | 1.25× | 2.16× | 1.01× | 1.67× | 1.30× | **0.77×** | 5.11× |
+| `S_l` | 1.15 | 0.552 | 1.034 | 1.15 | 1.15 | 1.028 | 1.15 | 1.15 | 0.598 | 1.15 |
+
+**The narrowest margin of the five.** Three levels sit below the ceiling and two
+below human pace, so `raw` cleared `cap` by 0.0183. One worse level and the replay
+would have been worth taking, as it was on `wa30`.
+
+**Five clean runs, five exact agreements with ARC**: 130, 98, 385, 3505, 966 —
+every one matching the server exactly, against +12, +22 and +6 on the three
+interrupted re-runs. Every uninterrupted run matches and every interrupted one
+does not. That is as much support as this data can give the explanation that the
+missing actions are responses lost when a container dies mid-action.
+
+#### The five converted, and what it settles
+
+| game | arm (interrupted) | clean rollout | actions vs human |
+|---|---|---|---|
+| `sb26` | 1.0000 | **1.0000** (8/8) | 130 / 213 |
+| `ft09` | 1.0000 | **1.0000** (6/6) | 98 / 208 |
+| `ka59` | 1.0000 | **1.0000** (7/7) | 385 / 730 |
+| `wa30` | 1.0000 | **1.0000** (9/9) | 3,505 / 1,843 (two plays) |
+| `lf52` | 1.0000 | **1.0000** (10/10) | 966 / 1,339 |
+
+All five held up under the strict criterion — one solver process, fresh, no
+inherited `rules.json`, interrupted attempts discarded rather than resumed. The
+clean set is now **23.6667 of 25, 94.67%**, and every game in it that was ever
+scored 1.0000 has been scored 1.0000 again without a resume.
+
+What remains is the part that was never clean: `sp80`, `tn36` and `sk48`, whose
+only clean data are the arm losses at 0.7143, 0.5357 and 0.4167. `sp80` started
+its clean rollout on 2026-08-06.
 
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
