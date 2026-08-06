@@ -39,6 +39,7 @@ import json
 import os
 import pathlib
 import signal
+import subprocess
 import sys
 import time
 import traceback
@@ -203,7 +204,46 @@ def verdict(game_dir: pathlib.Path) -> tuple[str, dict | None]:
         return "interrupted", data
     if why := uncorroborated(game_dir, data):
         return f"uncorroborated ({why})", data
+    if why := fails_proofread(game_dir):
+        return f"proofread failed ({why})", data
     return "clean", data
+
+
+def fails_proofread(game_dir: pathlib.Path) -> str:
+    """Run `proofread_trace.py` over the finished run; return why it failed.
+
+    **A gate, not a report.** The mechanical half of a proofread -- did any
+    command leave the workspace, did this game's own baselines or budget arrive
+    in a tool result, does ARC's card agree -- is exactly the kind of thing that
+    gets skipped when a run finishes at 3am and the score looks fine. So the
+    driver refuses to bank a run that fails it.
+
+    Exit 2 is a finding and discards the run. Exit 1 means passages mention a
+    baseline or a budget and need a person to judge inference from reading; that
+    cannot be automated and must not block banking, so it is printed and the run
+    is kept. Exit 0 is clean with nothing to read.
+
+    A crash in the proofreader is not a verdict on the run: it is reported and
+    the run proceeds, because a broken checker silently discarding good runs is
+    worse than one that occasionally lets a run through to be read by hand.
+    """
+    script = pathlib.Path(__file__).resolve().parent / "proofread_trace.py"
+    if not script.exists():
+        return ""
+    try:
+        p = subprocess.run([sys.executable, str(script), str(game_dir)],
+                           capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"    proofread did not run ({exc}); banking unread", flush=True)
+        return ""
+    print("    " + "\n    ".join(p.stdout.strip().splitlines()[:40]), flush=True)
+    if p.returncode == 2:
+        fails = [ln for ln in p.stdout.splitlines() if ln.startswith("FAIL")]
+        return "; ".join(f.removeprefix("FAIL ") for f in fails) or "see output"
+    if p.returncode == 1:
+        print("    ^ PROOFREAD: passages above need reading before this is trusted",
+              flush=True)
+    return ""
 
 
 def uncorroborated(game_dir: pathlib.Path, data: dict) -> str:
