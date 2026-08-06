@@ -95,7 +95,38 @@ def main() -> int:
     print("CLEAN ONE-SHOT ROLLOUTS — fresh every time, interrupted attempts discarded",
           flush=True)
 
-    for gid in GAMES:
+    # **Keep going until every game has a clean run.** The first version made a
+    # single pass and exited, which quietly contradicted the whole design: a game
+    # whose attempt was cut short by a container replacement got exactly one try
+    # and was then abandoned, so "retry until one completes in a single process"
+    # depended on a human relaunching the driver. Under a 35-minute median box
+    # lifetime the long games would never have been retried at all.
+    #
+    # Bounded rather than infinite: a game that cannot fit in a window will burn
+    # quota forever otherwise, and MAX_PASSES makes the give-up point explicit and
+    # visible in the log rather than implicit in whoever stops watching.
+    for pass_no in range(1, MAX_PASSES + 1):
+        outstanding = [g for g in GAMES if not (OUT / g / "clean_result.json").exists()]
+        if not outstanding:
+            print("\nall five have a clean run", flush=True)
+            break
+        print(f"\n--- pass {pass_no}/{MAX_PASSES}: {len(outstanding)} outstanding "
+              f"({', '.join(g.split('-')[0] for g in outstanding)}) ---", flush=True)
+        one_pass(outstanding, infos)
+
+    print("\n=== driver finished ===", flush=True)
+    remaining = [g for g in GAMES if not (OUT / g / "clean_result.json").exists()]
+    if remaining:
+        print(f"NO clean run after {MAX_PASSES} passes: {', '.join(remaining)}",
+              flush=True)
+    return 0
+
+
+MAX_PASSES = 12
+
+
+def one_pass(games: list[str], infos: dict) -> None:
+    for gid in games:
         banked = OUT / gid / "clean_result.json"
         if banked.exists():
             prior = json.loads(banked.read_text())
@@ -140,9 +171,6 @@ def main() -> int:
         else:
             reason = (data or {}).get("error", state)
             print(f"    discarded after {mins:.0f} min — {reason}", flush=True)
-
-    print("\n=== pass complete ===", flush=True)
-    return 0
 
 
 if __name__ == "__main__":
