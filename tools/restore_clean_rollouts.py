@@ -17,6 +17,14 @@ unspent — and the whole point of the rollout experiment is that such an attemp
 is discarded and re-run, never resumed. Restoring one as if it were banked would
 quietly admit a non-clean run into a set defined by cleanliness.
 
+**And only attempts whose workspace has no baselines in it.** The first seven
+rollouts ran with the strip uninstalled, so their preserved `meta.json` still
+carries `baseline_actions` and `action_budget`. Restoring one of those re-banks a
+void run as finished, and the driver then skips the game it most needs to re-run
+— which is how a contaminated result survives being noticed. The check is on the
+preserved files rather than a list of ids, so it keeps working for a leak nobody
+has thought of yet.
+
 Run after any container replacement, before relaunching the driver. Idempotent:
 a game already banked on disk is left alone.
 """
@@ -26,12 +34,36 @@ import argparse
 import gzip
 import json
 import pathlib
+import re
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 EVIDENCE = REPO / "evidence" / "ccarc3" / "clean_rollouts"
 SCRATCH = pathlib.Path(
     "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
+
+
+def baselines_in(src: pathlib.Path) -> str:
+    """Name the first preserved file that still hands over a baseline, if any.
+
+    Matches the *values*, not the identifier: `baseline_actions=()` is the
+    blanked form a stripped workspace legitimately contains, so the pattern
+    requires a container that opens onto a digit. `action_budget` goes too — it
+    is the baseline total times five, which is not a strip.
+    """
+    leak = re.compile(
+        r"""baseline_actions["'\s:=]*[(\[]\s*\d|"action_budget"|baseline actions per level"""
+    )
+    for gz in sorted(src.glob("*.gz")):
+        if gz.name in {"trace.jsonl.gz", "stream.jsonl.gz"}:
+            continue
+        try:
+            text = gzip.open(gz).read().decode("utf-8", "ignore")
+        except OSError:
+            continue
+        if leak.search(text):
+            return gz.name[:-3]
+    return ""
 
 
 def main() -> int:
@@ -67,6 +99,9 @@ def main() -> int:
             if result.get("error"):
                 skipped.append(f"{gid}/{attempt.name} (interrupted)")
                 continue
+            if leaked := baselines_in(src):
+                skipped.append(f"{gid}/{attempt.name} (contaminated: {leaked})")
+                continue
 
             dst = out / gid / attempt.name / gid
             if not args.dry_run:
@@ -79,7 +114,7 @@ def main() -> int:
             break
 
     verb = "would restore" if args.dry_run else "restored"
-    print(f"{verb} {len(restored)}; {present} already on disk; {len(skipped)} interrupted")
+    print(f"{verb} {len(restored)}; {present} already on disk; {len(skipped)} skipped")
     for line in restored:
         print(f"  {line}")
     for line in skipped:

@@ -66,9 +66,12 @@ for restore in restore_banked_results restore_clean_rollouts; do
 done
 
 # What is running, argv-element-exact -- a substring match finds this script.
-# `clean_rollouts.py` is the driver actually in use; it was missing from this
+# `clean_rollouts.py` is the driver actually in use and was missing from this
 # list, so a wake-up after a replacement could not see whether it had survived.
-for name in clean_rollouts.py ablate_baselines.py rerun_losses.py preserve_evidence.sh; do
+# `supervisor.sh` stays: it is the quota duty-cycle loop and the first thing the
+# autopilot check asks about. (It is not in the repo -- it lives in the
+# scratchpad, which is a hazard of its own, hence tools/supervisor.sh.)
+for name in clean_rollouts.py ablate_baselines.py rerun_losses.py preserve_evidence.sh supervisor.sh; do
   n=0
   for d in /proc/[0-9]*; do
     [ -r "$d/cmdline" ] || continue
