@@ -112,7 +112,8 @@ h2 {
 
 /* Filter sits in the section heading, so it reads as a property of the grid
    rather than a stray control floating above it. */
-label.filter { float: right; text-transform: none; letter-spacing: .02em;
+.filters { float: right; display: inline-flex; gap: 18px; }
+label.filter { text-transform: none; letter-spacing: .02em;
                font-weight: 400; cursor: pointer; display: inline-flex;
                align-items: center; gap: 6px; color: var(--ink-soft); }
 label.filter input { accent-color: var(--llm); cursor: pointer; margin: 0; }
@@ -304,15 +305,17 @@ tr.bad td { color: var(--bad); }
   no longer existed. Anything quoted here that can be derived is now derived.
 </p>
 
-<h2>Per game <label class="filter"><input type="checkbox" id="cleanonly">
-  <span>clean only <b id="cleancount"></b></span></label></h2>
+<h2>Per game <span class="filters">
+  <label class="filter"><input type="checkbox" id="cleanonly">
+    <span>clean only <b id="cleancount"></b></span></label>
+  <label class="filter"><input type="checkbox" id="currentonly">
+    <span>current harness <b id="currentcount"></b></span></label>
+</span></h2>
 <!-- "Clean" has meant three different things here: the tier badge, "no container
      restart", and "the solver could not read its own baselines". The filter uses
      the conjunction of all three, computed at build time in mark_clean() so the
      definition sits next to the evidence rather than in a page script. -->
-<p class="note" id="cleannote">One solver process, no container restart, no baselines reachable —
-  the strict criterion. Hides contaminated runs, runs pulled from the arm, and anything resumed
-  from an interrupted attempt.</p>
+<p class="note" id="filternote"></p>
 <div class="tiles" id="tiles"></div>
 
 <h2>Span tree</h2>
@@ -443,14 +446,44 @@ const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
 // Filtering rebuilds the grid, so the click and keyboard handlers below are bound
 // to the container rather than to each tile -- rebinding per render is how a
 // filter quietly breaks the span tree.
-const cleanRuns = RUNS.filter(r => r.clean);
-$("cleancount").textContent = `(${cleanRuns.length} of ${RUNS.length})`;
-renderTiles(RUNS);
-$("cleanonly").addEventListener("change", e => {
-  renderTiles(e.target.checked ? cleanRuns : RUNS);
-  $("cleannote").style.display = e.target.checked ? "block" : "none";
+// Two independent predicates rather than one three-way switch, because the
+// question worth asking is their conjunction: a run that is both uncontaminated
+// and comparable to what the harness does today. They measure different things
+// and a run can fail either without failing the other -- an old harness still
+// produced a real score, it just is not a score about the current one.
+const FILTERS = [
+  {box: "cleanonly", count: "cleancount", test: r => r.clean,
+   note: "Clean: one solver process, no container restart, no baselines reachable. " +
+         "Hides contaminated runs, runs pulled from the arm, and anything resumed " +
+         "from an interrupted attempt."},
+  {box: "currentonly", count: "currentcount", test: r => r.tier === "current",
+   note: "Current harness: no commit has touched the package, the doctrine or the " +
+         "baseline strip since this run started. Derived from git at build time, so " +
+         "it expires by itself the next time the harness moves."},
+];
+FILTERS.forEach(f => {
+  $(f.count).textContent = `(${RUNS.filter(f.test).length} of ${RUNS.length})`;
+  $(f.box).addEventListener("change", apply);
 });
-$("cleannote").style.display = "none";
+
+function apply() {
+  const on = FILTERS.filter(f => $(f.box).checked);
+  const rows = RUNS.filter(r => on.every(f => f.test(r)));
+  renderTiles(rows);
+  $("filternote").innerHTML = on.map(f => f.note).join("<br>");
+  $("filternote").style.display = on.length ? "block" : "none";
+  // An empty grid reads as a broken page. Say which filter emptied it -- with
+  // "current harness" that is the finding, not a fault: at the time of writing
+  // no run on this page was produced by the harness as it now stands.
+  if (!rows.length) {
+    $("tiles").innerHTML =
+      `<div class="tile" style="grid-column:1/-1"><div class="k">no runs match</div>
+       <div class="n" style="margin-top:6px">Nothing on this page satisfies
+       ${on.map(f => "<b>" + $(f.box).parentNode.textContent.trim().split("(")[0].trim() + "</b>").join(" and ")}.
+       Every run predates the harness it would have to match.</div></div>`;
+  }
+}
+apply();
 
 // chips
 const keys = Object.keys(DATA);
