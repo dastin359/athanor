@@ -56,12 +56,21 @@ BUDGET_MULTIPLE = 5.0     # ARC's own ceiling: no game-wide pool, 5n per level
 def rotated(games: list[str]) -> list[str]:
     """Start each pass at a different game, so one stalled run cannot starve the rest.
 
-    **Measured need.** Containers are replaced every ~30 minutes, so a pass gets
-    one short window and then dies. Running a fixed order meant `sp80` took every
-    window: it reached level 5 of 6 and then sat there for three consecutive
-    cycles at 365 actions, while `tn36` and `sk48` were never attempted once. A
-    stalled game at the head of the list silently converts a three-game
-    experiment into a one-game one.
+    **Measured need.** During this run containers were being replaced every ~30
+    minutes, so a pass got one short window and then died. Running a fixed order
+    meant `sp80` took every window: it reached level 5 of 6 and then sat there for
+    three consecutive cycles at 365 actions, while `tn36` and `sk48` were never
+    attempted once. A stalled game at the head of the list silently converts a
+    three-game experiment into a one-game one.
+
+    **That cadence is not a property of the environment, only of that afternoon.**
+    Box starts measured from 2026-08-05 17:48 gave a median gap of 35 minutes
+    (range 21-157). The arm, two days earlier, saw 5 interruptions across 41.7
+    hours of solver wall clock -- one per 8.3 hours, fourteen times slower -- and
+    its longest single-process run, `bp35`, went 3.89 hours uninterrupted, which
+    a 35-minute cadence makes impossible. Rotation is worth keeping either way,
+    since it costs nothing when windows are long; the justification above just
+    should not be read as a constant.
 
     Rotation is by a counter on disk rather than a clock, so it advances once per
     pass and is unaffected by how long a pass survives.

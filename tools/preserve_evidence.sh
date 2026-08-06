@@ -82,7 +82,7 @@ mkdir -p "$DEST"
 log "preserving evidence every ${TICK}s -> $DEST"
 
 while true; do
-    for base in rerun_losses ablate_nobaseline; do
+    for base in clean_rollouts rerun_losses ablate_nobaseline; do
         [ -d "$SP/$base" ] || continue
         for d in "$SP/$base"/*/; do
             [ -d "$d" ] || continue
