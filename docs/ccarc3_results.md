@@ -2686,6 +2686,65 @@ immaterial here but again in the optimistic direction.
 #### Integrity
 Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
 
+### Clean rollouts: converting the five interrupted environments, one at a time
+
+The five that scored 1.0000 but were interrupted and resumed — `ft09`, `ka59`,
+`lf52`, `sb26`, `wa30` — are being re-run under the strict criterion:
+`tools/clean_rollouts.py`, `fresh=True`, no evidence restore, no inherited
+`rules.json`, and **an interrupted attempt is discarded rather than resumed**.
+Resuming is the confound being removed, so a driver that resumed would reproduce
+it. One game at a time, sequentially; each attempt opens its own scorecard, so a
+discard costs quota and wall clock but never score.
+
+| game | arm | clean rollout | status |
+|---|---|---|---|
+| `sb26` | 1.0000 (interrupted) | **1.0000 (8/8)** | **clean, banked** |
+| `ft09` | 1.0000 (interrupted) | — | running |
+| `ka59` | 1.0000 (interrupted) | — | queued |
+| `wa30` | 1.0000 (interrupted) | — | queued |
+| `lf52` | 1.0000 (interrupted) | — | queued |
+
+#### `sb26-7fbdac44` clean rollout — **1.0000 (8/8)**, and the first zero-disagreement run
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.1436, `cap` 1.0000) |
+| levels | 8 of 8, **0 deaths, 0 resets, 1 play** |
+| actions | **130**, ARC and our ledger agreeing exactly, against a 213 human total |
+| wall | 15 min, single process, exit 0 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 15 | 15 | 15 | 15 | 17 | 19 | 17 | 17 |
+| human | 18 | 28 | 18 | 19 | 31 | 23 | 58 | 18 |
+| ratio | 1.20× | 1.87× | 1.20× | 1.27× | 1.82× | 1.21× | **3.41×** | 1.06× |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.1211 |
+
+**The first run on record where our ledger and ARC agree exactly** — 130 against
+130, an empty `disagreements_with_server`. Every earlier comparison was off:
+`sp80` +12, `tn36` +22, `sk48` +6. Those were attributed to responses that never
+reached `trace.jsonl` when a container died mid-action, and this is the first
+positive evidence for that explanation rather than a plausible story: the one run
+that was never interrupted is the one where the counts match.
+
+It also converts the first of the five. `sb26` is no longer "1.0000, but resumed";
+it is 1.0000 on a single uninterrupted process, which the strict criterion accepts.
+The clean set moves from 20 games to 21, **19.6667 of 21**.
+
+#### The bug that nearly threw this result away
+
+`clean_rollouts.py` passed `out_dir=attempt_N` while `Ccarc3Config` builds its
+workspace at `out_dir/<game_id>`, so the driver read `attempt_N/result.json` — one
+directory above where the harness had written it. This run **completed, won 8 of 8,
+and was logged as `discarded — no result`.** Nothing was wrong with the solver or
+the game; only with where the driver looked. Left alone it would have burned all
+12 retry passes re-running games that had already finished.
+
+Recorded here because the failure mode is the dangerous kind: no error, no crash,
+a plausible-looking log line, and a real result silently binned. `salvage()` now
+re-scans earlier attempt directories before starting a new one, which is how this
+result was recovered rather than re-bought.
+
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
 Operator's criterion, 2026-08-06, and it is the right one: **only a run that
