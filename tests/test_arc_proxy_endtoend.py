@@ -250,7 +250,7 @@ def test_the_proxy_keeps_one_session_across_calls(cookie_proxy):
     """
     import urllib.request
 
-    arc_proxy._reset_session()
+    arc_proxy._DEFAULT.reset_session()
     root = f"http://127.0.0.1:{cookie_proxy}"
     urllib.request.urlopen(f"{root}/api/scorecard/open", timeout=10).read()
     urllib.request.urlopen(f"{root}/api/cmd/RESET", timeout=10).read()
@@ -289,7 +289,11 @@ def test_a_cookie_jar_client_keeps_its_session_across_calls(cookie_proxy):
 
 @pytest.fixture(autouse=True)
 def _clear_budget():
-    """Module globals, so an armed cap would leak into every later test."""
+    """The default state is shared, so an armed cap would leak into later tests.
+
+    Real runs never touch it -- each game carries its own `ProxyState` -- but a
+    bare `Handler` falls back to this one, which is what these tests exercise.
+    """
     arc_proxy.set_budget(0)
     yield
     arc_proxy.set_budget(0)
@@ -353,3 +357,56 @@ def test_a_refused_action_is_not_charged(proxy):
     arc_proxy.set_budget(1)
     assert _request(proxy, "/api/games")[0] == 403
     assert _request(proxy, "/api/cmd/ACTION1")[0] == 200, "the refusal spent budget"
+
+
+# --- two games at once ------------------------------------------------------ #
+# The reason `ProxyState` exists. Both of these were module globals, which is
+# correct for a driver running one environment at a time and silently wrong the
+# moment two share a process.
+
+
+def test_two_games_do_not_share_an_action_counter(monkeypatch):
+    """One game's moves must not spend the other's budget."""
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    stub, stub_port = _serve(_Stub)
+    monkeypatch.setattr(arc_proxy, "UPSTREAM", f"http://127.0.0.1:{stub_port}")
+    a, b = arc_proxy.Proxy(), arc_proxy.Proxy()
+    try:
+        a.set_budget(2)
+        b.set_budget(5)
+        for _ in range(2):
+            assert _request(a._server.server_address[1], "/api/cmd/ACTION1")[0] == 200
+        assert _request(a._server.server_address[1], "/api/cmd/ACTION1")[0] == 403, \
+            "game A should be capped at its own 2"
+        # B has spent nothing, so all five of its actions remain.
+        for i in range(5):
+            assert _request(b._server.server_address[1], "/api/cmd/ACTION1")[0] == 200, \
+                f"game B lost action {i + 1} to game A's spending"
+        assert a.actions_used == 2 and b.actions_used == 5
+    finally:
+        a.shutdown(); b.shutdown(); stub.shutdown()
+
+
+def test_two_games_do_not_share_an_arc_session(monkeypatch):
+    """The failure a shared counter would at least make visible in the numbers.
+
+    ARC pins a scorecard to the HTTP session. Two games on one cookie jar put
+    both cards behind one pinning, so the second game's card reads 404 while its
+    actions keep succeeding -- a run that finishes 8/8 against a frozen card and
+    shows no other symptom.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    SEEN_COOKIES.clear()
+    stub, stub_port = _serve(_CookieStub)
+    monkeypatch.setattr(arc_proxy, "UPSTREAM", f"http://127.0.0.1:{stub_port}")
+    a, b = arc_proxy.Proxy(), arc_proxy.Proxy()
+    try:
+        assert a.state.upstream() is not b.state.upstream()
+        # A opens a card and is issued a stickiness cookie; B must not send it.
+        _request(a._server.server_address[1], "/api/scorecard/open")
+        _request(a._server.server_address[1], "/api/cmd/RESET")
+        assert "GAMESESSION=abc123" in (SEEN_COOKIES[-1] or ""), "A lost its own pinning"
+        _request(b._server.server_address[1], "/api/scorecard/open")
+        assert not (SEEN_COOKIES[-1] or ""), "B inherited A's session"
+    finally:
+        a.shutdown(); b.shutdown(); stub.shutdown()

@@ -232,7 +232,8 @@ def _supports_flag(flag: str) -> bool:
         return False
 
 
-def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Workspace:
+def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
+                    *, arc_root: str | None = None) -> Workspace:
     """Create the workspace for one game."""
     if info is None:
         matches = [g for g in list_games(config.api_key) if g.game_id == config.game_id]
@@ -326,7 +327,13 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     # Unset, nothing changes: the key stays and the client talks to ARC directly.
     # That is deliberate, because this module is read fresh by every `python -c`
     # the solver runs, so a hard switch would break games already in flight.
-    proxy = os.environ.get("CCARC3_PROXY_URL")
+    # **Passed in, not read from the environment, when the caller knows it.**
+    # With several games in flight each has its own shim on its own port, and
+    # a single process-wide `CCARC3_PROXY_URL` cannot name more than one of
+    # them -- two builders racing on `os.environ` would hand a solver the
+    # other game's proxy, and with it the other game's action budget and ARC
+    # session. The env var remains the fallback for single-game callers.
+    proxy = arc_root or os.environ.get("CCARC3_PROXY_URL")
     if proxy:
         env["CCARC3_ARC_ROOT"] = proxy
         env.pop("ARC_API_KEY", None)

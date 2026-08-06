@@ -63,88 +63,95 @@ def _allowed(path: str) -> bool:
 # as `ArcClient.actions_used` counts it, because both increment on the same call.
 _CMD = re.compile(r"^/api/cmd/[A-Z0-9_]+$")
 
-_budget_lock = threading.Lock()
-MAX_ACTIONS = 0        # 0 disables the cap, so a bare proxy behaves as before
-ACTIONS_USED = 0
+class ProxyState:
+    """One game's cap and one game's HTTP session to ARC.
+
+    **Per game, because both are per game.** These were module globals, which is
+    fine for a driver that runs one environment at a time and silently wrong the
+    moment two share a process: the action counter would bill one game for the
+    other's moves, and -- worse -- a single cookie jar would pin both games'
+    scorecards to one ARC session. Card reads are session-bound, so the second
+    game's card would answer 404 while its actions kept succeeding, which is
+    exactly the failure that finished `sb26` 8/8 against a card frozen at level
+    3 and showed no other symptom.
+
+    A shared counter is a bug you would eventually see in the numbers. A shared
+    session is one you would not.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.max_actions = 0        # 0 disables the cap
+        self.actions_used = 0
+        self._opener: urllib.request.OpenerDirector | None = None
+
+    def set_budget(self, max_actions: int, *, used: int = 0) -> None:
+        """Arm the cap for one game.
+
+        `used` seeds the counter from a run already in progress. The proxy's
+        count lives in memory and the solver's does not, so a resumed game whose
+        proxy restarted would otherwise get its whole budget back -- the cap
+        would bind at `used + max_actions` and grow with every interruption.
+        Callers read the figure from the workspace's `trace.state.json`.
+        """
+        with self._lock:
+            self.max_actions, self.actions_used = int(max_actions), int(used)
+        # A new game means a new card; carrying the previous game's pinning over
+        # is how a stale session survives into a run that did not open it.
+        self.reset_session()
+
+    def exhausted(self) -> str | None:
+        """The refusal when the cap is reached, or None while budget remains."""
+        with self._lock:
+            if self.max_actions and self.actions_used >= self.max_actions:
+                return (
+                    f"action budget exhausted after {self.actions_used} actions. "
+                    "The environment is over; nothing further can be scored."
+                )
+        return None
+
+    def charge(self) -> None:
+        """Bill one action, after upstream accepted it.
+
+        Charged on the response rather than the request so the count tracks
+        `ArcClient.actions_used`, which increments while processing a frame the
+        server actually returned. A 502 costs the solver nothing at either end.
+        """
+        with self._lock:
+            self.actions_used += 1
+
+    def upstream(self) -> urllib.request.OpenerDirector:
+        """This game's persistent session to ARC, cookie jar and all.
+
+        **Forwarding the client's cookies is not enough.** ARC binds a scorecard
+        to the HTTP session and its load balancer pins that session with four
+        `AWSALBAPP-*` cookies. Building a fresh request per call -- which
+        `urllib.request.urlopen` does -- lets the balancer re-pin on every hop,
+        so the card lands on a backend that never heard of it. Measured live on
+        one card: 8 of 8 reads succeed direct, **1 of 8** through a shim without
+        this. The jar lives here rather than in the client because the client is
+        the thing being kept at arm's length.
+        """
+        with self._lock:
+            if self._opener is None:
+                self._opener = urllib.request.build_opener(
+                    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+                )
+            return self._opener
+
+    def reset_session(self) -> None:
+        with self._lock:
+            self._opener = None
+
+
+# A server built straight from `Handler` -- as the tests do -- has no game
+# attached, so it falls back to this. Real runs always carry their own.
+_DEFAULT = ProxyState()
 
 
 def set_budget(max_actions: int, *, used: int = 0) -> None:
-    """Arm the cap for one game.
-
-    `used` seeds the counter from a run already in progress. The proxy's count
-    lives in memory and the solver's does not, so a resumed game whose proxy
-    restarted would otherwise get its whole budget back -- the cap would bind at
-    `used + max_actions` and quietly grow with every interruption. Callers read
-    the figure from the workspace's `trace.state.json`, which is where the client
-    checkpoints it.
-    """
-    global MAX_ACTIONS, ACTIONS_USED
-    with _budget_lock:
-        MAX_ACTIONS, ACTIONS_USED = int(max_actions), int(used)
-    # A new game means a new card; carrying the previous game's pinning
-    # over is how a stale session survives into a run that did not open it.
-    _reset_session()
-
-
-def _exhausted() -> str | None:
-    """The refusal message when the cap is reached, or None while budget remains."""
-    with _budget_lock:
-        if MAX_ACTIONS and ACTIONS_USED >= MAX_ACTIONS:
-            return (
-                f"action budget exhausted after {ACTIONS_USED} actions. "
-                "The environment is over; nothing further can be scored."
-            )
-    return None
-
-
-_session_lock = threading.Lock()
-_opener: urllib.request.OpenerDirector | None = None
-
-
-def _upstream():
-    """One persistent session to ARC, cookie jar and all.
-
-    **Forwarding the client's cookies is not enough.** ARC binds a scorecard to
-    the HTTP session, and its load balancer pins that session with four
-    `AWSALBAPP-*` cookies. Building a fresh request per call — which
-    `urllib.request.urlopen` does — lets the balancer re-pin on every hop, so the
-    card lands on a backend that has never heard of it. Measured against the live
-    API on the same card: 8 of 8 reads succeed direct, **1 of 8 through the shim**,
-    and the seven failures are `404 card_id not found`.
-
-    That cost the first clean rollout its authoritative scoring source. Actions
-    survived it, because they carry a `guid` and are not card-scoped, so the game
-    played through to 8/8 while the scorecard froze at level 6 — a failure that
-    looks like nothing at all until you compare the two.
-
-    The jar lives here rather than in the client because the client is the thing
-    being kept at arm's length. Reset per game by `set_budget`.
-    """
-    global _opener
-    with _session_lock:
-        if _opener is None:
-            _opener = urllib.request.build_opener(
-                urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
-            )
-        return _opener
-
-
-def _reset_session() -> None:
-    global _opener
-    with _session_lock:
-        _opener = None
-
-
-def _charge() -> None:
-    """Bill one action, after upstream accepted it.
-
-    Charged on the response rather than the request so the count tracks
-    `ArcClient.actions_used`, which increments while processing a frame the
-    server actually returned. A 502 costs the solver nothing at either end.
-    """
-    global ACTIONS_USED
-    with _budget_lock:
-        ACTIONS_USED += 1
+    """Arm the default state. Per-game callers use `Proxy.set_budget`."""
+    _DEFAULT.set_budget(max_actions, used=used)
 
 
 # **An allowlisted endpoint still leaks the baselines, so responses are filtered
@@ -225,6 +232,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    @property
+    def state(self) -> ProxyState:
+        return getattr(self.server, "state", _DEFAULT)
+
     def _forward(self, method: str) -> None:
         path = self.path.split("?", 1)[0]
         if not _allowed(path):
@@ -235,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
             # 403 and not 429: `client._send` raises on 4xx without retrying, so
             # the solver gets one clear terminal error rather than three rounds
             # of backoff against a wall that will not move.
-            over = _exhausted()
+            over = self.state.exhausted()
             if over:
                 sys.stderr.write(f"BUDGET {path} — {over}\n")
                 sys.stderr.flush()
@@ -277,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
         )
         set_cookies: list[str] = []
         try:
-            with _upstream().open(req, timeout=120) as r:
+            with self.state.upstream().open(req, timeout=120) as r:
                 body, code = r.read(), r.getcode()
                 set_cookies = r.headers.get_all("Set-Cookie") or []
         except urllib.error.HTTPError as exc:
@@ -290,7 +301,7 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, TimeoutError) as exc:
             body, code = json.dumps({"error": f"upstream: {exc}"}).encode(), 502
         if charge and 200 <= code < 300:
-            _charge()
+            self.state.charge()
         # Filter on the way back, not just on the way in. Content-Length is
         # recomputed below from the filtered body, so this must happen first.
         body = _filtered(body)
@@ -309,25 +320,62 @@ class Handler(BaseHTTPRequestHandler):
         self._forward("POST")
 
 
-def serve_in_background(port: int = 0) -> tuple[str, ThreadingHTTPServer]:
-    """Start the shim on a daemon thread and return `(base_url, server)`.
+class _Server(ThreadingHTTPServer):
+    """A server that knows which game it is serving."""
+
+    daemon_threads = True
+    state: ProxyState
+
+
+class Proxy:
+    """One listening shim, dedicated to one game.
 
     In-process rather than a subprocess, because the caller is the one thing
     that already holds the key legitimately -- the runner builds the queue and
-    scores the result from the same baselines it is keeping away from the
-    solver. A subprocess would need the key handed to it anyway, and would
-    outlive a driver that died.
+    scores the result from the same baselines it keeps away from the solver. A
+    subprocess would need the key handed to it anyway and would outlive a driver
+    that died.
 
-    Port 0 by default: the runner is relaunched constantly after container
-    replacement, and a fixed port turns a not-yet-reaped predecessor into
+    Port 0 always: with several games in flight there is no single well-known
+    port to claim, and a fixed one turns a not-yet-reaped predecessor into
     `Address already in use` at exactly the wrong moment.
     """
-    if not os.environ.get("ARC_API_KEY"):
-        raise RuntimeError("arc_proxy: no ARC_API_KEY in env; refusing to start")
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    host, bound = srv.server_address[:2]
-    return f"http://{host}:{bound}", srv
+
+    def __init__(self, port: int = 0) -> None:
+        if not os.environ.get("ARC_API_KEY"):
+            raise RuntimeError("arc_proxy: no ARC_API_KEY in env; refusing to start")
+        self.state = ProxyState()
+        self._server = _Server(("127.0.0.1", port), Handler)
+        self._server.state = self.state
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        host, bound = self._server.server_address[:2]
+        self.url = f"http://{host}:{bound}"
+
+    def set_budget(self, max_actions: int, *, used: int = 0) -> None:
+        self.state.set_budget(max_actions, used=used)
+
+    @property
+    def actions_used(self) -> int:
+        return self.state.actions_used
+
+    @property
+    def max_actions(self) -> int:
+        return self.state.max_actions
+
+    def shutdown(self) -> None:
+        """Stop listening and free the port. Safe to call twice."""
+        try:
+            self._server.shutdown()
+            self._server.server_close()
+        except OSError:
+            pass
+
+
+def serve_in_background(port: int = 0) -> tuple[str, Proxy]:
+    """Back-compat: a single shim, for callers that only ever run one game."""
+    proxy = Proxy(port)
+    return proxy.url, proxy
 
 
 def main() -> int:

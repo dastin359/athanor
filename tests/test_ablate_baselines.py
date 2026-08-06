@@ -34,6 +34,8 @@ def _restore():
     saved = (sess.build_workspace, pkg.build_workspace)
     yield
     sess.build_workspace, pkg.build_workspace = saved
+    for gid in list(ab._proxies):
+        ab.release_proxy(gid)
     arc_proxy.set_budget(0)
 
 
@@ -114,8 +116,9 @@ def test_install_withholds_the_key_and_the_cap_from_the_solver(tmp_path, monkeyp
     assert ws.env["CCARC3_ARC_ROOT"].startswith("http://127.0.0.1:")
 
     # Withheld, not abolished: the cap still binds, in a process the solver does
-    # not run and cannot edit.
-    assert arc_proxy.MAX_ACTIONS == INFO.suggested_budget(5.0)
+    # not run and cannot edit -- and on *this game's* shim, not a shared one.
+    assert ab.proxy_for(INFO.game_id).max_actions == INFO.suggested_budget(5.0)
+    assert ws.env["CCARC3_ARC_ROOT"] == ab.proxy_for(INFO.game_id).url
 
 
 def test_a_resumed_game_seeds_the_cap_from_what_it_already_spent(tmp_path, monkeypatch):
@@ -131,4 +134,4 @@ def test_a_resumed_game_seeds_the_cap_from_what_it_already_spent(tmp_path, monke
     sess.build_workspace(
         Ccarc3Config(INFO.game_id, out_dir=tmp_path, fresh=False), INFO
     )
-    assert arc_proxy.ACTIONS_USED == 291
+    assert ab.proxy_for(INFO.game_id).actions_used == 291

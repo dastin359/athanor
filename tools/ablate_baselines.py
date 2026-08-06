@@ -49,6 +49,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import threading
 import time
 
 sys.path.insert(0, "/home/user/athanor/src")
@@ -210,8 +211,33 @@ def _actions_already_spent(root: pathlib.Path) -> int:
         return 0
 
 
-def build_without_baselines(config, info=None):
-    ws = _original_build(config, info)
+# One shim per game, keyed by id. A game keeps its proxy for the whole run --
+# the ARC session pinned inside it is what makes the scorecard readable -- and
+# gives it back when the driver releases it.
+_proxies: dict[str, "arc_proxy.Proxy"] = {}
+_proxies_lock = threading.Lock()
+
+
+def proxy_for(game_id: str) -> "arc_proxy.Proxy":
+    with _proxies_lock:
+        proxy = _proxies.get(game_id)
+        if proxy is None:
+            proxy = _proxies[game_id] = arc_proxy.Proxy()
+            print(f"arc_proxy[{game_id.split('-')[0]}]: {proxy.url}", flush=True)
+        return proxy
+
+
+def release_proxy(game_id: str) -> None:
+    """Free a finished game's shim. Ports are not infinite and neither is memory."""
+    with _proxies_lock:
+        proxy = _proxies.pop(game_id, None)
+    if proxy is not None:
+        proxy.shutdown()
+
+
+def build_without_baselines(config, info=None, *, arc_root=None):
+    proxy = proxy_for(config.game_id)
+    ws = _original_build(config, info, arc_root=arc_root or proxy.url)
     strip_baselines(ws.root)
 
     # **The cap is the baseline total times `budget_multiple`, so a solver that
@@ -224,7 +250,7 @@ def build_without_baselines(config, info=None):
     # total exactly. Enforce it in the proxy instead, where the number lives in
     # a process the solver does not run.
     budget = ws.info.suggested_budget(ws.config.budget_multiple)
-    arc_proxy.set_budget(budget, used=_actions_already_spent(ws.root))
+    proxy.set_budget(budget, used=_actions_already_spent(ws.root))
     ws.env.pop("CCARC3_MAX_ACTIONS", None)
 
     # The key would defeat everything above it. `GET /api/games` returns
@@ -323,10 +349,14 @@ def install() -> None:
     has since been fixed and covered end to end; what was left was the wiring.
     """
     _install_patch()
+    # Proves a shim can start -- the key is present and a port is bindable --
+    # before any game is launched, and leaves `CCARC3_PROXY_URL` set so
+    # `assert_installed` and any single-game caller still find one. Per-game
+    # shims are created on demand by `proxy_for`.
     if not os.environ.get("CCARC3_PROXY_URL"):
-        url, _srv = arc_proxy.serve_in_background()
-        os.environ["CCARC3_PROXY_URL"] = url
-        print(f"arc_proxy: {url} (key withheld from solvers, cap enforced here)")
+        probe = arc_proxy.Proxy()
+        os.environ["CCARC3_PROXY_URL"] = probe.url
+        print(f"arc_proxy: {probe.url} (key withheld from solvers, cap enforced here)")
 
 
 def assert_installed() -> None:
