@@ -26,6 +26,12 @@ MARKER="$REPO/evidence/ccarc3/trace_audit/.last_refresh"
 # Directories that can hold finished games. rerun_losses is the live one; the
 # arm batches are listed because a resumed run can still write into them.
 ROOTS=("rerun_losses" "ablate_nobaseline")
+# clean_rollouts is handled separately: its finished runs are marked by a banked
+# clean_result.json at the game directory, while the run itself lives a further
+# two levels down at <game>/attempt_N/<game>/. A plain <root>/*/result.json glob
+# matches neither, so three finished clean rollouts were invisible here and the
+# hourly check reported "nothing new" while the artifact had never seen them.
+CLEAN_ROOT="clean_rollouts"
 
 # One entry per line, matched with grep -Fxq. The first version stored them
 # space-separated on one line and matched with a `case` glob requiring a space on
@@ -57,6 +63,12 @@ sys.exit(1 if d.get('error') else 0)
       echo "$root/$gid:$(md5sum < "$result" | cut -c1-12)"
     done
   done
+  # Banked clean rollouts.
+  for result in "$SP/$CLEAN_ROOT"/*/clean_result.json; do
+    [ -e "$result" ] || continue
+    gid="$(basename "$(dirname "$result")")"
+    echo "$CLEAN_ROOT/$gid:$(md5sum < "$result" | cut -c1-12)"
+  done
 }
 
 if [ "${1:-}" = "--record" ]; then
@@ -80,11 +92,21 @@ while IFS= read -r stamp; do
   gid="${key##*/}"
   # A re-run is stored under its own id so it sits beside the arm run it
   # supersedes rather than overwriting it in the page.
-  if [ "${key%%/*}" = "rerun_losses" ]; then
-    args="$args --ingest $SP/${key%%/*}/$gid --as $gid@rerun"
-  else
-    args="$args --ingest $SP/${key%%/*}/$gid"
-  fi
+  case "${key%%/*}" in
+    rerun_losses)
+      args="$args --ingest $SP/rerun_losses/$gid --as $gid@rerun" ;;
+    clean_rollouts)
+      # Point at the attempt whose workspace holds the clean result.
+      for a in "$SP/$CLEAN_ROOT/$gid"/attempt_*/"$gid"; do
+        [ -f "$a/result.json" ] || continue
+        python3 -c "
+import json,sys
+sys.exit(1 if json.load(open('$a/result.json')).get('error') else 0)" 2>/dev/null \
+          && { args="$args --ingest $a --as $gid@clean"; break; }
+      done ;;
+    *)
+      args="$args --ingest $SP/${key%%/*}/$gid" ;;
+  esac
 done <<< "$new"
 echo "  python3 $REPO/tools/build_trace_audit.py$args"
 echo "then republish to artifact 7447856a-b587-4d52-9c5c-a839de3eb6ee"
