@@ -13,10 +13,18 @@ budget ran out.
 
 `evidence/ccarc3/` on the remote holds gzipped ledgers, state and rule books,
 pushed every five minutes by tools/preserve_evidence.sh. This restores whatever is
-there and then resumes, so a replacement costs a replay, not the knowledge. The
-ARC card is always gone by then -- the gap exceeds the ~12 minute window in which
-an idle game survives -- so the replay starts at level 0. What carries is
-rules.json: the mechanics the run already paid to work out.
+there and then resumes, so a replacement costs a replay, not the knowledge. What
+carries is rules.json: the mechanics the run already paid to work out.
+
+**Measured correction (2026-08-06).** An earlier version of this note claimed the
+ARC card "is always gone by then -- the gap exceeds the ~12 minute window", so
+every replay would start at level 0. Our own `sk48` run falsifies that. It crossed
+the 02:48:15Z container replacement on card
+``57690598-daed-4fac-8b18-e8bb34734288`` and came out the other side on the *same*
+card: zero ``full_reset`` markers in the ledger and one continuous play, level
+0 -> 1 -> 2. So the card survives a replacement provided the relaunch is prompt,
+and the restore buys back the *game*, not only the notes. See
+`session.snapshot_scorecard` for the reap bracket this tightened.
 
 Deliberately NOT `fresh=True`. The point is accumulation across boxes.
 """
