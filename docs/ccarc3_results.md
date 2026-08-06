@@ -2701,8 +2701,8 @@ discard costs quota and wall clock but never score.
 | `sb26` | 1.0000 (interrupted) | **1.0000 (8/8)** | **clean, banked** |
 | `ft09` | 1.0000 (interrupted) | **1.0000 (6/6)** | **clean, banked** |
 | `ka59` | 1.0000 (interrupted) | **1.0000 (7/7)** | **clean, banked** |
-| `wa30` | 1.0000 (interrupted) | — | running |
-| `lf52` | 1.0000 (interrupted) | — | queued |
+| `wa30` | 1.0000 (interrupted) | **1.0000 (9/9)** | **clean, banked** |
+| `lf52` | 1.0000 (interrupted) | — | running |
 | `sp80` | **0.7143 (5/6)** | — | queued — the decisive three |
 | `tn36` | **0.5357 (5/7)** | — | queued |
 | `sk48` | **0.4167 (5/8)** | — | queued |
@@ -2749,7 +2749,8 @@ point too high in conversation — each converted game adds 1.0000 to the numera
 |---|---|---|
 | `sb26` | 19.6667 / 21 | 93.65% |
 | `ft09` | 20.6667 / 22 | 93.94% |
-| `ka59` | **21.6667 / 23** | **94.20%** |
+| `ka59` | 21.6667 / 23 | 94.20% |
+| `wa30` | **22.6667 / 24** | **94.44%** |
 
 The denominator grows because these five were *excluded* from the original clean
 20, not scored zero in it. Converting one moves it from the interrupted set into
@@ -2799,6 +2800,44 @@ clears it regardless.
 records `total_plays: 1`. A level reset is the cheap in-level retry §2a endorses;
 it opens no new play. The criterion is one solver process and one continuous
 attempt, which in-run replays and level resets both satisfy.
+
+#### `wa30` clean rollout — **1.0000 (9/9)**, and the sharpest §0a case on record
+
+`wa30` won all nine levels, then replayed, and the replay is what earned the point.
+
+| play | levels | actions | `raw` | E |
+|---|---|---|---|---|
+| 1 | 9/9 WIN | 2,712 | 0.8373 | 0.8373 |
+| 2 — replay | 9/9 WIN | **793** | **1.1054** | **1.0000** |
+
+Play 1 cleared everything, so `cap` was 1.0 and `raw` was binding at 0.8373 —
+precisely the row of §0a's table that says *replay; another level barely helps*.
+The solver took it and collected the whole 0.1627.
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| play 1 | 47 | 175 | 86 | 85 | 307 | 66 | 79 | **1417** | 450 |
+| play 2 | 27 | 123 | 86 | 85 | 117 | 66 | 79 | **144** | **66** |
+| human | 71 | 119 | 183 | 98 | 368 | 68 | 79 | 442 | 415 |
+
+Level 8 cost **1,417 actions on the first pass and 144 on the second** — 0.31× the
+human median becoming 3.07×, and `S_l` 0.0973 becoming 1.15. Level 9 went 450 to
+66. The route was the same both times; what differed was knowing it, which is
+exactly what §0a says the gain comes from — *"the gain comes from executing the
+route your rules now imply"*, not from replaying the trace verbatim.
+
+**A level drop is not always lost progress, and the doctrine's own heuristic says
+otherwise.** §2 states the reliable signal that a full reset happened is that your
+level went down, *whatever the flag says*. Here the ledger goes 9 -> 0 with
+`full_reset: false` and nothing was lost: it is the deliberate
+`restart_for_replay()` one action after the winning frame, which is the only
+moment it is legal. Monitoring that keys on "level decreased" flags this textbook
+move as a catastrophe — it did in this session. The discriminator is whether the
+preceding frame was a `WIN` or level advance.
+
+**Fourth clean run, fourth exact agreement with ARC**: 3,505 vs 3,505. With
+130/130, 98/98 and 385/385, every uninterrupted run now matches the server and
+every interrupted one does not.
 
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
