@@ -280,12 +280,17 @@ tr.bad td { color: var(--bad); }
 <h2>Where the wall clock actually goes</h2>
 <div class="split" id="split"></div>
 <p class="prose" style="margin-top:14px">
-  <strong>82% of a solver's wall clock is spent waiting on the model</strong>, not running its
-  own code. The agent writes a great deal of Python — 949 <code>Bash</code> calls across ten
-  games — but at a 1.36 s median, most of which is interpreter start-up and
-  <code>import numpy</code> on 64×64 grids. Sustained local work is
-  <strong>15% of one core per solver</strong>, so concurrency is limited by model latency and
-  quota, not by CPU.
+  <strong>__LLM_PCT__% of a solver's wall clock is spent waiting on the model</strong>, not running
+  its own code. The agent writes a great deal of Python — __BASH_CALLS__ <code>Bash</code> calls
+  across __NGAMES__ games — but at a __BASH_MEDIAN__ s median, most of which is interpreter
+  start-up and <code>import numpy</code> on 64×64 grids. So concurrency is limited by model
+  latency and quota rather than by local compute.
+</p>
+<p class="prose" style="font-size:12px;color:var(--ink-faint)">
+  These four figures are computed from the span data on this page at build time, not written by
+  hand. An earlier version of this paragraph read <q>82% … 949 Bash calls across ten games … 1.36 s
+  median</q> and stayed on the page after it grew to 25 games, so it was describing a build that
+  no longer existed. Anything quoted here that can be derived is now derived.
 </p>
 
 <h2>Per game</h2>
@@ -320,6 +325,14 @@ tr.bad td { color: var(--bad); }
 </div>
 
 <h2>What the traces show</h2>
+<p class="prose" style="font-size:12px;color:var(--ink-faint);border-left:2px solid var(--rule);padding-left:10px">
+  <strong>Scope note.</strong> The findings below were computed on the ten-game build of
+  2026-08-05 and their counts — 949 <code>Bash</code> calls, 17,889 stream lines, 883 thinking
+  blocks, 972 turns, 11,250 spans — describe <em>that</em> set, not the __NGAMES__ games now on
+  this page. They are left as written because each is a claim about the runs it analysed and
+  re-deriving them is a separate piece of work; they are marked rather than quietly restated so
+  no number here is mistaken for a current one.
+</p>
 <div id="findings"></div>
 
 </div>
