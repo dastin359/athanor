@@ -2686,6 +2686,60 @@ immaterial here but again in the optimistic direction.
 #### Integrity
 Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
 
+### ⚠ CONTAMINATION: every re-run and every clean rollout below is void
+
+Found 2026-08-06 from a solver's own reasoning, visible in the published trace
+audit: *"I'm looking at the baseline metrics from meta.json — they total 518
+across six levels, and I have a budget of 2590 ... I also notice from the
+documentation that sp80 was a previous loss where five of six levels consumed 137
+actions (5% of budget)."*
+
+**Two leaks, both mine.**
+
+**1. `meta.json` carried the real per-level baselines and the action budget.**
+`ablate_baselines.strip_baselines()` does cover `meta.json`, but it is installed
+by `_install_patch()`, which is called **from `main()` only** — its own docstring
+explains why it is deliberately not at module scope. Both
+`tools/rerun_losses.py` and `tools/clean_rollouts.py` carry the line
+
+```python
+import ablate_baselines as ab   # installs the baseline strip
+```
+
+and that comment is false. Importing installs nothing. The arm ran
+`ablate_baselines.py` as a script, so `main()` fired and the strip applied; every
+run launched through my drivers got the unstripped workspace.
+
+**2. §0b of the doctrine names the three losses with their exact prior results** —
+`sp80` 5 of 6 in 137 actions, `tn36` 5 of 7 in 289, `sk48` 5 of 8 in 632. That
+table ships inside `DOCTRINE.md` to every solver, so each re-run and clean rollout
+of those three read a summary of its own previous failure.
+
+**Blast radius**, measured by testing whether each run's spans contain its own
+game's actual baseline numbers:
+
+| set | leaked | clean |
+|---|---|---|
+| 25-game arm | **0** | **25** |
+| 3 resumed re-runs | **3** | 0 |
+| 8 clean rollouts | **8** | 0 |
+
+**What this voids.** The 100.00% headline, which depended on the three re-runs.
+The five "clean rollout" conversions, which were not clean draws. And the decisive
+experiment — `sp80` 0.4762 and `tn36` 1.0000 were built to separate "§0b works"
+from "the notes work", and both runs were handed their own baselines *and* a
+summary of their own prior loss.
+
+**What survives.** The 25-game arm: baselines stripped, budget hidden, and run
+before §0b existed so no doctrine could describe a prior attempt. **23.6667 of 25,
+94.67%**, with 22 games at 1.0000 and three genuine losses.
+
+There is a test asserting the budget stays out of `CLAUDE.md`, `session.py` and
+the prompt. It never checked `meta.json`, which is where both numbers were.
+
+Everything from here to the end of the clean-rollout sections is retained for the
+record and must not be read as a result.
+
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
 The five that scored 1.0000 but were interrupted and resumed — `ft09`, `ka59`,
