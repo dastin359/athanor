@@ -2686,44 +2686,104 @@ immaterial here but again in the optimistic direction.
 #### Integrity
 Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
 
-### Re-run standing: two of three back, both reversed
+### Re-run standing: three of three back, all three reversed
 
 | game | arm | re-run | delta |
 |---|---|---|---|
 | `sp80` | 0.7143 (5/6) | **1.0000 (6/6)** | **+0.2857** |
 | `tn36` | 0.5357 (5/7) | **1.0000 (7/7)** | **+0.4643** |
-| `sk48` | 0.4167 (5/8) | running — 2 of 8 cleared, 146 actions | — |
+| `sk48` | 0.4167 (5/8) | **1.0000 (8/8)** | **+0.5833** |
 
-Both recovered environments were losses for the same reason and both cleared on a
-second attempt with §0b in the doctrine. If `sk48` follows, the arm total moves
-from 23.6667 to **25.0000 — 100.00%** on the 25 public environments. Two of the
-three points are already banked, taking it to **24.4167, or 97.67%**.
+All three were losses for the same reason and all three cleared on a second
+attempt with §0b in the doctrine. The arm total moves from 23.6667 to
+**25.0000 — 100.00%** on the 25 public environments.
 
 The honest caveat stands from the `tn36` variance note: these are single draws.
 What they establish is that the three environments were never beyond the harness
-— which is what the arm's loss column could not distinguish.
+— which is what the arm's loss column could not distinguish. A 100% that required
+a second attempt on three environments is not the same claim as a 100% first try,
+and the table above is written so the difference stays visible.
 
-#### What `sk48` has to reach, and why the bar is level 6
+### `sk48-d8078629` re-run — **1.0000 (8/8)**, and §0b's sharpest test
 
-`cap` is what binds this environment, so the re-run's score is decided by level
-count alone — the efficiency it is already banking cannot move it. `cap(k)` for
-`k` of 8 levels is `sum(1..k)/36`:
+The arm run stopped voluntarily on level 6 with 88% of its budget unspent, having
+written a closing report arguing the level required pushing red blocks through a
+gap that neither chain could enter. The re-run cleared level 6 in **45 actions**
+and went on to win the game.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.1295, `cap` **1.0000** — the cap binds) |
+| levels | 8 of 8, **0 deaths, 0 resets, 1 play** |
+| actions | **456** by ARC's count, against a 1,070 human total |
+| wall | 0.95 h · 75 turns · 4 attempts |
+| cost | $14.60 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 95 | 44 | 47 | 49 | 70 | 45 | 59 | 47 |
+| human | 61 | 177 | 101 | 103 | 230 | 181 | 125 | 92 |
+| ratio | 0.64× | 4.02× | 2.15× | 2.10× | 3.29× | 4.02× | 2.12× | 1.96× |
+| `S_l` | 0.4123 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**The two levels the arm never reached were among the cheapest.** Level 6 — the
+one it declared impassable — cost 45 actions against a 181 median, the joint-best
+ratio in the game at 4.02×. Level 7 cost 59 against 125. Whatever stopped the arm
+run was not the difficulty of those levels.
+
+**Level 1 is the only sub-1.0 level in any of the three re-runs**, at 95 actions
+against a 61 median for `S_l` 0.4123. It cost nothing: with all eight cleared,
+`cap` is 1.0 and `raw` 1.1295 sits above it, so the score is the cap. This is
+§0a's arithmetic — under a full clear, surplus efficiency is discarded and only
+completion is paid for. Had the run stopped at seven levels the same weak opening
+would still not have bound, because `cap` would have been 0.7778 against a `raw`
+still above 1.0.
+
+**Scored on ARC's counts, not ours.** Our ledger recorded 450 actions and ARC 456,
+a sixth non-empty `disagreements_with_server` in the re-run series; as with `sp80`
+(+12) and `tn36` (+22), the trace under-counts, so its numbers are optimistic and
+the server's are used. On these figures the difference is invisible — every level
+but the first is pinned at the 1.15 ceiling — but the rule is the rule.
+
+**One scorecard, one play, zero resets, across two interruptions.** The card
+survived both a container replacement and a wall-clock kill: ARC records
+`total_plays: 1` and `resets: 0` over the whole 456 actions, and its level-1
+cumulative of 95 covers the very first actions of the run, hours and two
+relaunches earlier. This is the strongest form of the finding recorded above at
+`(13.6, 43.8]` minutes — a resume that is prompt enough keeps not just the notes
+but the game itself, and the ledger reads as one continuous playthrough.
+
+**This run is also why `collect_outcome` no longer exempts wall-clock timeouts.**
+An earlier pass was killed by the driver's one-hour cap at level 4 on 232 of 5,350
+actions and banked `levels_reached: 4, won: false` with no error field — a result
+*worse than the arm's* that the resume rule would have made permanent. The fix
+distinguishes the limit that actually bound: budget spent is a real result, budget
+unspent is the clock. Without it this row would read 0.2778 instead of 1.0000.
+
+#### The bar, written down before the run finished
+
+Recorded mid-run, while `sk48` was on level 3, so the prediction is on the record
+ahead of the outcome rather than fitted to it. `cap` binds this environment, so
+the score was decided by level count alone and the efficiency being banked could
+not move it. `cap(k)` for `k` of 8 levels is `sum(1..k)/36`:
 
 | levels | 5 (arm) | 6 | 7 | 8 |
 |---|---|---|---|---|
 | `cap` | 0.4167 | 0.5833 | 0.7778 | 1.0000 |
 | delta vs arm | — | **+0.1667** | **+0.3611** | **+0.5833** |
 
-So **six of eight is the bar**: anything less repeats the arm's result, and each
-level past it is worth more than the last. `raw` will clear whichever `cap`
-applies — on the two levels re-run so far the solver spent 89 and 44 actions
-against human medians of 61 and 177 — so `E = cap` at every row above.
+**Six of eight was the bar**: anything less repeats the arm's result, and each
+level past it is worth more than the last. The run cleared all eight and took the
+last row, +0.5833.
 
-A weak level does not change that. Level 1 cost 89 against a 61 median, an
-`S_l` of 0.470 and the first sub-1.0 level in either re-run. On a full clear it
-is still worth 1.0000: `raw` = (0.470 + 1.15x35)/36 = 1.131, above the `cap` of
-1.0. This is §0a's arithmetic again — under a full clear, efficiency is free and
-only completion is paid for.
+The prediction that `E = cap` at every row held: `raw` finished at 1.1295, above
+even the 1.0 cap of a full clear. The one place the mid-run note was wrong is the
+opening level, which it put at 89 actions for an `S_l` of 0.470 — that was our
+ledger's count, and ARC's is 95 for an `S_l` of 0.4123. **The entire six-action
+disagreement with ARC sits on level 1**, which is also the only level where the
+gap could have mattered had the run stopped short. It did not change the score,
+for the reason the note gave: under a full clear, efficiency is free and only
+completion is paid for.
 
 #### The card survived the container replacement
 
