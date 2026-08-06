@@ -369,13 +369,49 @@ def test_a_killed_solver_is_an_error_not_a_loss(ws):
     # even though only 143 has ever been seen here.
     assert collect_outcome(ws, exit_code=-15, timed_out=False)["killed_by_signal"] == 15
 
-    # A timeout is a real outcome under a rule we chose — `bp35` is recorded that
-    # way deliberately — so it must NOT become retryable.
+    # A timeout is never a *signal* death, whatever the exit code carries.
     timeout = collect_outcome(ws, exit_code=-1, timed_out=True)
-    assert "error" not in timeout and "killed_by_signal" not in timeout
+    assert "killed_by_signal" not in timeout
 
     # A clean exit stays clean.
     assert "error" not in collect_outcome(ws, exit_code=0, timed_out=False)
+
+
+def test_a_wall_clock_timeout_is_only_a_result_if_the_budget_ran_out(ws):
+    """`sk48`: the clock stopped the run, and it was banked as a worse loss.
+
+    A timeout used to be exempt from the retry guards on the reasoning that it is
+    "a real outcome under a rule we chose". That is true of the *action budget*,
+    which is what the score runs on. It is not true of a wall clock, which is an
+    infrastructure limit sized to a container's lifetime.
+
+    `tools/rerun_losses.py` caps a pass at one hour. It fired while the solver was
+    mid-climb -- level 4 of 8, averaging 37 actions a level -- and wrote
+    `levels_reached: 4` on **232 of 5,350 actions**, `timed_out: true`, no error.
+    That is 4% of the budget, and under `if prior and not prior.get("error"): skip`
+    it would have been permanent: a re-run sent to beat 5 of 8 banked at 4 of 8,
+    scoring the environment *below* where it started.
+
+    So the rule is now about which limit actually bound. Budget spent -> a real,
+    bad result. Budget mostly unspent -> the clock, and retryable.
+    """
+    _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]]), ("ACTION1", 1, "NOT_FINISHED", [[[2]]])])
+    budget = json.loads((ws.root / "meta.json").read_text())["action_budget"]
+
+    # Two actions of a four-figure budget: the clock stopped this, not the game.
+    cut_short = collect_outcome(ws, exit_code=-1, timed_out=True)
+    assert "re-run this game" in cut_short["error"]
+    assert "interrupted by the clock" in cut_short["error"]
+
+    # Past halfway the budget is what bound, and the result stands as recorded.
+    _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]])]
+           + [("ACTION1", 1, "NOT_FINISHED", [[[2]]])] * budget)
+    spent = collect_outcome(ws, exit_code=-1, timed_out=True)
+    assert "error" not in spent, "an exhausted budget is a real outcome"
+
+    # A win is never retryable, however the run ended.
+    _trace(ws, [("RESET", 0, "NOT_FINISHED", [[[1]]]), ("ACTION1", 1, "WIN", [[[2]]])])
+    assert "error" not in collect_outcome(ws, exit_code=-1, timed_out=True)
 
 
 def test_a_crashed_solver_is_an_error_too(ws):
@@ -400,8 +436,11 @@ def test_a_crashed_solver_is_an_error_too(ws):
         assert "re-run this game" in out["error"], f"exit {code} must be retryable"
         assert "killed_by_signal" not in out, "a crash is not a signal death"
 
-    # A timeout is still a real outcome, whatever the exit code says.
-    assert "error" not in collect_outcome(ws, exit_code=1, timed_out=True)
+    # A timeout takes the wall-clock branch rather than the crash branch, so the
+    # message names the limit that actually bound. See the wall-clock test above
+    # for which timeouts are retryable and which stand.
+    timed = collect_outcome(ws, exit_code=1, timed_out=True)
+    assert "crashed" not in timed.get("error", "")
 
 
 def test_a_crash_after_winning_keeps_the_win(ws):

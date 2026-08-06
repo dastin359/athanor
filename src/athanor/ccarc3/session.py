@@ -761,6 +761,21 @@ def _killing_signal(exit_code: int) -> int:
     return 0
 
 
+def _action_budget(ws: Workspace) -> int:
+    """The run's action cap, as written into the workspace at setup.
+
+    Read from `meta.json` rather than recomputed, so it reflects the multiple the
+    run actually got. Returns 0 when it cannot be read, which makes every caller
+    fall through to its existing behaviour rather than guess.
+    """
+    try:
+        meta = json.loads((ws.root / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    budget = meta.get("action_budget")
+    return budget if isinstance(budget, int) and budget > 0 else 0
+
+
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
     """Read the run's result off disk — never from what the solver claims."""
     outcome = {
@@ -810,6 +825,36 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
             f"solver exited {exit_code} after {outcome.get('actions_used', 0)} "
             f"actions without winning — crashed, not a result; re-run this game"
         )
+    # **A wall-clock timeout is only a result if the budget is what ran out.**
+    #
+    # The two guards above exempt timeouts, on the reasoning that a timeout is "a
+    # real outcome under a rule we chose". That holds for the rule the *score*
+    # runs on -- the action budget. It does not hold for a wall clock, which is
+    # an infrastructure limit picked to fit a container's lifetime and has
+    # nothing to do with the game.
+    #
+    # `sk48` is why this exists. `tools/rerun_losses.py` caps a pass at one hour
+    # so the driver survives container replacement. That cap fired while the
+    # solver was mid-climb -- it had just reached level 4 of 8 and was averaging
+    # 37 actions a level -- and banked `levels_reached: 4` with **232 of 5,350
+    # actions used, 4% of the budget**, `timed_out: true` and no error. Under the
+    # resume rule `if prior and not prior.get("error"): skip`, that is the same
+    # permanent false loss as `ft09` and `wa30`, and it would have scored the
+    # re-run *below* the 5-of-8 it was sent to beat.
+    #
+    # So: budget genuinely spent -> a real, bad result, left alone. Budget mostly
+    # unspent -> the clock stopped the run, not the game. Half is the line
+    # because a solver that has used less than half its actions provably still
+    # had the replay in reserve that doctrine 0a tells it to keep.
+    elif timed_out and not outcome.get("won"):
+        budget = _action_budget(ws)
+        used = outcome.get("actions_used", 0) or 0
+        if budget and used < budget / 2:
+            outcome["error"] = (
+                f"solver hit the wall clock after {used} of {budget} actions "
+                f"({used / budget:.0%} of budget) — interrupted by the clock, "
+                f"not a result; re-run this game"
+            )
     if ws.rules_path.exists():
         book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
         outcome["mechanics_recorded"] = len(book.get("verified", []))
