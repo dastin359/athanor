@@ -268,24 +268,37 @@ def arc_actions_per_level(game_dir: pathlib.Path, game_id: str) -> list[int] | N
 
     ARC reports the level rows cumulatively (`[[1, 64], [2, 196], ...]`), so the
     per-level cost is the difference between consecutive entries.
+
+    **Differencing is delegated to `scoring.server_actions_per_level`** rather than
+    repeated here. An earlier version of this function open-coded the cumulative
+    differencing, which duplicated the canonical implementation and silently
+    dropped its guard against level rows arriving out of order -- two copies of the
+    same arithmetic that can drift apart, in the one place the project treats as
+    authoritative. Only the play *selection* lives here, because the canonical
+    helper defaults to the most recent play while ARC scores the best one.
     """
     card_file = game_dir / "scorecard.json"
     if not card_file.exists():
         return None
     try:
-        card = json.loads(card_file.read_text())["cards"][game_id]
-    except (ValueError, KeyError):
+        scorecard = json.loads(card_file.read_text())
+        plays = scorecard["cards"][game_id]["actions_by_level"] or []
+    except (ValueError, KeyError, TypeError):
         return None
-    plays = card.get("actions_by_level") or []
     if not plays:
         return None
-    # ARC scores the best play; take the one that got furthest, then cheapest.
-    best = max(plays, key=lambda p: (len(p), -(p[-1][1] if p else 0)))
-    per, prev = [], 0
-    for _level, cumulative in best:
-        per.append(cumulative - prev)
-        prev = cumulative
-    return per
+
+    sys.path.insert(0, str(REPO / "src"))
+    from athanor.ccarc3 import scoring  # noqa: PLC0415
+
+    # ARC scores the best play: furthest first, then cheapest at that depth.
+    best = max(range(len(plays)),
+               key=lambda i: (len(plays[i]), -(plays[i][-1][1] if plays[i] else 0)))
+    try:
+        return scoring.server_actions_per_level(scorecard, game_id, play=best)
+    except (KeyError, ValueError) as exc:
+        print(f"    {game_id}: server actions unusable ({exc})", file=sys.stderr)
+        return None
 
 
 def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
