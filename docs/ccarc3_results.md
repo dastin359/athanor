@@ -2699,10 +2699,20 @@ discard costs quota and wall clock but never score.
 | game | arm | clean rollout | status |
 |---|---|---|---|
 | `sb26` | 1.0000 (interrupted) | **1.0000 (8/8)** | **clean, banked** |
-| `ft09` | 1.0000 (interrupted) | — | running |
-| `ka59` | 1.0000 (interrupted) | — | queued |
-| `wa30` | 1.0000 (interrupted) | — | queued |
+| `ft09` | 1.0000 (interrupted) | **1.0000 (6/6)** | **clean, banked** |
+| `ka59` | 1.0000 (interrupted) | **1.0000 (7/7)** | **clean, banked** |
+| `wa30` | 1.0000 (interrupted) | — | running |
 | `lf52` | 1.0000 (interrupted) | — | queued |
+| `sp80` | **0.7143 (5/6)** | — | queued — the decisive three |
+| `tn36` | **0.5357 (5/7)** | — | queued |
+| `sk48` | **0.4167 (5/8)** | — | queued |
+
+The three losses were added to the queue on 2026-08-06. They have been run on the
+current doctrine — their re-runs carried §0b — but never *cleanly*: 12, 3 and 4
+solver launches, each restoring `rules.json` from the losing arm run. So "§0b
+works" and "a second look at your own notes works" remain confounded, and a fresh
+single-process run is the only configuration that separates them. Their arm
+losses predate §0b by a day and serve as the control.
 
 #### `sb26-7fbdac44` clean rollout — **1.0000 (8/8)**, and the first zero-disagreement run
 
@@ -2744,6 +2754,37 @@ Recorded here because the failure mode is the dangerous kind: no error, no crash
 a plausible-looking log line, and a real result silently binned. `salvage()` now
 re-scans earlier attempt directories before starting a new one, which is how this
 result was recovered rather than re-bought.
+
+#### `ft09` and `ka59` clean rollouts — 1.0000 each, and the disagreement pattern closes
+
+| | `ft09` | `ka59` |
+|---|---|---|
+| E | **1.0000** (`raw` 1.0400) | **1.0000** (`raw` 1.1400) |
+| levels | 6 of 6, 1 play, 2 level-resets | 7 of 7, 1 play, 0 resets |
+| actions | **98** vs 208 human | **385** vs 730 human |
+| wall | 32 min, one process | 98 min, one process |
+| ledger vs ARC | **98 vs 98** | **385 vs 385** |
+
+`ft09`'s level 1 at **10.75×** the human median — 4 actions against 43 — is the
+widest single-level margin recorded in the project.
+
+**Three clean runs, three exact agreements with ARC.** 130/130, 98/98, 385/385,
+against +12, +22 and +6 on the three interrupted re-runs. Every uninterrupted run
+matches and every interrupted one does not, which is what the "responses lost when
+a container dies mid-action" explanation predicts. It was one data point when
+`sb26` landed; it is now a clean split.
+
+**Level 1 keeps being the weak level.** `sb26` 1.20×, `ft09` 10.75×, `ka59` 0.93×
+— and in two of the three it is the *only* level below the 1.15 ceiling
+(`ft09`'s L4 at 0.76× being the exception). That matches the arm-wide measurement:
+level 1 runs below human pace in 6 of 15 scored runs against 9 of 90 for later
+levels. It costs nothing under a full clear, since `cap` binds at 1.0 and `raw`
+clears it regardless.
+
+**A level reset does not break cleanliness.** `ft09` used two, and ARC still
+records `total_plays: 1`. A level reset is the cheap in-level retry §2a endorses;
+it opens no new play. The criterion is one solver process and one continuous
+attempt, which in-run replays and level resets both satisfy.
 
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
