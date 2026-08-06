@@ -13,3 +13,4 @@ utc	boot_id	uptime_s	head	scratch_dirs	rerun_present	note
 2026-08-05T23:49:26Z	b2ba8b1a-db5e-4d5c-87a1-e1da2aaf6ea1	73	f4b883e	13	no	-
 2026-08-06T00:10:37Z	b2ba8b1a-db5e-4d5c-87a1-e1da2aaf6ea1	1344	58982af	13	yes	seen_boot_id_before(x1)
 2026-08-06T00:49:43Z	13573683-3957-417b-a585-3a87c6f6c2e3	72	f526b58	13	no	-
+2026-08-06T01:10:47Z	13573683-3957-417b-a585-3a87c6f6c2e3	1337	d095f62	13	yes	seen_boot_id_before(x1)
