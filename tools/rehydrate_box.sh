@@ -49,6 +49,10 @@ ln -sf "$REPO/tools/refresh_audit.sh" "$SP/refresh_audit.sh"
 # 3+4. Fingerprint and banked results.
 bash "$REPO/tools/box_fingerprint.sh" >/dev/null 2>&1 && echo "fingerprint logged"
 python3 "$REPO/tools/restore_banked_results.py" 2>/dev/null | head -1
+# Same problem, different experiment: the rollout driver reads its banked
+# markers off the scratchpad, so a replacement makes finished games look
+# unstarted. Restores only attempts that finished without an error.
+python3 "$REPO/tools/restore_clean_rollouts.py" 2>/dev/null | head -1
 
 # What is running, argv-element-exact -- a substring match finds this script.
 for name in supervisor.sh ablate_baselines.py rerun_losses.py preserve_evidence.sh; do
