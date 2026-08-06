@@ -2703,8 +2703,8 @@ discard costs quota and wall clock but never score.
 | `ka59` | 1.0000 (interrupted) | **1.0000 (7/7)** | **clean, banked** |
 | `wa30` | 1.0000 (interrupted) | **1.0000 (9/9)** | **clean, banked** |
 | `lf52` | 1.0000 (interrupted) | **1.0000 (10/10)** | **clean, banked** |
-| `sp80` | **0.7143 (5/6)** | — | **running** — the decisive three |
-| `tn36` | **0.5357 (5/7)** | — | queued |
+| `sp80` | **0.7143 (5/6)** | **0.4762 (4/6)** | **clean — and it LOST** |
+| `tn36` | **0.5357 (5/7)** | — | running |
 | `sk48` | **0.4167 (5/8)** | — | queued |
 
 The three losses were added to the queue on 2026-08-06. They have been run on the
@@ -2886,6 +2886,51 @@ scored 1.0000 has been scored 1.0000 again without a resume.
 What remains is the part that was never clean: `sp80`, `tn36` and `sk48`, whose
 only clean data are the arm losses at 0.7143, 0.5357 and 0.4167. `sp80` started
 its clean rollout on 2026-08-06.
+
+### `sp80` clean rollout — **0.4762 (4/6)**, and the re-run's 1.0000 does not survive
+
+This is the result the clean-rollout experiment existed to produce, and it goes
+against the optimistic reading.
+
+| | arm | re-run (resumed, inherited `rules.json`) | clean rollout |
+|---|---|---|---|
+| E | 0.7143 | **1.0000** | **0.4762** |
+| levels | 5 of 6 | 6 of 6 | **4 of 6** |
+| actions | 137 | 419 | 249 |
+| exit | clean stop | won | **`GAME_OVER`, 2 deaths** |
+
+**It did not fail on efficiency.** Every level it cleared was at the 1.15 ceiling,
+and not narrowly:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 9 | 10 | 13 | 27 | — | — |
+| human | 39 | 58 | 25 | 148 | 96 | 152 |
+| ratio | 4.33× | 5.80× | 1.92× | 5.48× | — | — |
+
+`raw` 0.5476 against `cap` 0.4762 — the cap binds, so the whole loss is
+completion. It stopped with **284 of 2,590 actions used, 11% of budget.**
+
+**§0b was in this run's doctrine and did not prevent the voluntary stop.** The
+paragraph exists precisely because all three arm losses stopped early with budget
+in hand; this run had it and stopped at 11% anyway, one level short of where the
+arm run stopped. Whatever produced the re-run's 6-of-6, it was not §0b acting
+alone on a fresh solver.
+
+**What this does and does not establish.** It is one draw. The same environment
+scored 0.7143 in the arm and 0.4762 here under the same doctrine with no notes —
+a 0.24 spread on identical conditions, which is itself evidence that single draws
+on this environment are noisy, and therefore that the re-run's 1.0000 may be
+partly luck. Two more clean rollouts (`tn36`, `sk48`) are queued; three points
+will say much more than one. What it removes is the clean inference that §0b
+converted these losses.
+
+**The server disagreement inverted.** Ledger 284, ARC 249 — our trace
+*over*-counts by 35, where every prior disagreement under-counted (+12, +22, +6)
+and all five clean rollouts matched exactly. This is also the first clean rollout
+to end in `GAME_OVER`, with 2 deaths. Actions after a death not counting
+server-side would explain it, but that is untested and is recorded here as an
+open question rather than a conclusion.
 
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
