@@ -2704,8 +2704,8 @@ discard costs quota and wall clock but never score.
 | `wa30` | 1.0000 (interrupted) | **1.0000 (9/9)** | **clean, banked** |
 | `lf52` | 1.0000 (interrupted) | **1.0000 (10/10)** | **clean, banked** |
 | `sp80` | **0.7143 (5/6)** | **0.4762 (4/6)** | **clean — and it LOST** |
-| `tn36` | **0.5357 (5/7)** | — | running |
-| `sk48` | **0.4167 (5/8)** | — | queued |
+| `tn36` | **0.5357 (5/7)** | **1.0000 (7/7)** | **clean — and it WON** |
+| `sk48` | **0.4167 (5/8)** | — | running |
 
 The three losses were added to the queue on 2026-08-06. They have been run on the
 current doctrine — their re-runs carried §0b — but never *cleanly*: 12, 3 and 4
@@ -2931,6 +2931,60 @@ and all five clean rollouts matched exactly. This is also the first clean rollou
 to end in `GAME_OVER`, with 2 deaths. Actions after a death not counting
 server-side would explain it, but that is untested and is recorded here as an
 open question rather than a conclusion.
+
+### `tn36` clean rollout — **1.0000 (7/7)**, and the three split
+
+Run under the same conditions that sank `sp80`: fresh, one process, no inherited
+`rules.json`, §0b in the doctrine. It won everything.
+
+| | arm | resumed re-run (with notes) | clean rollout |
+|---|---|---|---|
+| E | 0.5357 | 1.0000 | **1.0000** |
+| levels | 5 of 7 | 7 of 7 | **7 of 7** |
+| actions | 289 | 507 | **196** |
+| `raw` | — | 1.0344 | **1.1500** |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 24 | 40 | 12 | 16 | 21 | 39 | 44 |
+| human | 32 | 72 | 26 | 40 | 30 | 55 | 62 |
+| ratio | 1.33× | 1.80× | 2.17× | 2.50× | 1.43× | 1.41× | 1.41× |
+
+**`raw` 1.1500 is the theoretical maximum.** Every level at the 1.15 ceiling —
+the only run on record where that is true. Zero deaths, one play, zero
+disagreement with ARC, 49 minutes.
+
+**It beat the run that had the notes.** The resumed re-run spent 507 actions to
+clear the same seven levels; this one spent **196**, 2.59× leaner, starting from
+nothing. On this environment the inherited `rules.json` was not an advantage — it
+was correlated with a *worse* route.
+
+### What the split means, with `sk48` still to come
+
+| | arm | resumed re-run | clean rollout |
+|---|---|---|---|
+| `sp80` | 0.7143 | 1.0000 | **0.4762** ↓ |
+| `tn36` | 0.5357 | 1.0000 | **1.0000** ↑ |
+| `sk48` | 0.4167 | 1.0000 | running |
+
+Two results, opposite directions. Neither simple story survives:
+
+- **"The notes did the work"** is refuted by `tn36`, which cleared all seven from
+  scratch, more efficiently than the run that had them.
+- **"§0b converted the losses"** is refuted by `sp80`, which had §0b, stopped at
+  11% of budget, and finished *below* its own arm result.
+
+What both are consistent with is **high per-environment variance**. `sp80` has now
+produced 0.7143 and 0.4762 on two clean draws of the same environment under the
+same doctrine; `tn36` has produced 0.5357 and 1.0000. Spreads of 0.24 and 0.46 on
+identical conditions are larger than any effect being argued about, which is the
+uncomfortable finding and the one this series was built to surface.
+
+**On the arithmetic.** Taking the better of the two clean draws per environment —
+which is what ARC's own best-of-scorecards rule would do — the clean set is
+**24.1310 of 25, 96.52%**, up from 23.6667 because `tn36` improved and `sp80` did
+not. That figure is a weaker claim than the 23.6667, because it is best-of-two
+rather than one draw, and it is recorded that way rather than as a headline.
 
 ### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
 
