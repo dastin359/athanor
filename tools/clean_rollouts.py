@@ -390,9 +390,31 @@ def one_pass(games: list[str], infos: dict) -> None:
                 # these five, so inheriting anything would defeat the point.
                 fresh=True,
             ))
-        except Exception:                      # noqa: BLE001 -- one game must not end the pass
+        except Exception as exc:                      # noqa: BLE001 -- one game must not end the pass
             traceback.print_exc()
+            # **Say what the harness was talking to.** On 2026-08-06 seven games
+            # were burned through three passes on
+            # `list_games -> [Errno 111] Connection refused`, and the traceback
+            # alone could not say whether the driver was pointed at ARC or at a
+            # dead loopback proxy -- the two are the same line of code and only
+            # the resolved root tells them apart. Reproducing the startup by hand
+            # afterwards showed the real API, so the running process differed from
+            # the code on disk in a way nothing recorded.
+            from athanor.ccarc3 import client as _c  # noqa: PLC0415
+            print(f"    root={_c.ROOT_URL} proxy={os.environ.get('CCARC3_PROXY_URL')} "
+                  f"arc_root={os.environ.get('CCARC3_ARC_ROOT')}", flush=True)
             print(f"    {gid} attempt {n} raised; treating as interrupted", flush=True)
+            if isinstance(exc, RuntimeError) and "Connection refused" in str(exc):
+                # **A dead endpoint is not this game's fault, and retrying is not
+                # a strategy.** Every remaining game fails the same way in
+                # milliseconds, so the loop marks the whole queue interrupted,
+                # burns its 12 passes and gives up on games it never launched.
+                # Stop instead, and let the supervisor restart the driver -- a
+                # fresh process rebuilds the proxy that went missing.
+                raise SystemExit(
+                    "aborting: the ARC endpoint is unreachable, so every "
+                    "remaining game would fail identically. Restart the driver."
+                )
             continue
 
         state, data = verdict(workspace_of(run_dir, gid))
