@@ -225,6 +225,32 @@ def build_spans(stream: pathlib.Path) -> tuple[list[dict], int, int]:
     return spans, unparseable, len(rows)
 
 
+def stream_start(stream: pathlib.Path) -> str:
+    """The first timestamp in a solver stream, or "" if it carries none.
+
+    Tiles for ingested runs said "start time unknown" -- every rollout and
+    re-run, twelve of thirty-five. The value was never missing: `build_spans`
+    reads exactly this field to compute `t0`, then throws the absolute time away
+    and keeps only offsets. So the page was reporting an absence that was really
+    a discard, and on the one axis you would use to line runs up against a
+    container event.
+    """
+    try:
+        with stream.open() as fh:
+            for line in fh:
+                if '"timestamp"' not in line:
+                    continue
+                try:
+                    stamp = json.loads(line).get("timestamp")
+                except ValueError:
+                    continue
+                if stamp:
+                    return stamp
+    except OSError:
+        pass
+    return ""
+
+
 def ingest(game_dir: pathlib.Path) -> dict | None:
     """Read one finished run directory into a store entry."""
     result_file = game_dir / "result.json"
@@ -254,6 +280,12 @@ def ingest(game_dir: pathlib.Path) -> dict | None:
             })
     if not attempts:
         return None
+    # Earliest attempt wins: the run started when its first solver did, not when
+    # the one that happened to finish was launched.
+    for stream in streams:
+        if stream.exists() and (stamp := stream_start(stream)):
+            result.setdefault("_started", stamp)
+            break
     return {"result": result, "attempts": attempts}
 
 
@@ -326,6 +358,15 @@ def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
         "cfg": {"nobase": True, "wall4h": False, "think": False, "arcn": False},
         "tier": "clean" if not result.get("error") else "crashed",
     }
+    if started := result.get("_started"):
+        row["started"] = started
+        try:
+            when = dt.datetime.fromisoformat(started.replace("Z", "+00:00"))
+            # The existing rows read UTC-7; keep the two comparable rather than
+            # having half the grid in one zone and half in another.
+            row["started_local"] = (when - dt.timedelta(hours=7)).strftime("%b %-d %H:%M")
+        except ValueError:
+            pass
     try:  # optional: only possible when the API is reachable
         sys.path.insert(0, str(REPO / "src"))
         from athanor.ccarc3.client import baselines_for  # noqa: PLC0415
@@ -384,7 +425,88 @@ def mark_contaminated(data: dict, runs: list) -> list[str]:
     for row in runs:
         if row.get("id") in voided and row.get("tier") != "excluded":
             row["tier"] = "void"
+    mark_clean(data, runs)
     return sorted(voided)
+
+
+def backfill_start_times(runs: list) -> list[str]:
+    """Recover start times for rows ingested before `stream_start` existed.
+
+    Ten of thirty-five tiles read "start time unknown" — every rollout and
+    re-run. The time was never unknown; the ingest that built those rows simply
+    did not keep it. The preserved streams under `evidence/ccarc3/` still have
+    it, so this reads it back rather than leaving the page asserting an absence.
+    """
+    evidence = REPO / "evidence" / "ccarc3"
+    filled = []
+    for row in runs:
+        if row.get("started_local") or not row.get("id"):
+            continue
+        gid = row["id"].split("@")[0]
+        # Earliest stream across every batch that holds this game: attempt order
+        # is numeric, and `stream.11` sorts before `stream.2` as a string.
+        cands = sorted(
+            (p for batch in evidence.iterdir() if batch.is_dir()
+             for p in batch.glob(f"{gid}/**/stream*.jsonl.gz")),
+            key=lambda p: (0 if ".jsonl" == p.name[-11:-3] else 1, p.name),
+        )
+        for path in cands:
+            stamp = ""
+            try:
+                with gzip.open(path, "rt") as fh:
+                    for line in fh:
+                        if '"timestamp"' not in line:
+                            continue
+                        try:
+                            stamp = json.loads(line).get("timestamp") or ""
+                        except ValueError:
+                            continue
+                        if stamp:
+                            break
+            except OSError:
+                continue
+            if not stamp:
+                continue
+            try:
+                when = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            row["started"] = stamp
+            row["started_local"] = (when - dt.timedelta(hours=7)).strftime("%b %-d %H:%M")
+            filled.append(f"{row['id']} {row['started_local']}")
+            break
+    return filled
+
+
+def mark_clean(data: dict, runs: list) -> int:
+    """Flag the runs that meet the strict criterion, for the page's filter.
+
+    **Three things have all been called "clean" here and they are not the same.**
+    The `clean` *tier* means "valid score, older instrumentation". The word in
+    conversation means "no container restart". And after the baseline leak it
+    also has to mean "the solver could not read its own answer". A filter is only
+    useful if it means one thing, so this is the conjunction — a run is clean when
+    every one of these holds:
+
+    * not `void` and not `excluded` — no baselines reached the solver;
+    * one attempt — a resumed run inherited `rules.json` from its own earlier
+      self, which is the confound the rollouts exist to remove;
+    * no `error` — an interrupted run is discarded, never scored.
+
+    Stored as a boolean rather than computed in the page, so the definition lives
+    next to the evidence it is derived from.
+    """
+    n = 0
+    for row in runs:
+        entry = data.get(row.get("id")) or {}
+        result = entry.get("result") or {}
+        row["clean"] = bool(
+            row.get("tier") not in {"void", "excluded", "crashed"}
+            and (result.get("attempts") or 1) == 1
+            and not result.get("error")
+        )
+        n += row["clean"]
+    return n
 
 
 def summarise(data: dict) -> dict:
@@ -510,12 +632,16 @@ def main() -> int:
         print(f"  {gid}: {verb}, {len(entry['attempts'])} attempt(s), {spans} spans")
         added.append(gid)
 
+    filled = backfill_start_times(runs)
+    if filled:
+        print(f"start times recovered for {len(filled)}: {', '.join(filled)}")
+
     voided = mark_contaminated(data, runs)
     if voided:
         print(f"VOID: {len(voided)} run(s) could read their own baselines — "
               f"{', '.join(voided)}")
 
-    if (added or voided) and not args.no_save:
+    if (added or voided or filled) and not args.no_save:
         with gzip.open(STORE / "spans.json.gz", "wt") as fh:
             json.dump(data, fh)
         with gzip.open(STORE / "runs.json.gz", "wt") as fh:

@@ -110,6 +110,17 @@ h2 {
 .cf.on { color: var(--ink-soft); border-color: var(--ink-faint); opacity: 1;
          text-decoration: none; }
 
+/* Filter sits in the section heading, so it reads as a property of the grid
+   rather than a stray control floating above it. */
+label.filter { float: right; text-transform: none; letter-spacing: .02em;
+               font-weight: 400; cursor: pointer; display: inline-flex;
+               align-items: center; gap: 6px; color: var(--ink-soft); }
+label.filter input { accent-color: var(--llm); cursor: pointer; margin: 0; }
+label.filter b { color: var(--ink-faint); font-weight: 400; }
+p.note { font-family: var(--sans); font-size: 12.5px; line-height: 1.6;
+         color: var(--ink-faint); max-width: 68ch; margin: -6px 0 14px;
+         border-left: 2px solid var(--rule); padding-left: 12px; }
+
 /* ---- split bar ---- */
 .split { display: flex; height: 46px; border: 1px solid var(--rule); overflow: hidden; }
 .split div { display: flex; align-items: center; padding: 0 14px; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -293,7 +304,15 @@ tr.bad td { color: var(--bad); }
   no longer existed. Anything quoted here that can be derived is now derived.
 </p>
 
-<h2>Per game</h2>
+<h2>Per game <label class="filter"><input type="checkbox" id="cleanonly">
+  <span>clean only <b id="cleancount"></b></span></label></h2>
+<!-- "Clean" has meant three different things here: the tier badge, "no container
+     restart", and "the solver could not read its own baselines". The filter uses
+     the conjunction of all three, computed at build time in mark_clean() so the
+     definition sits next to the evidence rather than in a page script. -->
+<p class="note" id="cleannote">One solver process, no container restart, no baselines reachable —
+  the strict criterion. Hides contaminated runs, runs pulled from the arm, and anything resumed
+  from an interrupted attempt.</p>
 <div class="tiles" id="tiles"></div>
 
 <h2>Span tree</h2>
@@ -391,7 +410,7 @@ const cfgStrip = r => CFG.map(([k, title]) =>
   `<span class="cf${r.cfg && r.cfg[k] ? " on" : ""}" title="${title}: ${r.cfg && r.cfg[k] ? "yes" : "no"}">${k}</span>`
 ).join("");
 
-$("tiles").innerHTML = RUNS.map(r => {
+const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
   const st = STATUS[r.status] || STATUS.scored;
   const ti = TIER[r.tier] || TIER.clean;
   const val = r.E == null ? "—" : r.E.toFixed(4);
@@ -412,7 +431,19 @@ $("tiles").innerHTML = RUNS.map(r => {
     <div class="tier" style="color:${ti.colour}" title="${ti.note}">${ti.label}</div>
     <div class="cfg">${cfgStrip(r)}</div>
   </div>`;
-}).join("");
+}).join(""); };
+
+// Filtering rebuilds the grid, so the click and keyboard handlers below are bound
+// to the container rather than to each tile -- rebinding per render is how a
+// filter quietly breaks the span tree.
+const cleanRuns = RUNS.filter(r => r.clean);
+$("cleancount").textContent = `(${cleanRuns.length} of ${RUNS.length})`;
+renderTiles(RUNS);
+$("cleanonly").addEventListener("change", e => {
+  renderTiles(e.target.checked ? cleanRuns : RUNS);
+  $("cleannote").style.display = e.target.checked ? "block" : "none";
+});
+$("cleannote").style.display = "none";
 
 // chips
 const keys = Object.keys(DATA);

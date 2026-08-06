@@ -212,17 +212,51 @@ def test_set_cookie_headers_reach_the_client(cookie_proxy):
     assert "AWSALBAPP-0=sticky" in cookies
 
 
-def test_the_clients_cookie_is_forwarded_upstream(cookie_proxy):
+def test_the_clients_cookie_is_never_forwarded_upstream(cookie_proxy):
+    """This used to assert the opposite, and the opposite broke the scorecard.
+
+    Relaying the client's `Cookie` header meant `http.cookiejar` would not touch
+    the request — it refuses to set a header that is already present — so the
+    proxy's own session was silenced and the client's cookies drove the routing
+    instead. The client's jar holds the ALB's `AWSALBAPP-N=_remove_` tombstones
+    as though they were values and sends them back, which unpins the session.
+    ARC then answers `404 card_id not found` for a card it created moments
+    earlier.
+
+    Measured on the first clean rollout: 9 of 12 scorecard reads 404'd, the
+    snapshot froze at level 6 of 8, and the run still finished 8/8 — actions
+    carry a `guid` and are not card-scoped, so nothing else showed a symptom.
+
+    The proxy owns the upstream session. It holds the key, and the session
+    belongs with the credential.
+    """
     c = http.client.HTTPConnection("127.0.0.1", cookie_proxy, timeout=10)
     try:
         c.request("GET", "/api/cmd/RESET",
-                  headers={"Cookie": "GAMESESSION=xyz789; AWSALBAPP-0=pinned"})
+                  headers={"Cookie": "GAMESESSION=xyz789; AWSALBAPP-0=_remove_"})
         c.getresponse().read()
     finally:
         c.close()
     assert SEEN_COOKIES, "upstream was never reached"
-    assert "GAMESESSION=xyz789" in SEEN_COOKIES[-1]
-    assert "AWSALBAPP-0=pinned" in SEEN_COOKIES[-1]
+    assert "xyz789" not in (SEEN_COOKIES[-1] or "")
+    assert "_remove_" not in (SEEN_COOKIES[-1] or "")
+
+
+def test_the_proxy_keeps_one_session_across_calls(cookie_proxy):
+    """What replaces it: the cookie the *stub* issued comes back on the next call.
+
+    That is the pinning the scorecard depends on, now held here instead of
+    round-tripped through a client that mangles it.
+    """
+    import urllib.request
+
+    arc_proxy._reset_session()
+    root = f"http://127.0.0.1:{cookie_proxy}"
+    urllib.request.urlopen(f"{root}/api/scorecard/open", timeout=10).read()
+    urllib.request.urlopen(f"{root}/api/cmd/RESET", timeout=10).read()
+    assert "GAMESESSION=abc123" in (SEEN_COOKIES[-1] or ""), (
+        "the proxy did not carry its own session into the second call"
+    )
 
 
 def test_a_cookie_jar_client_keeps_its_session_across_calls(cookie_proxy):

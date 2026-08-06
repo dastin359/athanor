@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import http.cookiejar
 import sys
 import threading
 import urllib.error
@@ -80,6 +81,9 @@ def set_budget(max_actions: int, *, used: int = 0) -> None:
     global MAX_ACTIONS, ACTIONS_USED
     with _budget_lock:
         MAX_ACTIONS, ACTIONS_USED = int(max_actions), int(used)
+    # A new game means a new card; carrying the previous game's pinning
+    # over is how a stale session survives into a run that did not open it.
+    _reset_session()
 
 
 def _exhausted() -> str | None:
@@ -91,6 +95,44 @@ def _exhausted() -> str | None:
                 "The environment is over; nothing further can be scored."
             )
     return None
+
+
+_session_lock = threading.Lock()
+_opener: urllib.request.OpenerDirector | None = None
+
+
+def _upstream():
+    """One persistent session to ARC, cookie jar and all.
+
+    **Forwarding the client's cookies is not enough.** ARC binds a scorecard to
+    the HTTP session, and its load balancer pins that session with four
+    `AWSALBAPP-*` cookies. Building a fresh request per call — which
+    `urllib.request.urlopen` does — lets the balancer re-pin on every hop, so the
+    card lands on a backend that has never heard of it. Measured against the live
+    API on the same card: 8 of 8 reads succeed direct, **1 of 8 through the shim**,
+    and the seven failures are `404 card_id not found`.
+
+    That cost the first clean rollout its authoritative scoring source. Actions
+    survived it, because they carry a `guid` and are not card-scoped, so the game
+    played through to 8/8 while the scorecard froze at level 6 — a failure that
+    looks like nothing at all until you compare the two.
+
+    The jar lives here rather than in the client because the client is the thing
+    being kept at arm's length. Reset per game by `set_budget`.
+    """
+    global _opener
+    with _session_lock:
+        if _opener is None:
+            _opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+            )
+        return _opener
+
+
+def _reset_session() -> None:
+    global _opener
+    with _session_lock:
+        _opener = None
 
 
 def _charge() -> None:
@@ -219,15 +261,23 @@ class Handler(BaseHTTPRequestHandler):
         # every game it touched, silently and in a way that looks exactly like
         # ARC dropping the card. That is why it sat unwired for so long. It is
         # fixed and covered end to end by `test_arc_proxy_endtoend.py`.
-        cookie = self.headers.get("Cookie")
-        if cookie:
-            headers["Cookie"] = cookie
+        # **The client's cookies are deliberately NOT forwarded.** They were, and
+        # that is what broke the scorecard: `http.cookiejar` refuses to set a
+        # `Cookie` header on a request that already has one, so relaying the
+        # client's header silenced this process's own jar entirely. The client's
+        # jar meanwhile holds the ALB's `AWSALBAPP-N=_remove_` tombstones as if
+        # they were values and sends them back, which unpins the session. The
+        # card then lands on a backend that has never heard of it and every read
+        # answers `404 card_id not found`.
+        #
+        # The proxy owns the upstream session. That is the whole point of it
+        # holding the key, and the session belongs with the credential.
         req = urllib.request.Request(
             UPSTREAM + self.path, data=payload, method=method, headers=headers,
         )
         set_cookies: list[str] = []
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with _upstream().open(req, timeout=120) as r:
                 body, code = r.read(), r.getcode()
                 set_cookies = r.headers.get_all("Set-Cookie") or []
         except urllib.error.HTTPError as exc:
