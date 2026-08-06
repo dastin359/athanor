@@ -2741,6 +2741,20 @@ It also converts the first of the five. `sb26` is no longer "1.0000, but resumed
 it is 1.0000 on a single uninterrupted process, which the strict criterion accepts.
 The clean set moves from 20 games to 21, **19.6667 of 21**.
 
+**Running total as each rollout banks**, stated here because I twice quoted it a
+point too high in conversation — each converted game adds 1.0000 to the numerator
+*and* one game to the denominator, and I was adding only the numerator:
+
+| after | clean set | |
+|---|---|---|
+| `sb26` | 19.6667 / 21 | 93.65% |
+| `ft09` | 20.6667 / 22 | 93.94% |
+| `ka59` | **21.6667 / 23** | **94.20%** |
+
+The denominator grows because these five were *excluded* from the original clean
+20, not scored zero in it. Converting one moves it from the interrupted set into
+the clean set.
+
 #### The bug that nearly threw this result away
 
 `clean_rollouts.py` passed `out_dir=attempt_N` while `Ccarc3Config` builds its
