@@ -87,6 +87,14 @@ while true; do
         for d in "$SP/$base"/*/; do
             [ -d "$d" ] || continue
             preserve_dir "${d%/}"
+            # clean_rollouts nests one level deeper: <game>/attempt_N/<game>/,
+            # because Ccarc3Config(out_dir=X) builds the workspace at X/<game_id>.
+            # A one-level glob walked straight past every rollout stream, which is
+            # the one class of solver log this session can still capture.
+            for a in "${d%/}"/attempt_*/*/; do
+                [ -d "$a" ] || continue
+                preserve_dir "${a%/}"
+            done
         done
     done
 

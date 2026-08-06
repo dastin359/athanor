@@ -64,6 +64,34 @@ GAMES = [
 BUDGET_MULTIPLE = 5.0
 
 
+def workspace_of(attempt_dir: pathlib.Path, game_id: str) -> pathlib.Path:
+    """Where the harness actually puts the run.
+
+    `Ccarc3Config(out_dir=X)` builds the workspace at `X/<game_id>`, not at `X`.
+    The first version of this driver passed `out_dir=attempt_N` and then looked
+    for `attempt_N/result.json`, which never exists -- so every attempt read as
+    "no result", nothing was ever banked clean, and the retry loop would have run
+    all 12 passes re-running games that had in fact completed. The solver was
+    working the whole time; only the driver's idea of where to look was wrong.
+    """
+    return attempt_dir / game_id
+
+
+def salvage(game_dir: pathlib.Path, game_id: str) -> dict | None:
+    """Bank a clean result from an earlier attempt before starting a new one.
+
+    Exists because the path bug above wasted finished runs: an attempt could
+    complete cleanly and be discarded unread. Re-scanning previous attempt dirs
+    means a restart of this driver picks those up instead of paying for them
+    again.
+    """
+    for attempt in sorted(game_dir.glob("attempt_*")):
+        state, data = verdict(workspace_of(attempt, game_id))
+        if state == "clean":
+            return data
+    return None
+
+
 def verdict(game_dir: pathlib.Path) -> tuple[str, dict | None]:
     """Classify a finished attempt: clean, interrupted, or a real loss.
 
@@ -140,6 +168,14 @@ def one_pass(games: list[str], infos: dict) -> None:
             print(f"\n=== {gid}: not in list_games() any more, skipping", flush=True)
             continue
 
+        rescued = salvage(OUT / gid, gid) if (OUT / gid).exists() else None
+        if rescued is not None:
+            banked.write_text(json.dumps(rescued, indent=1))
+            print(f"\n=== {gid}: salvaged a clean result from an earlier attempt "
+                  f"({rescued.get('levels_reached')}/{rescued.get('levels_total')})",
+                  flush=True)
+            continue
+
         n = attempts_so_far(OUT / gid) + 1 if (OUT / gid).exists() else 1
         run_dir = OUT / gid / f"attempt_{n}"
         print(f"\n=== {gid} — {info.levels} levels, cap "
@@ -161,7 +197,7 @@ def one_pass(games: list[str], infos: dict) -> None:
             print(f"    {gid} attempt {n} raised; treating as interrupted", flush=True)
             continue
 
-        state, data = verdict(run_dir)
+        state, data = verdict(workspace_of(run_dir, gid))
         mins = (time.time() - started) / 60
         if state == "clean":
             (OUT / gid / "clean_result.json").write_text(json.dumps(data, indent=1))
