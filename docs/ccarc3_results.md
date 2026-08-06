@@ -2586,3 +2586,54 @@ the rollback and has been left absent on purpose.
 not merely written. The repository came through three rollbacks without losing a
 line because every change was committed and pushed the moment it was made; the
 scratchpad lost half an arm's evidence because it was only ever on disk.
+
+## Re-running the three losses, with §0b in the doctrine
+
+The arm's three losses all failed the same way — cleared exactly five levels, hit
+a level they could not read, stopped voluntarily with 82–95% of the action budget
+unspent. Doctrine §0b (*being stuck with budget left is a reason to change
+technique, not to stop*) was written from that pattern and shipped before these
+re-runs began.
+
+### `sp80-589a99af` — **0.7143 → 1.0000**, the first one back
+
+| | arm run | re-run |
+|---|---|---|
+| levels | 5 of 6 | **6 of 6, won** |
+| `E` | 0.7143 | **1.0000** |
+| `raw` | 0.8214 | 1.0218 |
+| actions | 137 (5% of budget) | 419 (16%) |
+| outcome | stopped voluntarily | cleared it |
+
+**+0.2857** on this environment. The difference is not efficiency — level 2 cost
+2.28× the human median here — it is that the run kept going. It spent three times
+the actions the losing run did and cleared the level that stopped it. Four of six
+levels still finished at the 1.15 ceiling, and level 4 took **27 actions against a
+148 human median**.
+
+#### The first disagreement with ARC's scorecard in this project
+
+`disagreements_with_server` has returned empty for all 25 arm games. Here it
+returned two:
+
+| level | our trace | ARC |
+|---|---|---|
+| 5 | 59 | **66** |
+| 6 | 105 | **110** |
+
+ARC counted **12 more actions than we recorded**, all in the last two levels.
+The cause is visible in the run's own metadata: `attempts: 11`. Containers were
+being replaced roughly every 30 minutes, and this run was cut off and resumed
+eleven times. An action sent to the server whose response never reached
+`trace.jsonl` — because the process died between the two — is counted by ARC and
+missing from us.
+
+Scored either way it is `E` **1.0000** and `raw` 1.0218: the shortfall is small
+and lands on levels already below the cap. But the direction matters. **Our trace
+under-counts**, so a trace-derived score is optimistic, and the discrepancy scales
+with how often a run is interrupted. Every arm figure was taken from runs
+interrupted at most twice and agreed exactly; this one was interrupted eleven
+times and did not. ARC's numbers are the authority and are used above.
+
+#### Integrity
+Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
