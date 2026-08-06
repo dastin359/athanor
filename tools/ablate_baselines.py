@@ -53,7 +53,7 @@ import time
 
 sys.path.insert(0, "/home/user/athanor/src")
 
-from athanor.ccarc3 import Ccarc3Config, list_games, run_game
+from athanor.ccarc3 import Ccarc3Config, arc_proxy, list_games, run_game
 from athanor.ccarc3.client import HIDE_BASELINES_ENV
 from athanor.ccarc3 import session as sess
 
@@ -113,7 +113,13 @@ def scored_games():
     return reruns + [g.game_id for g in fresh], latest
 
 
-GAMES, CONTROL = scored_games()
+# **Not at module scope.** `scored_games()` calls `list_games()`, which is a live
+# `GET /api/games`, so computing the queue at import made importing this module a
+# network call -- and made it fail outright without a key. `main()`'s docstring
+# has always said importing must not run the arm; building the queue at import is
+# the same mistake one step earlier, and it is why nothing ever imported this
+# module under test. The strip that decides whether the arm measures anything
+# went untested for its whole life because you could not import it to test it.
 
 
 def strip_baselines(root: pathlib.Path) -> None:
@@ -193,9 +199,43 @@ def strip_baselines(root: pathlib.Path) -> None:
 _original_build = sess.build_workspace
 
 
+def _actions_already_spent(root: pathlib.Path) -> int:
+    """What a resumed game has already charged, per the client's own checkpoint."""
+    state = root / "trace.state.json"
+    if not state.exists():
+        return 0
+    try:
+        return int(json.loads(state.read_text(encoding="utf-8")).get("actions_used", 0))
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
 def build_without_baselines(config, info=None):
     ws = _original_build(config, info)
     strip_baselines(ws.root)
+
+    # **The cap is the baseline total times `budget_multiple`, so a solver that
+    # can read its cap can read the secret.** Stripping `action_budget` from
+    # `meta.json` did not finish the job: `build_workspace` also exports
+    # `CCARC3_MAX_ACTIONS` to the child, and the workspace `session.py` reads it
+    # from there. The child can read its own environment as easily as its own
+    # files, and `budget_multiple: float = 5.0` is a default sitting in this
+    # package's source on the solver's `PYTHONPATH` -- so cap/5 recovers the
+    # total exactly. Enforce it in the proxy instead, where the number lives in
+    # a process the solver does not run.
+    budget = ws.info.suggested_budget(ws.config.budget_multiple)
+    arc_proxy.set_budget(budget, used=_actions_already_spent(ws.root))
+    ws.env.pop("CCARC3_MAX_ACTIONS", None)
+
+    # The key would defeat everything above it. `GET /api/games` returns
+    # `baseline_actions` for all 25 environments, and `install()` has pointed the
+    # client at the proxy, which refuses that path and holds the credential.
+    if "ARC_API_KEY" in ws.env or "ARCPRIZE_API_KEY" in ws.env:
+        raise RuntimeError(
+            "the solver's environment still holds an ARC key, so /api/games is "
+            "one urllib call away. install() must set CCARC3_PROXY_URL before "
+            "any workspace is built."
+        )
     # **Close the channel no file edit can reach.** The solver holds an API key
     # and imports the package, so `arc.list_games()` would hand back
     # `baseline_actions` for all 25 environments however thoroughly the
@@ -271,8 +311,22 @@ def install() -> None:
 
     So the install is a function you call, with a name that says what it does,
     and `assert_installed()` below makes forgetting it fatal instead of silent.
+
+    **It also starts the key shim**, which had been finished, tested and never
+    switched on. `arc_proxy` exists precisely because file-level sanitation
+    cannot stop a solver that holds `ARC_API_KEY` from calling `/api/games` and
+    reading the medians for all 25 environments -- two runs did exactly that.
+    Nothing anywhere set `CCARC3_PROXY_URL`, so the branch in `build_workspace`
+    that drops the key never once ran, and every game in this project was played
+    by a solver holding the credential. The blocker was real when it was written
+    (the shim dropped session cookies, which breaks every game it touches) and
+    has since been fixed and covered end to end; what was left was the wiring.
     """
     _install_patch()
+    if not os.environ.get("CCARC3_PROXY_URL"):
+        url, _srv = arc_proxy.serve_in_background()
+        os.environ["CCARC3_PROXY_URL"] = url
+        print(f"arc_proxy: {url} (key withheld from solvers, cap enforced here)")
 
 
 def assert_installed() -> None:
@@ -291,6 +345,12 @@ def assert_installed() -> None:
             "Call ablate_baselines.install() before running any game -- importing "
             "this module does not install it."
         )
+    if not os.environ.get("CCARC3_PROXY_URL"):
+        raise RuntimeError(
+            "CCARC3_PROXY_URL is unset, so build_workspace will leave ARC_API_KEY "
+            "in the solver's environment and /api/games will hand back the "
+            "baselines for all 25 games. Call ablate_baselines.install()."
+        )
 
 
 def main() -> None:
@@ -306,7 +366,9 @@ def main() -> None:
     `strip_baselines` meaningful, and an importer that wants the function but not
     the patch should take the function alone.
     """
-    _install_patch()
+    install()
+    assert_installed()
+    GAMES, CONTROL = scored_games()
     infos = {g.game_id: g for g in list_games()}
     results = []
     # `CONTROL.get`, not `CONTROL[...]`. The queue is no longer "scored games": it is

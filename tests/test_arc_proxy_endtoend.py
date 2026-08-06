@@ -243,3 +243,79 @@ def test_a_cookie_jar_client_keeps_its_session_across_calls(cookie_proxy):
 
     opener.open(urllib.request.Request(f"{root}/api/cmd/RESET")).read()
     assert "GAMESESSION=abc123" in (SEEN_COOKIES[-1] or "")
+
+
+# --- the action cap --------------------------------------------------------- #
+# The cap lives here rather than in the workspace client because the cap *is* the
+# secret: it is `budget_multiple` times the baseline total, and `budget_multiple`
+# is a default in this package's source, on the solver's PYTHONPATH. A solver that
+# reads `CCARC3_MAX_ACTIONS` out of its own environment divides by five and has
+# the number the whole baseline-free arm exists to withhold.
+
+
+@pytest.fixture(autouse=True)
+def _clear_budget():
+    """Module globals, so an armed cap would leak into every later test."""
+    arc_proxy.set_budget(0)
+    yield
+    arc_proxy.set_budget(0)
+
+
+def test_actions_are_refused_once_the_cap_is_reached(proxy):
+    arc_proxy.set_budget(3)
+    for i in range(3):
+        status, _ = _request(proxy, "/api/cmd/ACTION1")
+        assert status == 200, f"action {i + 1} of 3 should be inside the budget"
+
+    status, body = _request(proxy, "/api/cmd/ACTION1")
+    assert status == 403, "the fourth action is over the cap"
+    # 4xx and not 429: `client._send` raises on 4xx without retrying, so the
+    # solver gets one terminal error rather than three rounds of backoff.
+    assert "budget exhausted" in json.loads(body)["error"]
+
+
+def test_reset_is_charged_like_any_other_action(proxy):
+    """`ArcClient.actions_used` increments on RESET, so the cap must too.
+
+    Both counters increment on the same `/api/cmd/*` call. If the proxy skipped
+    RESET the two would drift by one per replay, and a solver replaying six
+    levels would quietly earn six extra actions.
+    """
+    arc_proxy.set_budget(1)
+    assert _request(proxy, "/api/cmd/RESET")[0] == 200
+    assert _request(proxy, "/api/cmd/ACTION1")[0] == 403
+
+
+def test_scorecard_calls_are_not_charged(proxy):
+    """Opening and closing a card is bookkeeping, not play."""
+    arc_proxy.set_budget(1)
+    for path in ("/api/scorecard/open", "/api/scorecard/close"):
+        assert _request(proxy, path)[0] == 200
+    assert _request(proxy, "/api/cmd/ACTION1")[0] == 200, "the one action survived"
+
+
+def test_a_resumed_game_does_not_get_its_budget_back(proxy):
+    """The count is in memory here and on disk there.
+
+    A container replacement restarts the driver, and with it the proxy, while the
+    solver's `trace.state.json` still records what it spent. Seeding from that
+    file is what stops the cap binding at `used + max` and growing with every
+    interruption -- which would have made the budget a function of how often the
+    box was replaced.
+    """
+    arc_proxy.set_budget(3, used=2)
+    assert _request(proxy, "/api/cmd/ACTION1")[0] == 200, "one action left"
+    assert _request(proxy, "/api/cmd/ACTION1")[0] == 403
+
+
+def test_an_unarmed_proxy_does_not_cap_anything(proxy):
+    """`set_budget` is per game; a bare proxy must forward without limit."""
+    for _ in range(5):
+        assert _request(proxy, "/api/cmd/ACTION1")[0] == 200
+
+
+def test_a_refused_action_is_not_charged(proxy):
+    """A path off the allowlist never reaches upstream, so it costs nothing."""
+    arc_proxy.set_budget(1)
+    assert _request(proxy, "/api/games")[0] == 403
+    assert _request(proxy, "/api/cmd/ACTION1")[0] == 200, "the refusal spent budget"

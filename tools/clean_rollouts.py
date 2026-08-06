@@ -47,7 +47,15 @@ SP = pathlib.Path(
     "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
 OUT = SP / "clean_rollouts"
-sys.path.insert(0, str(SP))
+
+# **The strip is imported from the repo, not the scratchpad.** It used to come
+# from `SP`, which is the one store that reverts to an image snapshot when the
+# container is replaced -- so a driver relaunched after a replacement would pick
+# up whatever version of the baseline strip the snapshot happened to hold, with
+# nothing in any log to say so. The two copies were byte-identical when this was
+# noticed, so no banked result turns on it; the hazard is that the code deciding
+# whether a run is contaminated lived in the volatile store.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import ablate_baselines as ab            # noqa: E402 -- strip installed below
 from athanor.ccarc3 import Ccarc3Config  # noqa: E402

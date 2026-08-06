@@ -16,11 +16,20 @@ at all, so a hand-rolled request has nothing to authenticate with.
 are forwarded. Anything else is refused, so a new ARC endpoint that happens to
 carry baselines is closed by default rather than open until someone notices.
 
+**It also holds the action cap**, for the same reason it holds the key: a limit
+the solver can read is a limit the solver can invert. The cap is
+`budget_multiple` times the baseline total, so telling a solver its cap tells it
+the number the baseline-free arm exists to withhold -- and `budget_multiple`'s
+value is a default in this package's own source, sitting on the solver's
+`PYTHONPATH`. Counting here means the child's environment carries no budget at
+all, and it makes the cap unforgeable besides: the in-process guard reads a
+count from a file in the solver's own workspace.
+
 **What this does not claim.** The key is still readable from this process's
 `/proc/<pid>/environ` by the same uid, so a solver determined to escalate could
-find it. That is a far deeper reach than calling a documented endpoint, it leaves
-an obvious trace, and `baseline_watch.py` looks for it. The goal is to make the
-easy path impossible, not to sandbox an adversary.
+find it. That is a far deeper reach than calling a documented endpoint and it
+leaves an obvious trace in the refusal log. The goal is to make the easy path
+impossible, not to sandbox an adversary.
 """
 from __future__ import annotations
 
@@ -28,6 +37,7 @@ import json
 import os
 import re
 import sys
+import threading
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +56,53 @@ ALLOW = (
 
 def _allowed(path: str) -> bool:
     return any(p.match(path) for p in ALLOW)
+
+
+# Every action the client sends -- RESET is `/api/cmd/RESET` and counts, exactly
+# as `ArcClient.actions_used` counts it, because both increment on the same call.
+_CMD = re.compile(r"^/api/cmd/[A-Z0-9_]+$")
+
+_budget_lock = threading.Lock()
+MAX_ACTIONS = 0        # 0 disables the cap, so a bare proxy behaves as before
+ACTIONS_USED = 0
+
+
+def set_budget(max_actions: int, *, used: int = 0) -> None:
+    """Arm the cap for one game.
+
+    `used` seeds the counter from a run already in progress. The proxy's count
+    lives in memory and the solver's does not, so a resumed game whose proxy
+    restarted would otherwise get its whole budget back -- the cap would bind at
+    `used + max_actions` and quietly grow with every interruption. Callers read
+    the figure from the workspace's `trace.state.json`, which is where the client
+    checkpoints it.
+    """
+    global MAX_ACTIONS, ACTIONS_USED
+    with _budget_lock:
+        MAX_ACTIONS, ACTIONS_USED = int(max_actions), int(used)
+
+
+def _exhausted() -> str | None:
+    """The refusal message when the cap is reached, or None while budget remains."""
+    with _budget_lock:
+        if MAX_ACTIONS and ACTIONS_USED >= MAX_ACTIONS:
+            return (
+                f"action budget exhausted after {ACTIONS_USED} actions. "
+                "The environment is over; nothing further can be scored."
+            )
+    return None
+
+
+def _charge() -> None:
+    """Bill one action, after upstream accepted it.
+
+    Charged on the response rather than the request so the count tracks
+    `ArcClient.actions_used`, which increments while processing a frame the
+    server actually returned. A 502 costs the solver nothing at either end.
+    """
+    global ACTIONS_USED
+    with _budget_lock:
+        ACTIONS_USED += 1
 
 
 # **An allowlisted endpoint still leaks the baselines, so responses are filtered
@@ -118,11 +175,30 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _deny(self, code: int, message: str) -> None:
+        body = json.dumps({"error": message}).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _forward(self, method: str) -> None:
         path = self.path.split("?", 1)[0]
         if not _allowed(path):
             self._refuse(path)
             return
+        charge = bool(_CMD.match(path))
+        if charge:
+            # 403 and not 429: `client._send` raises on 4xx without retrying, so
+            # the solver gets one clear terminal error rather than three rounds
+            # of backoff against a wall that will not move.
+            over = _exhausted()
+            if over:
+                sys.stderr.write(f"BUDGET {path} — {over}\n")
+                sys.stderr.flush()
+                self._deny(403, over)
+                return
         n = int(self.headers.get("Content-Length") or 0)
         payload = self.rfile.read(n) if n else None
         headers = {
@@ -139,9 +215,10 @@ class Handler(BaseHTTPRequestHandler):
         # a clean request per call makes every solver call a new session and
         # every game unreachable the moment it is opened.
         #
-        # This is why the proxy is not yet wired into the runner launch path: as
-        # first written it would have broken every game it touched, silently and
-        # in a way that looks exactly like ARC dropping the card.
+        # As first written this proxy dropped cookies, which would have broken
+        # every game it touched, silently and in a way that looks exactly like
+        # ARC dropping the card. That is why it sat unwired for so long. It is
+        # fixed and covered end to end by `test_arc_proxy_endtoend.py`.
         cookie = self.headers.get("Cookie")
         if cookie:
             headers["Cookie"] = cookie
@@ -162,6 +239,8 @@ class Handler(BaseHTTPRequestHandler):
             set_cookies = exc.headers.get_all("Set-Cookie") or []
         except (urllib.error.URLError, TimeoutError) as exc:
             body, code = json.dumps({"error": f"upstream: {exc}"}).encode(), 502
+        if charge and 200 <= code < 300:
+            _charge()
         # Filter on the way back, not just on the way in. Content-Length is
         # recomputed below from the filtered body, so this must happen first.
         body = _filtered(body)
@@ -178,6 +257,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):      # noqa: N802
         self._forward("POST")
+
+
+def serve_in_background(port: int = 0) -> tuple[str, ThreadingHTTPServer]:
+    """Start the shim on a daemon thread and return `(base_url, server)`.
+
+    In-process rather than a subprocess, because the caller is the one thing
+    that already holds the key legitimately -- the runner builds the queue and
+    scores the result from the same baselines it is keeping away from the
+    solver. A subprocess would need the key handed to it anyway, and would
+    outlive a driver that died.
+
+    Port 0 by default: the runner is relaunched constantly after container
+    replacement, and a fixed port turns a not-yet-reaped predecessor into
+    `Address already in use` at exactly the wrong moment.
+    """
+    if not os.environ.get("ARC_API_KEY"):
+        raise RuntimeError("arc_proxy: no ARC_API_KEY in env; refusing to start")
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host, bound = srv.server_address[:2]
+    return f"http://{host}:{bound}", srv
 
 
 def main() -> int:

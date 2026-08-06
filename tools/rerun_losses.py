@@ -42,7 +42,13 @@ REPO = pathlib.Path("/home/user/athanor")
 EVIDENCE = REPO / "evidence" / "ccarc3" / "rerun_losses"
 OUT = SP / "rerun_losses"
 
-sys.path.insert(0, str(SP))
+# **The strip is imported from the repo, not the scratchpad.** `SP` is the one
+# store that reverts to an image snapshot on container replacement, so importing
+# the baseline strip from there means a driver relaunched after a replacement
+# runs whatever version the snapshot held. The copies were byte-identical when
+# this was noticed, so nothing banked turns on it -- but the code that decides
+# whether a run is contaminated does not belong in the volatile store.
+sys.path.insert(0, str(REPO / "tools"))
 
 import ablate_baselines as ab            # noqa: E402 -- strip installed below
 from athanor.ccarc3 import Ccarc3Config  # noqa: E402
