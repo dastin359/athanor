@@ -395,6 +395,12 @@ const STATUS = {
 // this arm. TIER answers "is this number comparable to one produced today?"
 // before you read the number.
 const TIER = {
+  // Derived at build time from the run's start against the git history of
+  // everything a solver reads -- not a label anyone maintains. `latest` and
+  // `clean` were exactly that, and thirteen runs kept claiming "current config"
+  // through twelve harness commits.
+  current:  {label: "current",    colour: "var(--good)",      note: "no harness change since this ran"},
+  superseded: {label: "superseded", colour: "var(--ink-faint)", note: "the harness has changed since this ran — see the commit count"},
   latest:   {label: "latest",     colour: "var(--good)",      note: "current config"},
   clean:    {label: "clean",      colour: "var(--ink-faint)", note: "valid score, older instrumentation"},
   pre4h:    {label: "pre-4h",     colour: "var(--tool)",      note: "ran under the old 2 h wall clock"},
@@ -418,7 +424,7 @@ const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
   // Contamination outranks the status stripe: a void run's score is not a
   // result, so the tile must not read as one at a glance.
   const edge = r.tier === "void" ? "var(--bad)"
-             : st.colour || (r.tier === "latest" ? "var(--good)" : null);
+             : st.colour || (r.tier === "current" ? "var(--good)" : null);
   // The tile and the chip name the same 14 runs. Making only the chip clickable
   // meant reading a tile, then hunting the matching chip in a second list below.
   return `
@@ -428,7 +434,8 @@ const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
     <div class="v" style="color:${col}">${val}</div>
     <div class="n">${r.levels} · ${r.actions} acts · ${fmt(r.wall)} · $${r.cost.toFixed(2)}</div>
     <div class="n started">${r.started_local ? `started ${r.started_local}` : "start time unknown"}</div>
-    <div class="tier" style="color:${ti.colour}" title="${ti.note}">${ti.label}</div>
+    <div class="tier" style="color:${ti.colour}" title="${ti.note}">${ti.label}${
+      r.behind ? `<span style="opacity:.7;font-weight:400"> · ${r.behind} commits behind</span>` : ""}</div>
     <div class="cfg">${cfgStrip(r)}</div>
   </div>`;
 }).join(""); };

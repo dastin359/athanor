@@ -32,6 +32,7 @@ import json
 import pathlib
 import re
 import statistics
+import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -425,6 +426,7 @@ def mark_contaminated(data: dict, runs: list) -> list[str]:
     for row in runs:
         if row.get("id") in voided and row.get("tier") != "excluded":
             row["tier"] = "void"
+    mark_generation(runs)
     mark_clean(data, runs)
     return sorted(voided)
 
@@ -476,6 +478,65 @@ def backfill_start_times(runs: list) -> list[str]:
             filled.append(f"{row['id']} {row['started_local']}")
             break
     return filled
+
+
+# What a solver reads, plus what decides whether it may read it. The doctrine
+# lives under `src/athanor/ccarc3/assets/`, so one path covers the prompt, the
+# client and the scoring; `ablate_baselines.py` is the strip and the proxy wiring.
+HARNESS_PATHS = ("src/athanor/ccarc3/", "tools/ablate_baselines.py")
+
+
+def harness_commits() -> list[str]:
+    """Commit timestamps that changed the harness, newest first."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--format=%cI", "--", *HARNESS_PATHS],
+            cwd=REPO, capture_output=True, text=True, timeout=30, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [line for line in out.splitlines() if line.strip()]
+
+
+def mark_generation(runs: list) -> int:
+    """Replace the frozen `latest` label with how far behind each run actually is.
+
+    **`latest` was a string, not a measurement.** It was written into the store
+    when `b5f4651` was the newest runner and nothing ever recomputed it, so
+    thirteen runs went on claiming "current config" through twelve subsequent
+    harness commits -- including the ones that wired the key shim, moved the
+    action cap out of the solver's environment, and added two rules to the
+    doctrine. `sk48` was still badged `latest` while the doctrine had grown a
+    table row naming `sk48` and its exact loss.
+
+    That is the same defect as the `CLEAN` badge: a label asserting a property
+    instead of reporting one. So the tier is derived here from the run's start
+    time against the git history of everything a solver reads, and it goes stale
+    on its own the moment the next harness commit lands.
+
+    `void` and `excluded` outrank it -- a contaminated run's generation is not
+    the interesting fact about it.
+    """
+    commits = harness_commits()
+    if not commits:
+        print("    generation check SKIPPED: no git history for the harness paths",
+              file=sys.stderr)
+        return 0
+    moved = 0
+    for row in runs:
+        if row.get("tier") in {"void", "excluded"} or not row.get("started"):
+            continue
+        started = row["started"].replace("Z", "+00:00")
+        try:
+            when = dt.datetime.fromisoformat(started)
+        except ValueError:
+            continue
+        behind = sum(1 for c in commits if dt.datetime.fromisoformat(c) > when)
+        row["behind"] = behind
+        was = row.get("tier")
+        row["tier"] = "current" if behind == 0 else "superseded"
+        moved += row["tier"] != was
+    return moved
 
 
 def mark_clean(data: dict, runs: list) -> int:
