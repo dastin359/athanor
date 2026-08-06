@@ -61,7 +61,13 @@ key_is_clean() {
 preserve_dir() {
     local src="$1" name out f
     name=$(basename "$src")
-    out="$DEST/$(basename "$(dirname "$src")")/$name"
+    # Mirror the full path under the scratchpad rather than just the parent.
+    # Deriving the destination from one directory level works only for a flat
+    # <batch>/<game> layout; clean_rollouts nests <batch>/<game>/attempt_N/<game>,
+    # so the old form produced "attempt_2/<game>" — the batch name dropped, and
+    # every batch's attempt_1 colliding in one directory. Existing paths are
+    # unchanged: for rerun_losses/<game> this still yields rerun_losses/<game>.
+    out="$DEST/${src#$SP/}"
     mkdir -p "$out"
     for f in "${KEEP[@]}"; do
         [ -f "$src/$f" ] || continue
