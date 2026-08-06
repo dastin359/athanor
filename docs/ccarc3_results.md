@@ -2789,6 +2789,55 @@ the prompt. It never checked `meta.json`, which is where both numbers were.
 Everything from here to the end of the clean-rollout sections is retained for the
 record and must not be read as a result.
 
+### Round 2 rollouts — the first runs with the door actually shut
+
+Everything in the previous section is void. This is the same eight-game queue
+re-run after the three baseline leaks were closed, the key shim was switched on,
+and the action cap was moved into the proxy. Verified per run on the shipped
+workspace rather than on the config that built it.
+
+| game | E | levels | actions | wall | cost | card agrees |
+|---|---|---|---|---|---|---|
+| `sb26` | **1.0000** | 8/8 | 126 | 20.4 min | $5.76 | yes — 126 |
+
+#### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` 1.1436, `cap` 1.0000) |
+| levels | 8 of 8, **0 deaths, 0 resets, 1 play** |
+| actions | **126**, against a 213 human total |
+| wall | 20.4 min, single process, 58 turns, $5.76 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 11 | 15 | 15 | 15 | 17 | 19 | 17 | 17 |
+| human | 18 | 28 | 18 | 19 | 31 | 23 | 58 | 18 |
+| ratio | 1.64× | 1.87× | 1.20× | 1.27× | 1.82× | 1.21× | **3.41×** | 1.06× |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.1211 |
+
+**What makes this one different from the seven before it.** Checked on the
+workspace the solver actually received, not on the code that wrote it:
+
+- its own per-level array appears in **no** file — `meta.json` is down to six
+  keys, `session.py` carries `baseline_actions=()`, `CLAUDE.md` contains the
+  word "baseline" zero times;
+- `1065`, its budget and therefore `5 × 213`, appears nowhere in the stream;
+- the solver's environment held no `ARC_API_KEY` and no `CCARC3_MAX_ACTIONS`,
+  and `/api/games` answered 403;
+- **ARC's own card corroborates it**: `levels_completed=[8]`, state `WIN`, 126
+  actions against our 126. The void `sb26` rollout finished 8/8 with a card
+  frozen at level 3, so this check is not ceremonial.
+
+It is also the only run on the audit page tiered `current` — no commit has
+touched the package, the doctrine or the strip since it started. All 24 valid
+arm runs are `superseded` by 12 to 19 commits.
+
+**Against the void rollout it replaces**, which scored the same 1.0000: 126
+actions against 130, and level 1 at 11 rather than 15. Not a difference worth
+reading anything into on n=1 — the point is that this one is attested, not that
+it is better.
+
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
 The five that scored 1.0000 but were interrupted and resumed — `ft09`, `ka59`,
