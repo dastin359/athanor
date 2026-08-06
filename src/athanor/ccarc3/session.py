@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ __all__ = [
     "run_game",
     "collect_outcome",
     "snapshot_scorecard",
+    "redact_self_reference",
 ]
 
 ASSETS = Path(__file__).parent / "assets"
@@ -269,6 +271,7 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None) -> Works
     )
     shutil.copy(ASSETS / "CCARC3_DOCTRINE.md", root / "DOCTRINE.md")
     (root / "CLAUDE.md").write_text(_workspace_claude_md(info, budget), encoding="utf-8")
+    redact_self_reference(root, config.game_id)
     (root / "meta.json").write_text(
         json.dumps(
             {
@@ -497,6 +500,56 @@ def _initial_prompt(info: GameInfo, budget: int, *, resumed: bool = False) -> st
         "Write code to interrogate the trace rather than reading frames by eye. "
         "Dying is cheap and is a legitimate experiment; being confused is expensive."
     )
+
+
+GAME_ID_RE = re.compile(r"[a-z0-9]{4}(?:-[0-9a-f]{8})?")
+
+
+def redact_self_reference(root: Path, game_id: str) -> int:
+    """Remove the doctrine's worked examples that name *this* game.
+
+    **A solver must not read about its own previous attempts.** `DOCTRINE.md`
+    earns its keep with concrete measured examples, and those examples name the
+    environments they came from -- nine of the twenty-five, at last count. That
+    is fine for a game you are not playing and contamination for one you are.
+
+    It stopped being hypothetical on 2026-08-06. §0b tabulates the three arm
+    losses with their exact results, and a clean rollout of `sp80` was caught
+    reasoning: *"I also notice from the documentation that sp80 was a previous
+    loss where five of six levels consumed 137 actions (5% of budget), with
+    level 6 being the critical bottleneck."* Every re-run and rollout of those
+    three read a summary of its own prior failure.
+
+    Table rows naming the game are dropped whole -- a row is self-contained, and
+    blanking the id would leave its level count and action total, which identify
+    it just as well. Prose mentions have the id replaced by a neutral phrase,
+    because deleting a sentence mid-paragraph mangles the argument around it.
+
+    **This does not make the doctrine unidentifiable, and should not be sold as
+    though it did.** A prose example that says "one run finished at raw 0.449
+    having cleared six of seven levels" still tells a solver on a seven-level
+    game something about a seven-level game. What it removes is the direct,
+    named, self-referential leak. Returns the number of lines changed.
+    """
+    doc = root / "DOCTRINE.md"
+    if not doc.exists():
+        return 0
+    short = game_id.split("-")[0]
+    if not short:
+        return 0
+    out, changed = [], 0
+    for line in doc.read_text(encoding="utf-8").splitlines():
+        if short not in line:
+            out.append(line)
+            continue
+        changed += 1
+        if line.lstrip().startswith("|"):
+            continue                      # drop the whole row
+        out.append(re.sub(rf"`?{re.escape(short)}[a-z0-9-]*`?",
+                          "another environment", line))
+    if changed:
+        doc.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return changed
 
 
 def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = None) -> list[str]:

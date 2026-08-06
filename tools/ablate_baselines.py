@@ -43,7 +43,6 @@ pooled rates: the pairing is the entire design.
 to bank two or three games, pause, and resume after the reset. It is idempotent,
 so that costs only the relaunch.
 """
-import gzip
 import json
 import os
 import pathlib
@@ -157,6 +156,15 @@ def strip_baselines(root: pathlib.Path) -> None:
     if meta.exists():
         blob = json.loads(meta.read_text(encoding="utf-8"))
         blob.pop("baseline_actions", None)
+        # **And the budget, because it is the baseline total times five.**
+        # Removing the per-level array while leaving `action_budget` hands back
+        # exactly what was removed: the solver caught doing this said so in as
+        # many words -- "they total 518 across six levels, and I have a budget
+        # of 2590, which is 5 times the baseline". 2590/5 = 518. A strip that
+        # leaves a trivially invertible function of the secret has not stripped
+        # anything. The cap still reaches the client through the environment,
+        # where nothing the solver reads by default will show it.
+        blob.pop("action_budget", None)
         meta.write_text(json.dumps(blob, indent=2) + "\n", encoding="utf-8")
 
     # **Scan the whole workspace, not the files this function edited.**
@@ -246,47 +254,43 @@ def _install_patch() -> None:
     pkg.build_workspace = build_without_baselines
 
 
-def restore_banked_results() -> int:
-    """Put finished results back on disk before anything decides what to re-run.
+def install() -> None:
+    """Install the baseline strip. **Call this; importing does not.**
 
-    **The skip check below reads result.json off disk, and disk is not durable.**
-    A container replacement rewinds the scratchpad to an image snapshot: on
-    2026-08-06 that left 13 of the 25 banked arm results missing while the games
-    were long since scored. The loop would have read those as unstarted and re-run
-    all 13 — one of them `sk48`, at a moment when another driver held a live ARC
-    card for it, which is two solvers acting on one card and one ledger.
+    `_install_patch()` is deliberately not a module-scope side effect, and that
+    is still right -- see its docstring. But two drivers carried the line
 
-    This is the same ordering bug that was fixed in tools/rerun_losses.py by
-    restoring before the skip check rather than after. The durable copy of every
-    result lives in the trace-audit store, so that is what is read back.
+        import ablate_baselines as ab   # installs the baseline strip
+
+    and that comment was false. Importing installs nothing, so every run launched
+    through `tools/rerun_losses.py` and `tools/clean_rollouts.py` shipped a
+    workspace with the real per-level baselines and the action budget in
+    `meta.json`. Three re-runs and eight rollouts were contaminated before a
+    solver's own reasoning gave it away, quoting the numbers back out of
+    `meta.json`.
+
+    So the install is a function you call, with a name that says what it does,
+    and `assert_installed()` below makes forgetting it fatal instead of silent.
     """
-    store = pathlib.Path("/home/user/athanor/evidence/ccarc3/trace_audit/spans.json.gz")
-    if not store.exists():
-        print("    banked-result store missing; skip check is running on disk alone",
-              flush=True)
-        return 0
-    restored = 0
-    try:
-        data = json.loads(gzip.open(store).read())
-    except (OSError, ValueError) as exc:
-        print(f"    banked-result store unreadable ({exc.__class__.__name__})", flush=True)
-        return 0
-    for gid, entry in data.items():
-        if "@" in gid:                      # a re-run, kept under its own id
-            continue
-        target = RUNS / gid / "result.json"
-        if target.exists():
-            continue
-        result = (entry or {}).get("result") or {}
-        if not result.get("game_id"):
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(result, indent=1))
-        restored += 1
-    if restored:
-        print(f"    restored {restored} banked result.json from the trace-audit store",
-              flush=True)
-    return restored
+    _install_patch()
+
+
+def assert_installed() -> None:
+    """Abort unless workspace building actually goes through the strip.
+
+    The failure this exists for is not "the strip is broken" -- the strip raises
+    loudly if a single file still holds a baseline. It is "the strip was never
+    wired in", which produces a *successful* run against a contaminated
+    workspace. That is invisible in every log and every result file, and it is
+    only detectable afterwards by reading what the solver said.
+    """
+    if sess.build_workspace is not build_without_baselines:
+        raise RuntimeError(
+            "baseline strip is NOT installed: sess.build_workspace is "
+            f"{getattr(sess.build_workspace, '__name__', sess.build_workspace)!r}. "
+            "Call ablate_baselines.install() before running any game -- importing "
+            "this module does not install it."
+        )
 
 
 def main() -> None:
@@ -318,9 +322,6 @@ def main() -> None:
           f"control ({sum(1 for g in _paired if CONTROL[g].get('won'))} of those were wins), "
           f"{len(GAMES) - len(_paired)} untouched environments with no control",
           flush=True)
-
-    # Restore BEFORE the skip check reads disk. See restore_banked_results().
-    restore_banked_results()
 
     for i, game_id in enumerate(GAMES, 1):
         done = RUNS / game_id / "result.json"

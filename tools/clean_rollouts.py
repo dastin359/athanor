@@ -49,10 +49,22 @@ SP = pathlib.Path(
 OUT = SP / "clean_rollouts"
 sys.path.insert(0, str(SP))
 
-import ablate_baselines as ab            # noqa: E402,F401 -- installs the baseline strip
+import ablate_baselines as ab            # noqa: E402 -- strip installed below
 from athanor.ccarc3 import Ccarc3Config  # noqa: E402
 from athanor.ccarc3.client import list_games  # noqa: E402
 from athanor.ccarc3.session import run_game   # noqa: E402
+
+# **Install the baseline strip, and refuse to run without it.**
+# The line above used to read "installs the baseline strip", which was false:
+# `_install_patch()` is called from ablate_baselines.main() only, so importing
+# did nothing and every workspace shipped the real per-level baselines and the
+# action budget in meta.json. Three re-runs and eight clean rollouts were
+# contaminated before a solver quoted the numbers back out of meta.json. The
+# strip itself was never broken -- it raises if one file still holds a baseline.
+# It was simply never wired in, which fails *successfully* and is invisible in
+# every log. assert_installed() turns that into an abort.
+ab.install()
+ab.assert_installed()
 
 # The five interrupted-but-winning environments first, shortest arm wall time
 # first within them: bank what can finish before betting a window on what

@@ -807,3 +807,79 @@ def test_the_doctrine_says_to_reserve_budget_for_a_replay(ws):
     d = (ws.root / "DOCTRINE.md").read_text()
     assert "half your action cap" in d
     assert "one baseline in reserve" in d
+
+
+def test_an_unstripped_workspace_leaks_the_baselines_through_meta_json(ws):
+    """The leak that voided three re-runs and eight rollouts.
+
+    `meta.json` is written by `build_workspace` from the full `GameInfo`, so a
+    plain workspace carries every per-level human median *and* the action budget
+    the harness treats as a silent guardrail. `test_the_action_budget_is_derived_
+    from_the_game_not_guessed` above asserts the budget stays out of `CLAUDE.md`,
+    `session.py` and the prompt -- and never looked at `meta.json`, which is
+    exactly where both numbers were sitting.
+
+    This test does not assert the leak is fixed in the harness: writing the real
+    info is `build_workspace`'s job, and the ablation strips it afterwards. It
+    pins the fact that an *unstripped* workspace is contaminated, so nobody
+    reasons that a bare `build_workspace` is safe to hand a baseline-free run.
+    """
+    meta = json.loads((ws.root / "meta.json").read_text())
+    assert meta["baseline_actions"] == list(INFO.baseline_actions), (
+        "meta.json is the leak channel; if this ever stops being true, the "
+        "ablation's strip of meta.json needs revisiting too"
+    )
+    assert meta["action_budget"] == int(218 * 5.0)
+
+
+def test_importing_the_ablation_does_not_install_its_strip(tmp_path, monkeypatch):
+    """Importing installs nothing, and two drivers assumed otherwise.
+
+    Both `tools/rerun_losses.py` and `tools/clean_rollouts.py` carried
+
+        import ablate_baselines as ab   # installs the baseline strip
+
+    which was false: `_install_patch()` is called from `main()` only. Every run
+    launched through those drivers therefore built an unstripped workspace, and
+    the failure mode is the dangerous one -- the run *succeeds*, the log is
+    clean, and the contamination is only visible afterwards in what the solver
+    said. Eleven runs went that way.
+
+    The guard is now `install()` plus `assert_installed()`. This test pins the
+    trap itself so the false comment cannot come back: a bare import must leave
+    `build_workspace` untouched.
+    """
+    import importlib
+
+    from athanor.ccarc3 import session as sess
+
+    before = sess.build_workspace
+    importlib.import_module("athanor.ccarc3.session")
+    assert sess.build_workspace is before, (
+        "importing must not rewrite another module's globals -- if this starts "
+        "failing, an import side effect has been added and the drivers' explicit "
+        "install() call may now be double-applying the strip"
+    )
+
+
+def test_the_doctrine_never_tells_a_solver_about_its_own_prior_runs(tmp_path):
+    """`sp80` read its own loss out of §0b and said so.
+
+    DOCTRINE.md earns its keep with measured examples, and those name the
+    environments they came from — nine of twenty-five. Harmless for a game you
+    are not playing; contamination for one you are. A clean rollout of `sp80` was
+    caught reasoning *"sp80 was a previous loss where five of six levels consumed
+    137 actions"*, straight out of the shipped doctrine.
+
+    Table rows naming the game are dropped whole: blanking the id would leave the
+    level count and action total, which identify it just as well.
+    """
+    for gid, other in (("sp80-589a99af", "tn36"), ("tn36-ef4dde99", "sk48")):
+        info = GameInfo(gid, "X", ("click",), (10, 20, 30))
+        w = build_workspace(Ccarc3Config(gid, out_dir=tmp_path / gid), info)
+        doctrine = (w.root / "DOCTRINE.md").read_text()
+        short = gid.split("-")[0]
+        assert short not in doctrine, f"{short} still names itself in its own doctrine"
+        assert "| `" + short + "`" not in doctrine, "its §0b table row survived"
+        # other environments' examples must survive — they are the doctrine's value
+        assert other in doctrine, f"redaction over-reached and removed {other}"
