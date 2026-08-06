@@ -102,6 +102,18 @@ for gid in rotated(GAMES):
         print(f"{gid}: not in list_games() any more, skipping", flush=True)
         continue
 
+    print(f"\n=== {gid} — {info.levels} levels, cap "
+          f"{info.suggested_budget(BUDGET_MULTIPLE)} actions ===", flush=True)
+
+    # **Restore BEFORE deciding whether this game is done.** The check below reads
+    # result.json out of the scratchpad, and on a freshly replaced container the
+    # scratchpad is empty -- the only copy is the gzipped one in evidence/. Doing
+    # the check first meant a finished game was never recognised as finished:
+    # `sp80` won 6 of 6, and the very next pass restored its result.json and then
+    # re-ran it anyway, spending a whole window re-playing a game that was already
+    # in the bank while `tn36` and `sk48` waited.
+    restore(gid)
+
     done = OUT / gid / "result.json"
     if done.exists():
         try:
@@ -109,13 +121,11 @@ for gid in rotated(GAMES):
         except json.JSONDecodeError:
             prior = None
         if prior and not prior.get("error"):
-            print(f"{gid}: already finished ({prior.get('levels_reached')}/"
-                  f"{prior.get('levels_total')}), skipping", flush=True)
+            print(f"    already finished ({prior.get('levels_reached')}/"
+                  f"{prior.get('levels_total')}, won={prior.get('won')}), skipping",
+                  flush=True)
             continue
 
-    print(f"\n=== {gid} — {info.levels} levels, cap "
-          f"{info.suggested_budget(BUDGET_MULTIPLE)} actions ===", flush=True)
-    restore(gid)
     try:
         out = run_game(
             Ccarc3Config(
