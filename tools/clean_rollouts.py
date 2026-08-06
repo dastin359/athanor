@@ -35,12 +35,14 @@ results before spending the window on a game that probably cannot finish.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import pathlib
 import signal
 import subprocess
 import sys
+import threading
 import time
 import traceback
 
@@ -350,86 +352,188 @@ def main() -> int:
 MAX_PASSES = 12
 
 
+# **Two at a time, not eight, and tunable without a restart.**
+#
+# Enough to halve a 15-hour queue, shallow enough that the two failure modes
+# that have actually hurt this project stay bounded: the quota guard samples
+# every 600 s and stops at 0.98 on a weekly window whose exhaustion costs days,
+# so N games multiply the overshoot between samples by N; and every container
+# event loses whatever is in flight, which is N runs rather than one.
+#
+# Read from a file on every check rather than frozen at import, for the same
+# reason the supervisor re-reads quota every loop: the queue runs for fifteen
+# hours and the right answer changes inside that window -- quota recovers, the
+# box turns out to be stable, a long game needs the machine to itself. Changing
+# it must not cost a driver restart, because a restart discards whatever is
+# mid-flight.
+#
+#     echo 3 > "$SP/concurrency"     # takes effect within 10 s
+#
+# Raising it lets waiting games start immediately. Lowering it never kills a
+# running game -- it just stops new ones starting until the count drops, which
+# is the same politeness the supervisor shows at the quota ceiling.
+CONCURRENCY_FILE = SP / "concurrency"
+CONCURRENCY_MAX = 8
+
+
+def concurrency() -> int:
+    """The live limit: the control file, else the environment, else 2."""
+    raw = ""
+    try:
+        raw = CONCURRENCY_FILE.read_text().strip()
+    except OSError:
+        raw = os.environ.get("CCARC3_CONCURRENCY", "")
+    try:
+        n = int(raw)
+    except ValueError:
+        return 2
+    # A typo in a one-line file should not launch fifty solvers.
+    return max(1, min(CONCURRENCY_MAX, n))
+
+
+_slots = threading.Condition()
+_running = 0
+_last_limit = 0
+
+
+def _take_slot(gid: str) -> None:
+    """Block until the live limit leaves room for this game."""
+    global _running, _last_limit
+    with _slots:
+        while True:
+            limit = concurrency()
+            if limit != _last_limit:
+                print(f"    concurrency = {limit}"
+                      f"{' (was ' + str(_last_limit) + ')' if _last_limit else ''}",
+                      flush=True)
+                _last_limit = limit
+            if _running < limit:
+                _running += 1
+                return
+            # Timed wait, so a raised limit is picked up without anyone
+            # signalling -- the file is edited by a human, not by this process.
+            _slots.wait(timeout=10)
+
+
+def _free_slot() -> None:
+    global _running
+    with _slots:
+        _running -= 1
+        _slots.notify_all()
+
+
 def one_pass(games: list[str], infos: dict) -> None:
-    for gid in games:
-        banked = OUT / gid / "clean_result.json"
-        if banked.exists():
-            prior = json.loads(banked.read_text())
-            print(f"\n=== {gid}: already has a clean run "
-                  f"({prior.get('levels_reached')}/{prior.get('levels_total')}), skipping",
-                  flush=True)
-            continue
+    # Every game gets a thread; `_take_slot` is what bounds how many are actually
+    # playing. A fixed-size pool would freeze the limit for the whole pass, which
+    # is the thing being avoided.
+    with concurrent.futures.ThreadPoolExecutor(max(1, len(games))) as pool:
+        futures = {pool.submit(_guarded, g, infos): g for g in games}
+        for fut in concurrent.futures.as_completed(futures):
+            # `_run_one` swallows its own failures; anything arriving here is a
+            # driver bug, and losing it silently is how a queue quietly stops
+            # making progress.
+            exc = fut.exception()
+            if isinstance(exc, SystemExit):
+                raise exc
+            if exc is not None:
+                print(f"    {futures[fut]}: driver error {exc!r}", flush=True)
 
-        info = infos.get(gid)
-        if info is None:
-            print(f"\n=== {gid}: not in list_games() any more, skipping", flush=True)
-            continue
 
-        rescued = salvage(OUT / gid, gid) if (OUT / gid).exists() else None
-        if rescued is not None:
-            banked.write_text(json.dumps(rescued, indent=1))
-            print(f"\n=== {gid}: salvaged a clean result from an earlier attempt "
-                  f"({rescued.get('levels_reached')}/{rescued.get('levels_total')})",
-                  flush=True)
-            continue
+def _guarded(gid: str, infos: dict) -> None:
+    _take_slot(gid)
+    try:
+        _run_one(gid, infos)
+    finally:
+        _free_slot()
 
-        n = attempts_so_far(OUT / gid) + 1 if (OUT / gid).exists() else 1
-        run_dir = OUT / gid / f"attempt_{n}"
-        print(f"\n=== {gid} — {info.levels} levels, cap "
-              f"{info.suggested_budget(BUDGET_MULTIPLE)} actions — attempt {n} ===",
+
+def _run_one(gid: str, infos: dict) -> None:
+    banked = OUT / gid / "clean_result.json"
+    if banked.exists():
+        prior = json.loads(banked.read_text())
+        print(f"\n=== {gid}: already has a clean run "
+              f"({prior.get('levels_reached')}/{prior.get('levels_total')}), skipping",
               flush=True)
+        return
 
-        started = time.time()
-        try:
-            run_game(Ccarc3Config(
-                gid,
-                out_dir=run_dir,
-                budget_multiple=BUDGET_MULTIPLE,
-                wall_clock_timeout_s=WALL_CLOCK_S,
-                # Never resume. A resumed attempt is exactly what disqualified
-                # these five, so inheriting anything would defeat the point.
-                fresh=True,
-            ))
-        except Exception as exc:                      # noqa: BLE001 -- one game must not end the pass
-            traceback.print_exc()
-            # **Say what the harness was talking to.** On 2026-08-06 seven games
-            # were burned through three passes on
-            # `list_games -> [Errno 111] Connection refused`, and the traceback
-            # alone could not say whether the driver was pointed at ARC or at a
-            # dead loopback proxy -- the two are the same line of code and only
-            # the resolved root tells them apart. Reproducing the startup by hand
-            # afterwards showed the real API, so the running process differed from
-            # the code on disk in a way nothing recorded.
-            from athanor.ccarc3 import client as _c  # noqa: PLC0415
-            print(f"    root={_c.ROOT_URL} proxy={os.environ.get('CCARC3_PROXY_URL')} "
-                  f"arc_root={os.environ.get('CCARC3_ARC_ROOT')}", flush=True)
-            print(f"    {gid} attempt {n} raised; treating as interrupted", flush=True)
-            if isinstance(exc, RuntimeError) and "Connection refused" in str(exc):
-                # **A dead endpoint is not this game's fault, and retrying is not
-                # a strategy.** Every remaining game fails the same way in
-                # milliseconds, so the loop marks the whole queue interrupted,
-                # burns its 12 passes and gives up on games it never launched.
-                # Stop instead, and let the supervisor restart the driver -- a
-                # fresh process rebuilds the proxy that went missing.
-                raise SystemExit(
-                    "aborting: the ARC endpoint is unreachable, so every "
-                    "remaining game would fail identically. Restart the driver."
-                )
-            continue
+    info = infos.get(gid)
+    if info is None:
+        print(f"\n=== {gid}: not in list_games() any more, skipping", flush=True)
+        return
 
-        state, data = verdict(workspace_of(run_dir, gid))
-        mins = (time.time() - started) / 60
-        if state == "clean":
-            (OUT / gid / "clean_result.json").write_text(json.dumps(data, indent=1))
-            print(f"    CLEAN in {mins:.0f} min — "
-                  f"{data['levels_reached']}/{data['levels_total']}, "
-                  f"won={data['won']}, {data.get('actions_used')} actions", flush=True)
-        else:
-            # `.get("error", state)` returns None rather than the fallback:
-            # `collect_outcome` writes the key with a null value on a clean exit,
-            # so the default never applies and a discard printed "— None".
-            reason = (data or {}).get("error") or state
-            print(f"    discarded after {mins:.0f} min — {reason}", flush=True)
+    rescued = salvage(OUT / gid, gid) if (OUT / gid).exists() else None
+    if rescued is not None:
+        banked.write_text(json.dumps(rescued, indent=1))
+        print(f"\n=== {gid}: salvaged a clean result from an earlier attempt "
+              f"({rescued.get('levels_reached')}/{rescued.get('levels_total')})",
+              flush=True)
+        return
+
+    n = attempts_so_far(OUT / gid) + 1 if (OUT / gid).exists() else 1
+    run_dir = OUT / gid / f"attempt_{n}"
+    print(f"\n=== {gid} — {info.levels} levels, cap "
+          f"{info.suggested_budget(BUDGET_MULTIPLE)} actions — attempt {n} ===",
+          flush=True)
+
+    started = time.time()
+    try:
+        run_game(Ccarc3Config(
+            gid,
+            out_dir=run_dir,
+            budget_multiple=BUDGET_MULTIPLE,
+            wall_clock_timeout_s=WALL_CLOCK_S,
+            # Never resume. A resumed attempt is exactly what disqualified
+            # these five, so inheriting anything would defeat the point.
+            fresh=True,
+        ))
+    except Exception as exc:                      # noqa: BLE001 -- one game must not end the pass
+        traceback.print_exc()
+        # **Say what the harness was talking to.** On 2026-08-06 seven games
+        # were burned through three passes on
+        # `list_games -> [Errno 111] Connection refused`, and the traceback
+        # alone could not say whether the driver was pointed at ARC or at a
+        # dead loopback proxy -- the two are the same line of code and only
+        # the resolved root tells them apart. Reproducing the startup by hand
+        # afterwards showed the real API, so the running process differed from
+        # the code on disk in a way nothing recorded.
+        from athanor.ccarc3 import client as _c  # noqa: PLC0415
+        print(f"    root={_c.ROOT_URL} proxy={os.environ.get('CCARC3_PROXY_URL')} "
+              f"arc_root={os.environ.get('CCARC3_ARC_ROOT')}", flush=True)
+        print(f"    {gid} attempt {n} raised; treating as interrupted", flush=True)
+        if isinstance(exc, RuntimeError) and "Connection refused" in str(exc):
+            # **A dead endpoint is not this game's fault, and retrying is not
+            # a strategy.** Every remaining game fails the same way in
+            # milliseconds, so the loop marks the whole queue interrupted,
+            # burns its 12 passes and gives up on games it never launched.
+            # Stop instead, and let the supervisor restart the driver -- a
+            # fresh process rebuilds the proxy that went missing.
+            raise SystemExit(
+                "aborting: the ARC endpoint is unreachable, so every "
+                "remaining game would fail identically. Restart the driver."
+            )
+        return
+    finally:
+        # One shim per game, so a finished game gives its port back. Games run
+        # concurrently now; without this the registry grows a live listener per
+        # attempt for the lifetime of the driver.
+        ab.release_proxy(gid)
+
+    state, data = verdict(workspace_of(run_dir, gid))
+    mins = (time.time() - started) / 60
+    # Prefixed, because two games interleave in this log now and an unlabelled
+    # "CLEAN in 20 min" belongs to whichever one you assume it does.
+    short = gid.split("-")[0]
+    if state == "clean":
+        (OUT / gid / "clean_result.json").write_text(json.dumps(data, indent=1))
+        print(f"    {short} CLEAN in {mins:.0f} min — "
+              f"{data['levels_reached']}/{data['levels_total']}, "
+              f"won={data['won']}, {data.get('actions_used')} actions", flush=True)
+    else:
+        # `.get("error", state)` returns None rather than the fallback:
+        # `collect_outcome` writes the key with a null value on a clean exit,
+        # so the default never applies and a discard printed "— None".
+        reason = (data or {}).get("error") or state
+        print(f"    {short} discarded after {mins:.0f} min — {reason}", flush=True)
 
 
 if __name__ == "__main__":
