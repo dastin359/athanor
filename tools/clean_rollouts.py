@@ -36,7 +36,9 @@ results before spending the window on a game that probably cannot finish.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
+import signal
 import sys
 import time
 import traceback
@@ -80,6 +82,49 @@ BUDGET_MULTIPLE = 5.0
 # guard, discarded, and retried forever without ever banking. A game that cannot
 # finish should fail because the box died, not because the harness cut it off.
 WALL_CLOCK_S = 6 * 3600
+
+
+def kill_orphan_solvers() -> int:
+    """Kill solvers left running by a previous driver, before starting work.
+
+    **Stopping this driver does not stop its solver.** `run_game` waits on a
+    `claude` subprocess; kill the parent and the child is reparented to init and
+    keeps going -- still acting on the game, still spending quota, and now
+    uncollectable, because `collect_outcome` runs in the parent that just died.
+    Its `result.json` will never be written no matter how the run ends.
+
+    Restarting the driver to pick up a code change leaked two such trees in one
+    session, on `ka59` and `wa30`, both still writing to their traces minutes
+    later. One of them was duplicating a game the new driver had already
+    restarted, so two solvers were exploring the same environment on two
+    scorecards for no benefit.
+
+    Identified by working directory rather than by name: a solver's cwd is its
+    workspace under `clean_rollouts`, and only trees reparented to init qualify,
+    so the driver can never match its own live child.
+    """
+    killed = 0
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            cwd = (entry / "cwd").resolve()
+            stat = (entry / "stat").read_text().split()
+        except (OSError, PermissionError):
+            continue
+        if str(OUT) not in str(cwd):
+            continue
+        ppid, pgid = stat[3], stat[4]
+        if ppid != "1" or entry.name == str(os.getpid()):
+            continue
+        try:
+            os.killpg(int(pgid), signal.SIGTERM)
+            killed += 1
+            print(f"    killed orphaned solver group {pgid} "
+                  f"({str(cwd).split('clean_rollouts/')[-1]})", flush=True)
+        except (ProcessLookupError, PermissionError, ValueError):
+            pass
+    return killed
 
 
 def workspace_of(attempt_dir: pathlib.Path, game_id: str) -> pathlib.Path:
@@ -158,6 +203,7 @@ def main() -> int:
     infos = {g.game_id: g for g in list_games()}
     print("CLEAN ONE-SHOT ROLLOUTS — fresh every time, interrupted attempts discarded",
           flush=True)
+    kill_orphan_solvers()
 
     # **Keep going until every game has a clean run.** The first version made a
     # single pass and exited, which quietly contradicted the whole design: a game
