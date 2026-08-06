@@ -2637,3 +2637,68 @@ times and did not. ARC's numbers are the authority and are used above.
 
 #### Integrity
 Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
+
+### `tn36-ef4dde99` — **0.5357 → 1.0000**, the second one back
+
+| | arm run | re-run |
+|---|---|---|
+| levels | 5 of 7 | **7 of 7, won** |
+| `E` | 0.5357 | **1.0000** |
+| `raw` | 0.5904 | 1.0344 |
+| actions | 289 (18% of budget) | 507 (32%) |
+| outcome | stopped voluntarily | cleared it |
+
+**+0.4643** on this environment, and the shape is the same lesson as `sp80`,
+harder. Per level, against the human medians:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 131 | **260** | 9 | 15 | 23 | 27 | 42 |
+| human | 32 | **72** | 26 | 40 | 30 | 55 | 62 |
+| ratio | **4.09×** | **3.50×** | 0.35× | 0.38× | 0.30× | 0.49× | 0.68× |
+
+The first two levels cost **four times and three and a half times** the human
+median — the worst overruns anywhere in this project. Every level after them came
+in at a third to two thirds of the median. So this run was catastrophically
+inefficient early, recovered completely, and still scored a perfect 1.0000,
+because `E = min(cap, raw)` and clearing all seven pins `cap` at 1.0 while `raw`
+finished at 1.0344.
+
+That is the clearest single demonstration of the arm's central finding. A run that
+is four times too slow on level 1 and finishes the game beats a run that is fast
+on everything and stops at level 5. **Completion dominates efficiency**, and the
+losing run's virtue — spending only 18% of its budget — was the thing that cost it
+0.4643.
+
+#### Second ARC disagreement, same cause
+
+| level | our trace | ARC |
+|---|---|---|
+| 2 | 252 | **260** |
+| 5 | 9 | **23** |
+
+22 actions missing from our ledger across `attempts: 3`. Same mechanism as
+`sp80`: an action sent to the server whose response never reached `trace.jsonl`
+because the container died in between. Scored on ARC's numbers throughout —
+`E` 1.0000, `raw` 1.0344 against the trace's 1.0347, so the difference is
+immaterial here but again in the optimistic direction.
+
+#### Integrity
+Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
+
+### Re-run standing: two of three back, both reversed
+
+| game | arm | re-run | delta |
+|---|---|---|---|
+| `sp80` | 0.7143 (5/6) | **1.0000 (6/6)** | **+0.2857** |
+| `tn36` | 0.5357 (5/7) | **1.0000 (7/7)** | **+0.4643** |
+| `sk48` | 0.4167 (5/8) | running | — |
+
+Both recovered environments were losses for the same reason and both cleared on a
+second attempt with §0b in the doctrine. If `sk48` follows, the arm total moves
+from 23.6667 to **25.0000 — 100.00%** on the 25 public environments. Two of the
+three points are already banked, taking it to **24.4167, or 97.67%**.
+
+The honest caveat stands from the `tn36` variance note: these are single draws.
+What they establish is that the three environments were never beyond the harness
+— which is what the arm's loss column could not distinguish.
