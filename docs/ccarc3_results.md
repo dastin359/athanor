@@ -2686,6 +2686,52 @@ immaterial here but again in the optimistic direction.
 #### Integrity
 Zero `ARC_API_KEY` references, zero `api/games`, zero 5n cap hits.
 
+### The strictest honest number: 18.6667 of 20 on runs that were never interrupted
+
+Operator's criterion, 2026-08-06, and it is the right one: **only a run that
+completed in a single solver process counts as a genuine clean draw.** A resumed
+run re-reads its own `rules.json` and trace on the far side of a fresh context
+window, which is the same contamination as the re-runs, in a smaller dose.
+
+Twenty of the twenty-five qualify — one process, one stream, no relaunch. Five do
+not: `ft09`, `ka59`, `lf52`, `sb26`, `wa30`, each matching a known container event.
+
+| set | n | total | mean |
+|---|---|---|---|
+| one-shot, no restart | 20 | 18.6667 | **0.9333** |
+| interrupted and resumed | 5 | 5.0000 | 1.0000 |
+
+**The criterion is conservative, not flattering.** All three losses — `sp80`
+0.7143, `tn36` 0.5357, `sk48` 0.4167 — sit inside the clean twenty, and every one
+of the five interrupted runs scored 1.0000. Applying the rule therefore discards
+five perfect scores and keeps all three failures, taking the headline *down* from
+94.67% to **93.33%**. So the three figures this project can honestly quote are:
+
+| claim | figure |
+|---|---|
+| never-interrupted single attempts | **18.6667 / 20 = 93.33%** |
+| all 25 first attempts, resumes included | 23.6667 / 25 = 94.67% |
+| best scorecard per environment, re-runs included | 25.0000 / 25 = 100.00% |
+
+**An in-run replay does not break cleanliness.** 17 of the 20 have
+`playthroughs >= 2` — they used `restart_for_replay()` mid-run. That also re-walks
+a route with knowledge in hand, but inside one continuous process, and best-of-
+plays scoring rewards it by design. The line that matters is the *process*
+boundary, not the replay.
+
+**The uncomfortable part.** The interrupted five went 5 for 5 at 1.0000 against 17
+of 20 for the clean runs, and two of them — `wa30` and `lf52` — had been banked as
+losses before a resume recovered them. Interruption is essentially random with
+respect to difficulty, and n=5, so this is suggestive rather than evidence. But it
+points the same direction as the three re-runs: **a second pass holding your own
+notes converts losses into wins.** That is exactly why the 100% carries an
+asterisk and this section exists.
+
+`re86` is the one boundary case. It ran in a single process and won 8 of 8, then
+exited 1 when the network dropped during a post-win replay — the same signature as
+`wa30`'s proxy move. Counted clean here because it never needed a relaunch and its
+score was already banked, but the data does not settle it.
+
 ### Re-run standing: three of three back, all three reversed
 
 | game | arm | re-run | delta |
