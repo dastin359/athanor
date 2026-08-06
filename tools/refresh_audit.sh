@@ -37,6 +37,27 @@ CLEAN_ROOT="clean_rollouts"
 # space-separated on one line and matched with a `case` glob requiring a space on
 # each side; an entry that landed at a line boundary had no leading space, never
 # matched, and would have been reported as new on every run forever.
+# Hash the result's *content*, not its bytes.
+#
+# A plain md5 of the file makes the check sensitive to JSON formatting, and that
+# is not hypothetical: after a container replacement the banked results were
+# restored from evidence, which rewrote them with different indentation than the
+# driver had used. Three already-published games re-flagged as new, and a refresh
+# that re-ingests and republishes unchanged games is wasted work that also looks
+# like a real event in the log. Canonicalising with sorted keys makes the key
+# depend on what the run actually did.
+canon_hash() {
+  python3 -c "
+import hashlib, json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print(hashlib.md5(open(sys.argv[1],'rb').read()).hexdigest()[:12]); raise SystemExit
+blob = json.dumps(d, sort_keys=True, separators=(',', ':')).encode()
+print(hashlib.md5(blob).hexdigest()[:12])
+" "$1" 2>/dev/null || md5sum < "$1" | cut -c1-12
+}
+
 stamps() {
   local root dir gid result
   for root in "${ROOTS[@]}"; do
@@ -60,14 +81,14 @@ sys.exit(1 if d.get('error') else 0)
       # trace-audit store rewrote those files with identical content and fresh
       # mtimes, and an mtime key called all 13 new -- a refresh that would have
       # re-ingested and republished 13 unchanged games.
-      echo "$root/$gid:$(md5sum < "$result" | cut -c1-12)"
+      echo "$root/$gid:$(canon_hash "$result")"
     done
   done
   # Banked clean rollouts.
   for result in "$SP/$CLEAN_ROOT"/*/clean_result.json; do
     [ -e "$result" ] || continue
     gid="$(basename "$(dirname "$result")")"
-    echo "$CLEAN_ROOT/$gid:$(md5sum < "$result" | cut -c1-12)"
+    echo "$CLEAN_ROOT/$gid:$(canon_hash "$result")"
   done
 }
 
