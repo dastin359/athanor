@@ -4209,3 +4209,65 @@ budget.
 **14 clean rollouts, 13.4075 / 14 = 95.77%**, thirteen wins. **Six under the
 repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33`, `sc25`, `tu93` — all
 six 1.0000. Eleven environments outstanding.
+
+---
+
+## Rollout 15: `s5i5-18d95033` — **1.0000 (8/8)**, and a note on how I have been reporting these
+
+| | |
+|---|---|
+| levels | **8 of 8** |
+| actions | 511 total across 2 plays (267 + 244) |
+| `raw` | 1.1333 (play 1) → **1.1500** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 83 min, one-shot, exit 0 |
+| cost | $25.01 over 112 turns |
+
+Against baselines `[20, 89, 106, 54, 162, 38, 86, 83]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| play 1 | 27 | 26 | 44 | 30 | 28 | 25 | 51 | 36 |
+| ratio | **1.35×** | 0.29× | 0.42× | 0.56× | **0.17×** | 0.66× | 0.59× | 0.43× |
+
+Zero deaths across 511 actions on an eight-level game — the first fully
+death-free run since `lp85`. Level 5 carries the largest baseline in the game
+(162) and fell in 28, at 0.17×. The only level over baseline was the first, at
+1.35×, which the replay took to 0.65×.
+
+The replay moved `raw` 1.1333 → 1.1500 and `E` by nothing, `cap` already binding.
+That is the ordinary case again after two runs where it mattered: of eight
+replays now on record under the repaired surface, **two carried the score
+(`sc25` +0.4156, `tu93` +0.1202) and six moved nothing.** The bet remains
+correct and remains mostly wasted, which is exactly what §0a claims for it.
+
+### Correcting how I have been quoting the standing figure
+
+Through several updates above I reported a combined count — *"14 clean rollouts,
+13.4075/14 = 95.77%"* — which pools two different harnesses and implies they are
+one experiment. They are not. Eight of those runs read a solver surface that
+printed a real human median in the doctrine, briefed the solver on where the
+action ceiling is enforced, and framed actions as an allowance; the rest read the
+repaired one. The combined number hides the treatment difference it should be
+showing.
+
+The audit page has tiered them correctly the whole time (`current` vs
+`superseded`); the prose was the sloppy part. From here the standing figure is
+reported split, and `scratchpad/standing.sh` derives it by reading each run's own
+preserved `session.py` rather than trusting commit timestamps.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **7 of 25** | **7.0000 / 7 = 100%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 10 | — |
+
+Seven for seven at 1.0000 under the current harness. Worth stating plainly that
+this is **seven games**, that four of them (`r11l`, `tr87`, `lp85`, `vc33`) are
+among the shorter environments in the set, and that the superseded eight include
+the two hardest — so the gap between 100% and 92.59% is not yet evidence of a
+harness effect and should not be quoted as one.
