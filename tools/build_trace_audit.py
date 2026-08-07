@@ -689,6 +689,28 @@ def summarise(data: dict) -> dict:
     }
 
 
+def _built_at() -> str:
+    """The build stamp, in the operator's timezone rather than the box's.
+
+    **Reporting converts; storage does not.** This box runs UTC and every artifact
+    on disk is UTC -- trace mtimes, log lines, git committer dates. None of that
+    changes: rewriting stored timestamps would make old evidence disagree with new,
+    and the ledger is only worth anything because two readings of one run agree.
+    A page a human reads is the other case, so it converts at the last moment.
+
+    The zone abbreviation is printed deliberately. PDT is UTC-7 and PST is UTC-8,
+    so a bare local time is wrong half the year to anyone reconciling it against a
+    UTC log line -- which is exactly what this stamp exists to be reconciled with.
+    """
+    stamp = dt.datetime.now(dt.timezone.utc)
+    try:
+        import zoneinfo  # noqa: PLC0415
+        stamp = stamp.astimezone(zoneinfo.ZoneInfo("America/Los_Angeles"))
+    except Exception:  # noqa: BLE001 -- no tzdata; UTC is still honest
+        pass
+    return stamp.strftime("%Y-%m-%d %H:%M %Z")
+
+
 def live_games() -> list[dict]:
     """Games with a solver running *right now*, for the page's live panel.
 
@@ -802,8 +824,7 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
                 .replace("__BASH_MEDIAN__", f"{stats['median']:.2f}")
                 .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}")
                 .replace("__LIVE_JSON__", json.dumps(live))
-                .replace("__BUILT_AT__", dt.datetime.now(dt.timezone.utc)
-                         .strftime("%Y-%m-%d %H:%M UTC")))
+                .replace("__BUILT_AT__", _built_at()))
 
     page = render(None)
     if len(page.encode()) <= TARGET:
