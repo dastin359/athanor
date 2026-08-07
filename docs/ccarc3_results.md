@@ -3863,3 +3863,78 @@ of reading what the harness hands over and asking who reads it.
 
 **9 clean rollouts, 8.4075 / 9 = 93.42%**, eight wins. Sixteen environments
 outstanding.
+
+---
+
+## Rollout 10: `tr87-cd924810` — **1.0000 (6/6)**, and a transient blip that cost more than the game
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 259 total across 2 plays (140 + 119) |
+| `raw` | **1.1500** — the ceiling, on both plays |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | 0 / 0 |
+| wall clock | 30 min, one-shot, exit 0 |
+| cost | $8.73 over 79 turns |
+
+Against baselines `[54, 58, 40, 45, 71, 146]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| actions | 23 | 32 | 26 | 21 | 14 | 24 |
+| ratio | 0.43× | 0.55× | 0.65× | 0.47× | **0.20×** | **0.16×** |
+
+The two deepest levels — the ones carrying 5/21 and 6/21 of the environment —
+were the two it played fastest, at 0.20× and 0.16×. That inversion keeps
+recurring: the levels humans find hardest are not the ones that cost this solver
+anything.
+
+Proofread clean: 78 commands, none left the workspace, nothing inbound, card
+corroborates 6 levels and 259 actions. And like `r11l` before it, its first
+orientation command was `cat session.py` — **two for two** on the behaviour the
+surface repair was aimed at.
+
+### The blip: one dead endpoint, thirteen launches, and 82 minutes lost
+
+At 07:19 a transient network failure made `list_games()` return
+`[Errno 111] Connection refused`. The endpoint was healthy again within a minute
+— 25 games on the next call — but the damage was already done, in a chain worth
+recording because every link behaved *as designed*:
+
+1. `sc25` failed at `build_workspace`, before any solver launched.
+2. The circuit breaker fired, correctly: a dead endpoint means every remaining
+   game fails identically, so abort rather than burn the queue.
+3. **But twelve more games had already launched.** The breaker raises `SystemExit`
+   inside a worker thread; `one_pass` only sees it via `as_completed`, and with
+   seventeen futures failing in milliseconds, thirteen ran before the main thread
+   processed the first. `m0r0`, `vc33`, `lp85`, `g50t`, `s5i5`, `tu93`, `re86`,
+   `cn04`, `ar25`, `ls20`, `bp35`, `dc22` all started and failed. The abort that
+   exists to stop the queue burning through arrived last.
+4. The driver exited, orphaning its live solvers to init.
+5. The supervisor started a fresh driver, which ran `kill_orphan_solvers()` —
+   correctly, by design — and killed them.
+
+`cd82` was one of them: **82 minutes and 365 actions, discarded** at level 2 of 6.
+`su15` lost 3 minutes. Neither is a scoring loss (a discarded attempt costs quota,
+never score) but `cd82` was the single most expensive thing in flight.
+
+The cost was low only because the failure happened at `build_workspace`, before
+any solver was launched. Had the endpoint died a step later, thirteen solvers
+would have been launched into it.
+
+Two defects, both now understood and neither yet fixed:
+
+- **The breaker cannot stop its siblings.** Raising `SystemExit` in one thread
+  does nothing to the sixteen already running. It needs a flag that `_take_slot`
+  and `_run_one` check, so a game that has not started never does.
+- **Aborting kills in-flight games.** "Stop and let the supervisor restart" is
+  right for a dead endpoint and wrong for the running solvers, which are
+  independent of it. The supervisor already has a polite-stop that waits for
+  `result.json`; the driver's own abort does not.
+
+### Standing
+
+**10 clean rollouts, 9.4075 / 10 = 94.08%**, nine wins. Fifteen environments
+outstanding, of which `cd82` and `su15` need re-running after the kill.
