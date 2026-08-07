@@ -1,36 +1,49 @@
-"""A local shim that holds the ARC key so the solver never has to.
+"""A local shim that forwards the four ARC endpoints this harness uses.
 
-**Why this exists.** `CCARC3_HIDE_BASELINES` closes the in-process route to the
-human medians -- `baselines_for` refuses, `list_games` filters. It cannot close
-the deliberate one, because the solver holds `ARC_API_KEY` in its own environment
-and `GET /api/games` returns `baseline_actions` for all 25 environments. Nine
-lines of `urllib` defeat the whole arm. Two runs did exactly that: `tu93` printed
-its own medians verbatim, `bp35` printed the game-id list. Detection caught both;
-detection is not prevention.
-
-The fix is to move the credential out of reach. This process holds the real key
-and is the only thing that talks to ARC. The solver gets a loopback URL and no key
-at all, so a hand-rolled request has nothing to authenticate with.
-
-**Allowlist, never denylist.** Only the four endpoints a solver legitimately needs
-are forwarded. Anything else is refused, so a new ARC endpoint that happens to
-carry baselines is closed by default rather than open until someone notices.
-
-**It also holds the action cap**, for the same reason it holds the key: a limit
-the solver can read is a limit the solver can invert. The cap is
-`budget_multiple` times the baseline total, so telling a solver its cap tells it
-the number the baseline-free arm exists to withhold -- and `budget_multiple`'s
-value is a default in this package's own source, sitting on the solver's
-`PYTHONPATH`. Counting here means the child's environment carries no budget at
-all, and it makes the cap unforgeable besides: the in-process guard reads a
-count from a file in the solver's own workspace.
-
-**What this does not claim.** The key is still readable from this process's
-`/proc/<pid>/environ` by the same uid, so a solver determined to escalate could
-find it. That is a far deeper reach than calling a documented endpoint and it
-leaves an obvious trace in the refusal log. The goal is to make the easy path
-impossible, not to sandbox an adversary.
+Runs in the harness process, not the solver's. Holds the credential and the
+per-game ceiling, and refuses every path outside its allowlist.
 """
+# **The rest of this file's rationale is a comment, not a docstring, because the
+# solver can import this module.** `athanor.ccarc3.arc_proxy` sits on the child's
+# `PYTHONPATH`, so `pydoc athanor.ccarc3.arc_proxy` or `arc_proxy.__doc__` prints
+# whatever is up there -- and what used to be up there was a complete description
+# of the defence: which environment variable closes the in-process route, that
+# `baselines_for` refuses and `list_games` filters, that the ceiling is
+# `budget_multiple` times the withheld total and therefore inverts to it, and
+# which two runs had already gone and fetched the numbers by hand. A solver that
+# read it would know exactly what is hidden, why, and where the seams are. The
+# reasoning is worth keeping; printing it to the person it guards against is not.
+#
+# **Why this exists.** `CCARC3_HIDE_BASELINES` closes the in-process route to the
+# human medians. It cannot close the deliberate one, because the solver holds
+# `ARC_API_KEY` in its own environment and `GET /api/games` returns
+# `baseline_actions` for all 25 environments. Nine lines of `urllib` defeat the
+# whole arm, and two runs did exactly that: `tu93` printed its own medians
+# verbatim, `bp35` printed the game-id list. Detection caught both; detection is
+# not prevention. The fix is to move the credential out of reach. This process
+# holds the real key and is the only thing that talks to ARC; the solver gets a
+# loopback URL and no key at all, so a hand-rolled request has nothing to
+# authenticate with.
+#
+# **Allowlist, never denylist.** Only the four endpoints a solver legitimately
+# needs are forwarded. Anything else is refused, so a new ARC endpoint that
+# happens to carry baselines is closed by default rather than open until someone
+# notices.
+#
+# **It also holds the action ceiling**, for the same reason it holds the key: a
+# limit the solver can read is a limit the solver can invert. The ceiling is
+# `budget_multiple` times the baseline total, so telling a solver its ceiling
+# tells it the number the baseline-free arm exists to withhold -- and
+# `budget_multiple`'s value is a default in this package's own source, on the
+# solver's `PYTHONPATH`. Counting here means the child's environment carries no
+# such number at all, and it makes the ceiling unforgeable besides: the
+# in-process guard read a count from a file in the solver's own workspace.
+#
+# **What this does not claim.** The key is still readable from this process's
+# `/proc/<pid>/environ` by the same uid, so a solver determined to escalate could
+# find it. That is a far deeper reach than calling a documented endpoint and it
+# leaves an obvious trace in the refusal log. The goal is to make the easy path
+# impossible, not to sandbox an adversary.
 from __future__ import annotations
 
 import json
@@ -90,8 +103,8 @@ class ProxyState:
 
         `used` seeds the counter from a run already in progress. The proxy's
         count lives in memory and the solver's does not, so a resumed game whose
-        proxy restarted would otherwise get its whole budget back -- the cap
-        would bind at `used + max_actions` and grow with every interruption.
+        proxy restarted would otherwise start from zero -- the ceiling would bind
+        at `used + max_actions` and grow with every interruption.
         Callers read the figure from the workspace's `trace.state.json`.
         """
         with self._lock:
@@ -101,7 +114,7 @@ class ProxyState:
         self.reset_session()
 
     def exhausted(self) -> str | None:
-        """The refusal when the cap is reached, or None while budget remains."""
+        """The refusal once the ceiling is reached, or ``None`` before then."""
         with self._lock:
             if self.max_actions and self.actions_used >= self.max_actions:
                 return (

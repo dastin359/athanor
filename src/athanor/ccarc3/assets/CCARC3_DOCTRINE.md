@@ -52,23 +52,23 @@ records a new `guid`, a new `actions` row, and a new `actions_by_level` row.
 Per-level action counts are kept per play and never summed.
 
 **The server scores the BEST play, and this is measured, not inferred.** Two
-plays were driven by hand on `lp85` and the scorecard read back directly:
+plays of one level were driven by hand and the scorecard read back directly:
 
 ```
-run 1:  21 actions   level_scores [ 65.533, 0...]   score 1.8204
-run 2:   7 actions   level_scores [115.000, 0...]   score 2.7778
-                                  environment score = 2.7778
+run 1:  the fumbled play    level_scores [ lower, 0...]   lower environment score
+run 2:  the clean play      level_scores [ higher, 0...]  higher environment score
+                                          environment score = the higher of the two
 ```
 
 The environment took the better play. Run in the other order — good play first,
-bad play second — it *still* reported 2.7778, so the rule is `max` over plays and
-not "most recent". **A replay can only raise your score or leave it alone. It can
-never lower it.**
+bad play second — it *still* reported the better one, so the rule is `max` over
+plays and not "most recent". **A replay can only raise your score or leave it
+alone. It can never lower it.**
 
-Everything else in the scorecard reproduced the rubric exactly: `65.533 =
-(17/21)² × 100`, `115.0 = min(1.15, (17/7)²) × 100`, `1.8204 = 1 × 0.65533 / 36
-× 100`, and `2.7778 = 1/36`, the completion cap for 1 of 8 levels binding over
-that play's raw 3.194.
+Everything else in the scorecard reproduced the rubric exactly: each level came
+back at `min(1.15, (h/a)²) × 100`, and each play's environment score was that
+level's weight over `sum(1..n)` — the completion cap for 1 of `n` levels binding
+over the raw figure in both cases.
 
 > **An earlier version of this section said DO NOT DO THIS.** The argument was
 > that the human baseline comes from people who *could not restart* — "limited
@@ -315,8 +315,10 @@ collected and nothing else on the board changing. A clean 43-action cycle, twice
 over, with no death in 120 actions of aimless wandering. A solver that assumed
 lethality would have played that game far too carefully.
 
-So: **find the display, then find out what it does.** `arc.monotone_rows()` finds
-it. To learn whether it kills, let it run out once, early in a level, where a
+So: **find the display, then find out what it does.** `arc.monotone_rows(pairs)`
+finds it — `pairs` is `[(t.before, t.after) for t in client.transitions()]`, and
+it returns the rows that move one step in one direction per action. To learn
+whether it kills, let it run out once, early in a level, where a
 death is cheap — that experiment costs almost nothing and its answer changes how
 you play the rest of the game.
 
@@ -459,9 +461,15 @@ effort on the question that actually costs actions — *given what I already
 believe, what is the shortest route?*
 
 ```python
-arc.shortest_path(step, start, goal)     # step(state, action) -> state
-arc.reachable(step, start)               # is it even reachable, or did I misread?
+acts = [6]                               # <- YOUR game's actions, not the default
+arc.shortest_path(step, start, goal, acts)   # step(state, action) -> state
+arc.reachable(step, start, acts)             # reachable at all, or did I misread?
 ```
+
+**Pass `actions` explicitly.** Both default to `(1, 2, 3, 4)`, which is wrong for
+any game whose real move is a click, and the failure is silent: you get an empty
+route or a tiny reachable set from searching moves the game does not have. Read
+`available_actions` off the frame and pass that.
 
 It searches over a **step function**, not a grid, so launchers, teleports and
 wrap-around work as long as your model has them. The route is optimal *for your
@@ -648,8 +656,10 @@ If a level genuinely taught nothing portable, say so. That is a real answer.
 
 ## 10. Hold hypotheses, not conclusions.
 
-Stamp the hypothesis you are testing into the action's `reasoning` field; the
-server stores it and hands it back, so your trace explains itself for free.
+Before a run of actions, say in one line what you expect them to do. The ledger
+records what happened; only you can record what you thought would happen, and the
+gap between the two is the whole signal. `gate.acknowledge(...)` is where that
+becomes durable at a level boundary; `notes/` is yours in between.
 
 When a mechanic you had verified breaks on a new level *while applicable*, that
 is the most informative event in the whole run — the game has just shown you

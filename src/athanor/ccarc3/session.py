@@ -183,7 +183,7 @@ class Workspace:
 # without limit. This line used to read the cap from the environment; the
 # environment no longer carries it, so it evaluated to 0 anyway.
 #
-# `hide_baselines=True` -- withhold the human medians from every solver-facing
+# `quiet_pace=True` -- withhold the human medians from every solver-facing
 # surface: the pace ratio, `pace()`, and the `raw`/ceiling half of the score
 # block. (This used to also switch ARC's 5n rule on; that cap was removed on
 # 2026-08-04 -- see `level_budget_multiple`.)
@@ -228,7 +228,7 @@ client = ArcClient(
     info=INFO,
     gate=gate,
     max_actions=0,
-{level_budget_line}    hide_baselines=True,
+{level_budget_line}    quiet_pace=True,
     show_score=True,
 )
 client.open()
@@ -483,8 +483,9 @@ Routing costs more than verifying here — testing a belief is one action, but
 walking a bad route is many:
 
 ```python
-arc.shortest_path(step, start, goal)   # fewest actions, over your step function
-arc.reachable(step, start)             # reachable at all, or did I misread the board?
+acts = [6]                             # YOUR actions — both default to (1,2,3,4)
+arc.shortest_path(step, start, goal, acts)  # fewest actions, over your step function
+arc.reachable(step, start, acts)            # reachable at all, or did I misread?
 ```
 
 `applies` and `holds` are separate on purpose. A rule that did not apply has not
@@ -528,13 +529,17 @@ def _initial_prompt(info: GameInfo, budget: int, *, resumed: bool = False) -> st
             f"You are resuming an interrupted run of `{info.game_id}`. The game is "
             f"still open and your previous actions are recorded.\n\n"
             "Read DOCTRINE.md, then `from session import client, gate, arc`. Start "
-            "with `client.status()` and `client.transitions()` to see where you are, "
-            "and read `rules.json` for what the earlier session established — those "
-            "mechanics were paid for and re-deriving them wastes budget you have "
-            "already spent. Do not RESET to 'start clean'; that discards real "
-            "progress.\n\n"
-            f"Continue toward winning as many of the {info.levels} levels as you can, "
-            "Continue from where the trace leaves off."
+            "with `client.status()` and `client.transitions()` to see where you are. "
+            "If `rules.json` exists, read it: it holds what the earlier session "
+            "established, what it refuted, and what it never tested — and those are "
+            "three different things, not two. Carry the mechanics forward as priors "
+            "about what to test first, not as settled fact.\n\n"
+            "One RESET is genuinely dangerous: the one taken immediately after a "
+            "level advance takes the full-reset branch and discards the whole game. "
+            "`client.reset()` refuses that for you. Every other reset is a normal "
+            "level reset and a legitimate move.\n\n"
+            f"Then keep going: clear as many of the {info.levels} levels as you can, "
+            "from wherever the trace leaves off."
         )
     return (
         f"Play `{info.game_id}` and win as many of its {info.levels} levels as you can.\n\n"
@@ -557,12 +562,11 @@ def redact_self_reference(root: Path, game_id: str) -> int:
     environments they came from -- nine of the twenty-five, at last count. That
     is fine for a game you are not playing and contamination for one you are.
 
-    It stopped being hypothetical on 2026-08-06. §0b tabulates the three arm
-    losses with their exact results, and a clean rollout of `sp80` was caught
-    reasoning: *"I also notice from the documentation that sp80 was a previous
-    loss where five of six levels consumed 137 actions (5% of budget), with
-    level 6 being the critical bottleneck."* Every re-run and rollout of those
-    three read a summary of its own prior failure.
+    It stopped being hypothetical on 2026-08-06: §0b tabulates the three arm
+    losses with their exact results, and a clean rollout of one of them was
+    caught quoting that table back -- naming itself, its level count and its
+    action total -- while working out what to do next. Every re-run and rollout
+    of those three read a summary of its own prior failure.
 
     Table rows naming the game are dropped whole -- a row is self-contained, and
     blanking the id would leave its level count and action total, which identify

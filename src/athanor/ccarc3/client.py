@@ -11,7 +11,7 @@ What the client owns, so the solver does not have to:
 - session plumbing (``card_id``, ``guid``, retries)
 - appending every frame to the transition ledger, unprompted
 - level tracking from ``levels_completed``
-- the two budget traps that cost real progress (§2.3, §2.4)
+- the two moves that silently destroy progress, refused before they are sent
 
 What the solver owns: which action to take, and why.
 """
@@ -62,8 +62,8 @@ _TERMINAL = ("WIN", "GAME_OVER")
 class ActionRefused(RuntimeError):
     """The harness declined an action the solver asked for.
 
-    Distinct from a transport error: the request was never sent, and no budget
-    was spent. Carries the reason so the solver can act on it.
+    Distinct from a transport error: the request was never sent and the game
+    did not step. Carries the reason so the solver can act on it.
     """
 
 
@@ -183,13 +183,20 @@ class GameInfo:
         return None
 
     def suggested_budget(self, multiple: float = 4.0) -> int:
-        """An action cap derived from the game, not guessed.
-
-        The published baseline is what a playthrough costs when the rules are
-        already known; a solver must also *discover* them, hence the multiple.
-        Design note §2.6 -- a flat cap cannot work when real games span 171 to
-        1843 baseline actions.
-        """
+        # **Rationale lives in a comment, not the docstring.** `GameInfo` is
+        # imported by name in every workspace `session.py`, so `help(arc.GameInfo)`
+        # is a natural call for an orienting solver -- and this docstring used to
+        # print the full envelope of per-game baseline totals across the public
+        # set ("real games span 171 to 1843 baseline actions"). That is the exact
+        # quantity class the strip and the proxy exist to withhold, handed over
+        # by the standard introspection path. It also cited design note §2.6, a
+        # document the solver is told not to read.
+        #
+        # The multiple exists because the published baseline is what a
+        # playthrough costs when the rules are already known, and a solver must
+        # discover them too; a flat cap cannot work because real games differ by
+        # an order of magnitude in length.
+        """A ceiling derived from the game rather than guessed. Harness-side only."""
         return max(200, int(self.baseline_total * multiple))
 
 
@@ -225,29 +232,30 @@ having gone looking for nothing at all. Check the traces, do not assume.
 """
 
 
+# **Harness-side only, and this used to be the docstring.** The runner needs the
+# real numbers to size a game and to score it; the solver must not have them.
+# Those two live in different processes, so the process is where the line is
+# drawn: this raises under `HIDE_BASELINES_ENV`, which only a solver's
+# environment carries.
+#
+# It did not always. It was written to *ignore* the flag, on the reasoning that a
+# solver could call `/api/games` by hand anyway, so the barrier was only ever
+# against incidental exposure. A live solver refuted that: `cd82` ran `dir(arc)`
+# on its first orientation turn -- an obvious thing to do in an unfamiliar
+# package -- and read back `'actions_per_level', 'as_grid', 'baselines_for',
+# 'block_size'`. Nothing deliberate was required; the name advertises itself and
+# the next step is one call.
+#
+# **That story belongs in a comment, because `help()` renders docstrings and
+# `dir(arc)` is exactly how the incident started.** Spelling out which function
+# holds the withheld numbers, and that it is guarded, is a far better signpost
+# than the bare name `cd82` found. Also deliberately not re-exported from
+# `athanor.ccarc3`, so it is absent from `dir(arc)` in the namespace a solver
+# actually holds; harness code imports it from this module by name.
 def baselines_for(
     game_id: str, api_key: str | None = None, root: str = ROOT_URL
 ) -> tuple[int, ...]:
-    """One game's per-level medians, for **harness-side callers only**.
-
-    The runner needs the real numbers to size a game's budget and score the
-    result; the solver must not have them. Those two live in different processes,
-    so the process is where the line is drawn: this raises under
-    :data:`HIDE_BASELINES_ENV`, which only a solver's environment carries.
-
-    It did not always. It was written to *ignore* the flag, on the reasoning that
-    a solver could call ``/api/games`` by hand anyway so the barrier was only ever
-    against incidental exposure. A live solver refuted that. ``cd82`` ran
-    ``dir(arc)`` on its first orientation turn -- an obvious thing to do in an
-    unfamiliar package -- and read back ``'actions_per_level', 'as_grid',
-    'baselines_for', 'block_size'``. Nothing deliberate was required: the name
-    advertises itself, and the next step is one call. That is incidental
-    exposure, precisely the thing the flag exists to stop.
-
-    Deliberately not re-exported from ``athanor.ccarc3``, so it is absent from
-    ``dir(arc)`` in the namespace a solver actually holds. Harness code imports it
-    from :mod:`athanor.ccarc3.client` by name.
-    """
+    """One game's per-level reference counts. Harness-side callers only."""
     if os.environ.get(HIDE_BASELINES_ENV) == "1":
         raise PermissionError(
             f"baselines_for() is unavailable while {HIDE_BASELINES_ENV}=1. This "
@@ -260,17 +268,24 @@ def baselines_for(
     raise KeyError(f"{game_id} is not in the public set")
 
 
+# Baselines come back empty under `HIDE_BASELINES_ENV`. There is deliberately no
+# bypass argument: there was one, `_unfiltered`, for harness-side callers, and it
+# made the flag advisory, because a keyword any caller can pass is not a boundary.
+# The environment variable is now the whole rule, honoured in exactly one place.
+# Harness callers are unaffected -- the runner never sets the flag on itself, only
+# on the child it spawns.
+# Per-level reference counts come back empty under `HIDE_BASELINES_ENV`. There is
+# deliberately no bypass argument: there was one, `_unfiltered`, for harness-side
+# callers, and it made the flag advisory, because a keyword any caller can pass is
+# not a boundary. The environment variable is now the whole rule, honoured in
+# exactly one place. Harness callers are unaffected -- the runner never sets the
+# flag on itself, only on the child it spawns.
+#
+# Kept out of the docstring for the reason above `baselines_for`: `help()` reaches
+# docstrings, and `list_games` *is* exported into the solver's namespace, so
+# `help(arc.list_games)` is one step from `dir(arc)`.
 def list_games(api_key: str | None = None, root: str = ROOT_URL) -> list[GameInfo]:
-    """Every public game, with its per-level baselines and action-type tags.
-
-    Baselines come back empty when :data:`HIDE_BASELINES_ENV` is set — see there.
-
-    There is deliberately **no bypass argument**. There was one, ``_unfiltered``,
-    for harness-side callers; it made the flag advisory, because a keyword any
-    caller can pass is not a boundary. The environment variable is now the whole
-    rule, and it is honoured in exactly one place. Harness callers are unaffected:
-    the runner never sets the flag on itself, only on the child it spawns.
-    """
+    """Every public game, with its title and action-type tags."""
     raw = _get(f"{root}/api/games", _api_key(api_key))
     hide = os.environ.get(HIDE_BASELINES_ENV) == "1"
     return [
@@ -332,30 +347,24 @@ class ArcClient:
     its entire budget executing a plan it should have abandoned.
     """
 
-    hide_baselines: bool = False
-    """Withhold per-level human medians from the solver, but keep enforcing them.
-
-    **The right way to run the baseline-free ablation, and the way it was not
-    run.** That arm hides the numbers by blanking ``GameInfo.baseline_actions``,
-    which is the same array :attr:`level_budget` derives the official 5n
-    per-level termination rule from -- so hiding the information silently
-    removed the rule as well, making the arm a two-variable experiment.
-
-    `su15` is what that cost. With the cap inert its solver ran a 31-baseline
-    level to 268 actions (8.65x) and an 8-baseline level to 182 (22.75x), burning
-    62% of the game's entire budget on two levels ARC would have terminated at
-    155 and 40. It then replayed, cleared eight of nine levels at the 1.15
-    per-level cap on every single one, and lost anyway -- out of budget on the
-    last level, 0.800 against its control's 1.000.
-
-    ARC withholding a number from the agent would not stop ARC applying it. This
-    flag models that: the pace line, :meth:`pace` and the score block all go
-    quiet, and :attr:`level_budget` keeps working.
-
-    Off by default, and not switched on under the running arm: ten of its
-    twenty-five games are already banked without it, and a variable that changes
-    halfway makes two half-experiments rather than one.
-    """
+    # **Renamed from `hide_baselines` on 2026-08-07, because the solver reads the
+    # keyword.** The workspace `session.py` passes it literally and the doctrine
+    # tells the solver to import that file, so the old name announced in one word
+    # that per-level human medians exist and are being kept from it -- and
+    # `help(ArcClient)` repeated it in the constructor signature. A knob named for
+    # the secret is a signpost to the secret. This name describes the visible
+    # effect instead: `status()` stops reporting a pace ratio.
+    #
+    # Withholds the medians from every solver-facing surface while the harness
+    # keeps using them. That is the right way to run the baseline-free arm, and
+    # the way it was not run: that arm hid the numbers by blanking
+    # `GameInfo.baseline_actions`, which is the same array `level_budget` derived
+    # the 5n per-level rule from -- so hiding the information silently removed the
+    # rule too, making it a two-variable experiment. One environment ran a level
+    # to 8.65x and another to 22.75x with the cap inert. Splitting the two is what
+    # this flag is for.
+    quiet_pace: bool = False
+    """Stop reporting pace against the per-level reference count."""
 
     show_score: bool = False
     """Report the running RHAE score and its ceiling in :meth:`status`.
@@ -763,31 +772,41 @@ class ArcClient:
     def dead(self) -> bool:
         return self.state == "GAME_OVER"
 
+    # Every solver-facing surface reads this one property -- the pace line in
+    # `status()`, `pace()`, the score block -- so returning None here silences all
+    # of them at once. `_baseline_here_enforced` is what the harness's own
+    # machinery reads, and it is deliberately not the same.
+    #
+    # **That paragraph used to be the docstring, and `help(client)` renders it.**
+    # `pydoc.render_doc(ArcClient)` prints it under "Readonly properties defined
+    # here", so a solver orienting itself learned that a per-level human median
+    # exists, that it is being denied on purpose, and the name of the attribute
+    # that holds the real one. The harness's own note below records `cd82`
+    # reading `baselines_for` straight out of `dir(arc)` having gone looking for
+    # nothing at all, so this is observed behaviour, not a hypothetical.
     @property
     def baseline_here(self) -> int | None:
-        """This level's human median, or None when the solver may not see it.
-
-        Every solver-facing surface reads this one property -- the pace line in
-        :meth:`status`, :meth:`pace`, the score block -- so returning None here
-        silences all of them at once. :attr:`_baseline_here_enforced` is what the
-        harness's own machinery reads, and it is deliberately not the same.
-        """
-        return None if self.hide_baselines else self._baseline_here_enforced
+        """Reference action count for this level, or ``None`` when unavailable."""
+        return None if self.quiet_pace else self._baseline_here_enforced
 
     @property
     def _baseline_here_enforced(self) -> int | None:
         """This level's human median, whatever the solver is allowed to see."""
         return self.info.baseline_for(self.level) if self.info else None
 
+    # Reads the enforced baseline rather than the visible one, so hiding a number
+    # from the solver does not silently switch a limit off.
+    #
+    # **Off by default, and the docstring used to say otherwise.** It read
+    # "Actions allowed on the current level" and asserted that ARC terminates an
+    # agent at 5n per level -- a rule this harness deliberately stopped modelling
+    # on 2026-08-04, when `level_budget_multiple` went to 0.0. So `help(client)`
+    # told the solver it was under a per-level termination rule that does not
+    # exist, in a property that returns 0 on every shipped run, and pre-empted
+    # the obvious check by claiming the rule is enforced out of sight.
     @property
     def level_budget(self) -> int:
-        """Actions allowed on the current level, or 0 when uncapped.
-
-        **Reads the enforced baseline, not the visible one.** ARC terminates an
-        agent at 5n per level whether or not it told the agent what n was, so a
-        cap that switches itself off when the number is hidden is not modelling
-        the benchmark -- it is removing a rule the benchmark keeps.
-        """
+        """Per-level ceiling when one is configured; ``0`` means none is."""
         base = self._baseline_here_enforced
         if not base or not self.level_budget_multiple:
             return 0
@@ -830,7 +849,7 @@ class ArcClient:
         # Solver-facing: withheld baselines make this unanswerable, and the
         # honest answer is None rather than a score computed from numbers the
         # solver is not being shown.
-        if self.hide_baselines:
+        if self.quiet_pace:
             return None
         baselines = list(self.info.baseline_actions) if self.info else []
         n = self.win_levels or len(baselines)
@@ -869,8 +888,8 @@ class ArcClient:
         **The number a replay decision turns on.** RHAE is a weighted mean over
         levels already finished, so a level finished badly is finished badly for
         good -- no later brilliance repairs it. When this drops below what a
-        fresh play could reach, the play is worth less than the budget it would
-        take to redo, and :meth:`restart_for_replay` is the instrument.
+        fresh play could reach, this play is worth less than a clean one, and
+        :meth:`restart_for_replay` is the instrument.
         """
         return self._play_score(optimistic=True)
 
@@ -884,8 +903,8 @@ class ArcClient:
         """RESET. Refuses the one call that silently discards the whole game.
 
         Immediately after a level advance the server's action counter is zero,
-        so RESET takes the full-reset branch: score to zero, back to level 0
-        (§2.3). It is invisible from outside and irreversible. Pass
+        so RESET takes the full-reset branch: score to zero, back to level 0.
+        It is invisible from outside and irreversible. Pass
         ``force_full=True`` if that really is what you want.
         """
         if self._last_advanced and not force_full:
@@ -908,8 +927,8 @@ class ArcClient:
 
         So exploration and execution can be separated. Spend whatever it takes
         to work the game out, then restart and walk the route you now know. Only
-        the second play's per-level counts are scored; the first play costs you
-        ``total_actions`` — budget — and nothing else.
+        the second play's per-level counts are scored; the first play adds to
+        ``total_actions`` and affects nothing else.
 
         **This is not a way to replay a recorded file.** The trace of a fumbling
         run replayed verbatim reproduces the fumbling. What earns the score is
@@ -936,8 +955,8 @@ class ArcClient:
         if self.state in _TERMINAL:
             raise ActionRefused(
                 f"state is {self.state}; every non-RESET action is discarded "
-                f"without stepping the game and still costs budget (§2.4). "
-                f"RESET first."
+                f"without stepping the game, so it tells you nothing and moves "
+                f"nothing. RESET first."
             )
         if action == 6 and (x is None or y is None):
             raise ActionRefused("ACTION6 requires x and y")
@@ -946,14 +965,16 @@ class ArcClient:
         if self.available_actions and action_name(action) not in self.available_actions:
             raise ActionRefused(
                 f"{action_name(action)} is not in this game's available_actions "
-                f"{list(self.available_actions)}; it would cost budget and do nothing."
+                f"{list(self.available_actions)}; the frame says this game does "
+                f"not accept it, so it would return an unchanged board and teach "
+                f"you nothing."
             )
         return self._send(action, x=x, y=y)
 
     def _send(self, action: int, x: int | None = None, y: int | None = None) -> dict[str, Any]:
         if self.max_actions and self.actions_used >= self.max_actions:
             raise ActionRefused(
-                f"action budget exhausted: {self.actions_used}/{self.max_actions}. "
+                f"harness ceiling reached at {self.actions_used} actions. "
                 f"Reached level {self.level} of {self.win_levels or '?'}."
             )
         level_cap = self.level_budget
@@ -963,9 +984,9 @@ class ArcClient:
             # nowhere else: this refusal ends the environment, so there is no
             # subsequent decision the number could inform.
             base = self._baseline_here_enforced
-            whose = "withheld" if self.hide_baselines else str(base)
+            whose = "withheld" if self.quiet_pace else str(base)
             raise ActionRefused(
-                f"per-level action budget exhausted: {self.level_actions}/{level_cap} "
+                f"per-level ceiling reached: {self.level_actions}/{level_cap} "
                 f"on level {self.level} (baseline {whose}, "
                 f"{self.level_budget_multiple:g}x). This is the official ARC-AGI-3 "
                 f"rule -- an agent is terminated after {self.level_budget_multiple:g}n "
@@ -1057,7 +1078,7 @@ class ArcClient:
         """
         from .rules import level_pace
 
-        if self.hide_baselines:
+        if self.quiet_pace:
             return {}
         return level_pace(self.transitions(), self.info.baseline_actions if self.info else ())
 

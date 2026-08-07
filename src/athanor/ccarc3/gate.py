@@ -12,14 +12,22 @@ been updated.**
 
 Why structural and not advisory. The knowledge that transfers between levels is
 the only thing standing between a solver and re-deriving the game from scratch
-seven times over -- and the action budget makes that unaffordable (a published
-baseline runs to 1843 actions). An instruction to "remember what you learned"
-competes with the immediate pull of the new level. A refusal does not.
+on every level. An instruction to "remember what you learned" competes with the
+immediate pull of the new level. A refusal does not.
 
 What the gate deliberately does *not* do is judge the content. It checks that
 something was written for this level and moves on. A gate that graded the
 hypothesis would be a reviewer, and this harness does not have one.
 """
+# **This docstring is solver-visible, and it used to leak.** `__init__.py` does
+# `from .gate import GateRefusal, LevelGate`, which binds the submodule, so
+# `arc.gate.__doc__` and `pydoc athanor.ccarc3.gate` both print it -- and the
+# paragraph above once justified the gate by saying re-derivation is
+# "unaffordable" because "a published baseline runs to 1843 actions". That is a
+# real per-game baseline total, in the operator's own voice, reachable by
+# introspection from an object the workspace `session.py` hands the solver by
+# name. The argument survives without the number; the number does not survive
+# being printed.
 
 from __future__ import annotations
 
@@ -33,7 +41,7 @@ __all__ = ["GateRefusal", "LevelGate"]
 
 
 class GateRefusal(RuntimeError):
-    """The gate declined an action. Nothing was sent; no budget was spent."""
+    """The gate declined an action. Nothing was sent and the game did not step."""
 
 
 @dataclass
@@ -119,11 +127,9 @@ class LevelGate:
 
         The third exists because a real solver put *"actions that would move
         into a wall were never tested yet"* into ``refuted``, having nowhere
-        else to put it. That is exactly the confusion ``arc.unreached()`` was
-        written to prevent on ARC-AGI-2: a branch that never ran is not a branch
-        that passed, and a claim never exercised is not a claim disproved.
-        Filing it as a refutation would make the solver stop asking, which is
-        the opposite of what an untested question deserves.
+        else to put it. A claim never exercised is not a claim disproved, and
+        filing it as a refutation makes the solver stop asking -- the opposite
+        of what an untested question deserves.
         """
         if self.pending_level is None:
             raise GateRefusal("nothing pending; the gate is not holding anything")

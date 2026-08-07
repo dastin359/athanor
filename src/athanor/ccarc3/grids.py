@@ -81,8 +81,8 @@ def render(grid: Sequence[Sequence[int]] | np.ndarray) -> str:
     12,416 for the bracketed-integer rows, a 3x reduction (measured, not
     estimated). The margin against the SDK's ``pretty_print_3d`` is larger,
     since that adds a header and two-space indent per grid -- and one action can
-    return several grids. The saving is why a solver can afford to look at more
-    than a handful of frames.
+    return several grids. The saving is why a solver can look at many more frames
+    than a handful.
     """
     arr = as_grid(grid)
     return "\n".join("".join(_CHARS[v] for v in row) for row in arr)

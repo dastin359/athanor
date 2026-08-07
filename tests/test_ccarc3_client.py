@@ -103,7 +103,7 @@ def test_acting_while_dead_is_refused(stub):
     assert c.dead
 
     before = len(sent)
-    with pytest.raises(ActionRefused, match="costs budget"):
+    with pytest.raises(ActionRefused, match="discarded without stepping the game"):
         c.act(2)
     assert len(sent) == before
 
@@ -729,7 +729,7 @@ def test_the_action_budget_is_enforced_not_merely_advertised(stub):
     c.act(1)
     c.act(2)
     before = len(sent)
-    with pytest.raises(ActionRefused, match="budget exhausted"):
+    with pytest.raises(ActionRefused, match="ceiling reached"):
         c.act(1)
     assert len(sent) == before
 
@@ -860,7 +860,7 @@ def test_every_refusal_still_refuses_in_a_fresh_process(monkeypatch, tmp_path):
     b = ArcClient("g", trace_path=path, max_actions=50, gate=LevelGate(rulebook_path=tmp_path / "r.json"))
     with pytest.raises(ActionRefused, match="FULL GAME RESET"):
         b.reset()
-    with pytest.raises(ActionRefused, match="budget exhausted"):
+    with pytest.raises(ActionRefused, match="ceiling reached"):
         b.act(1)
     with pytest.raises(GateRefusal):
         b.gate.check()
@@ -960,7 +960,7 @@ def test_the_per_level_budget_matches_the_official_rule(monkeypatch, tmp_path):
     assert c.level_budget == 50, "5 x the baseline for level 0"
     for _ in range(50):
         c.act(1)
-    with pytest.raises(ActionRefused, match="per-level action budget exhausted"):
+    with pytest.raises(ActionRefused, match="per-level ceiling reached"):
         c.act(1)
 
 
@@ -1203,7 +1203,7 @@ def test_hiding_baselines_does_not_lift_the_official_per_level_cap(
     ARC withholding a number from an agent does not stop ARC applying it.
     """
     c, _ = _levelled(monkeypatch, tmp_path, (31, 40), 2,
-                     level_budget_multiple=5.0, hide_baselines=True)
+                     level_budget_multiple=5.0, quiet_pace=True)
     assert c.baseline_here is None, "the solver cannot see it"
     assert c.level_budget == 155, "the rule applies anyway: 5 x 31"
 
@@ -1216,7 +1216,7 @@ def test_every_solver_facing_baseline_surface_goes_quiet_together(
 ):
     """One property gates them all, so none can be forgotten and leak."""
     c, post = _levelled(monkeypatch, tmp_path, (31, 40), 2,
-                        level_budget_multiple=5.0, hide_baselines=True,
+                        level_budget_multiple=5.0, quiet_pace=True,
                         show_score=True)
     for _ in range(9):
         c.act(1)
@@ -1231,7 +1231,7 @@ def test_every_solver_facing_baseline_surface_goes_quiet_together(
 def test_the_cap_refusal_does_not_name_a_withheld_baseline(monkeypatch, tmp_path):
     """It does name the cap, which is 5n -- but only as the environment ends."""
     c, post = _levelled(monkeypatch, tmp_path, (2, 40), 2,
-                        level_budget_multiple=5.0, hide_baselines=True)
+                        level_budget_multiple=5.0, quiet_pace=True)
     for _ in range(10):
         c.act(1)
     with pytest.raises(ActionRefused, match="baseline withheld"):

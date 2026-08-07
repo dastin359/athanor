@@ -3642,3 +3642,123 @@ produces it.
 Four tests now pin it: two on the strip's paragraph and code-fence behaviour, one
 that no solver-facing file frames actions as an allowance, and one that the
 workspace `session.py` carries no operator commentary and names no other game.
+
+---
+
+## The exhaustive proofread: 70 confirmed defects, and a disclosure channel nobody was guarding
+
+The four defects fixed in `a63232a` came from reading three rendered files. That
+was the right method applied to too small a surface. This pass enumerated
+**every** surface a solver can reach — both initial prompts, the workspace files,
+the runtime strings, and the package's own docstrings — and read each through
+seven independent lenses (allowance framing, coherence after the two rewriting
+passes, disclosure, followability of every documented API call, runtime strings,
+the prompts, and whether the whole thing read end-to-end induces the intended
+objective). Every finding then went to an adversarial verifier whose default was
+REFUTED and which had to prove the quoted text exists *and* reaches a solver
+under the shipped config.
+
+**70 confirmed, 10 refuted, 8 of them high severity.**
+
+### The channel: `help()` is a solver-visible surface
+
+The harness guards *files*. A strip rewrites every workspace file, a proxy holds
+the API key so `/api/games` is unreachable, and a redaction pass rewrites the
+doctrine. All of it is file-shaped.
+
+`help()` is not a file. The solver is handed `client`, `gate` and `arc` by name
+in `session.py`, and `help(client)` / `dir(arc)` / `pydoc athanor.ccarc3.gate` are
+the standard way to find out what an unfamiliar object does — the first thing an
+orienting agent does. Every public docstring in the package renders through that
+path, and those docstrings were written for the operator:
+
+- `help(arc.GameInfo)` printed **"real games span 171 to 1843 baseline actions"** —
+  the envelope of the secret across the whole public set, on a class the workspace
+  `session.py` imports by name.
+- `arc.gate.__doc__` named **1843** outright and justified the gate by saying
+  re-derivation is "unaffordable".
+- `help(client)` rendered `baseline_here`'s docstring under *Readonly properties*:
+  it announced that a per-level human median exists, that the solver is being
+  denied it deliberately, and named `_baseline_here_enforced` — a pointer straight
+  to `info.baseline_actions`.
+- `arc_proxy.__doc__` was a complete description of the defence: which env var
+  closes the in-process route, that `baselines_for` refuses and `list_games`
+  filters, that the ceiling is `budget_multiple` times the withheld total and
+  therefore inverts to it, and which two runs had already fetched the numbers by
+  hand.
+- `help(client.level_budget)` asserted a per-level termination rule at 5× baseline,
+  "enforced whether or not it told the agent" — a rule this harness stopped
+  modelling on 2026-08-04, in a property that returns 0 on every shipped run.
+
+This is not hypothetical browsing. `client.py`'s own note records `cd82` reading
+`baselines_for` straight out of `dir(arc)` **"having gone looking for nothing at
+all"** — the incident that motivated the env-var guard. The guard was added; the
+docstring explaining the guard was left in the listing beside it.
+
+**Fix:** rationale moves to `#` comments, which `help()` cannot reach. Docstrings
+state what the thing does and nothing else. Four tests in
+`tests/test_ccarc3_solver_reachable_docs.py` now walk every reachable docstring —
+and render the real `pydoc` page for the three objects `session.py` binds — and
+fail on a real baseline, allowance vocabulary, or any description of the
+withholding.
+
+### A real human baseline was printed in the doctrine
+
+§0a's worked proof that ARC scores the *best* play gave two plays as
+`21 actions → level_scores [65.533]` and `7 actions → [115.000]`, then spelled out
+`65.533 = (17/21)²×100`. **17 is a real per-level human median**, and the pair
+`(21, 65.533)` inverts to it without the derivation line: `21·√0.65533 = 17.0`.
+Neither rewriting pass touches it — the strip removes §6, and the redaction only
+rewrites lines naming the game being played. Every solver read it, in the first
+file it is told to open. The demonstration is load-bearing, so it survives in
+symbolic form; the numbers do not.
+
+### The resumed prompt
+
+The first user turn of every resumed run — the highest-authority position in
+context, read *before* DOCTRINE.md — said re-deriving mechanics *"wastes budget
+you have already spent"*. Incoherent on its own terms (spent budget cannot be
+wasted again), and the exact allowance frame §0 exists to deny, with no
+counterweight in front of it. It also collapsed the three-valued rule book into
+settled fact, told the solver not to RESET at all when only one RESET is
+dangerous and mid-level resets are legitimate, read `rules.json` unconditionally
+though a fresh build deletes it, and ended on a comma splice with a duplicated,
+mid-sentence capitalised "Continue". Rewritten whole.
+
+### The rest
+
+- **`quiet_pace`, formerly `hide_baselines`.** The keyword is written literally
+  into the workspace `session.py` the solver imports, and repeated in
+  `help(ArcClient)`'s signature — announcing in one word that per-level medians
+  exist and are being kept from it. A knob named for the secret is a signpost to
+  the secret; the new name describes the visible effect.
+- **Runtime refusals** told the solver actions "cost budget" and cited `§2.4` of
+  a design note that is not in the workspace. They now give the real reason: a
+  discarded action teaches nothing and moves nothing.
+- **Three documented calls did not work as written.** `arc.monotone_rows()` takes
+  `(before, after)` pairs, not a bare call. `arc.shortest_path`/`arc.reachable`
+  default to `actions=(1,2,3,4)`, which is *wrong for every click game* and fails
+  silently — an empty route or a tiny reachable set, which the doctrine then tells
+  you to read as "your model puts a wall where there is none". §10 told the solver
+  to stamp its hypothesis into the action's `reasoning` field; `act()` has no such
+  parameter, so the instruction had no correct form.
+
+### What this does to the banked runs
+
+Nothing to the eight rollouts' scores. What it changes is what can be claimed
+about them: they ran under a harness whose docstrings would have handed over the
+baseline envelope to anyone who typed `help(arc.GameInfo)`, and whose doctrine
+printed one real median outright. No trace shows a solver having done either —
+`proofread_trace.py` clears all eight — but "we withheld the baselines" was a
+stronger claim than the evidence supported, and it is now closer to true than it
+was.
+
+### The pattern, for the third time
+
+Every defect in this pass is the same shape as the last two: **a mechanism that
+looked like it worked because the visible outcome was unchanged.** The strip ran
+and left prose it had destroyed. The reframe removed the phrases a test looked
+for. And the guard against `dir(arc)` was shipped with a docstring beside it
+explaining what it guards. Each was found by rendering the artifact and reading
+it, rather than reading the code that produces it — and the surface was larger
+each time I looked.

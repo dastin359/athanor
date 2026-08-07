@@ -199,7 +199,7 @@ def actions_per_level(
     ``actions``          actions **per play**, e.g. ``[3, 1]``
     ``actions_by_level`` **cumulative** actions at each level's completion,
                          per play -- see the warning below
-    ``total_actions``    the sum across plays — a *budget* figure
+    ``total_actions``    the sum across plays — never a scoring denominator
     ===================  ==================================================
 
     A ``RESET`` while the action counter is non-zero is a *level* reset:
@@ -223,7 +223,7 @@ def actions_per_level(
     So for a one-level game with a human baseline of 7, won in 10 and then
     replayed and won in 7: ``actions_by_level`` is ``[[10], [7]]`` and
     ``total_actions`` is 17. Since ``Card.high_score = max(scores)`` scores the
-    *best* play, ``a_l`` is **7**. The 17 is budget spent, not the denominator.
+    *best* play, ``a_l`` is **7**. The 17 is the running total, not the denominator.
 
     This module briefly defaulted to summing, on the argument that
     ``total_actions`` accumulates. That argument conflated a game-level total
