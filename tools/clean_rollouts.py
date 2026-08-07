@@ -1,13 +1,16 @@
-"""Clean one-shot rollouts of the five environments that were never cleanly run.
+"""Clean one-shot rollouts: every environment, run start to finish in one process.
 
-`ft09`, `ka59`, `lf52`, `sb26` and `wa30` all scored 1.0000 in the arm, but every
-one of them was interrupted by a container event and resumed. Under the operator's
-criterion -- only a run that completes in a single solver process is a genuine
-clean draw -- none of the five counts, because a resumed solver re-reads its own
-`rules.json` and trace on the far side of a fresh context window.
+**Started as five games and is now all 25.** It was built for `ft09`, `ka59`,
+`lf52`, `sb26` and `wa30` -- each scored 1.0000 in the arm, and each was
+interrupted by a container event and resumed, so under the operator's criterion
+(only a run completing in a single solver process is a genuine clean draw) none
+of them counted. Then the three arm losses, to separate "§0b works" from "a
+second look at your own notes works". Then, on 2026-08-07, the remaining
+seventeen, once the solver-surface proofread had landed.
 
-This re-runs them to settle that. It is the opposite of `tools/rerun_losses.py` in
-every way that matters:
+Eight are banked at 7.4075/8. The rest are the queue.
+
+It is the opposite of `tools/rerun_losses.py` in every way that matters:
 
 ===================  ==========================  ===========================
                      rerun_losses.py             this
@@ -24,14 +27,19 @@ very confound it exists to remove. Each attempt opens its own ARC scorecard, so 
 discarded attempt costs quota and wall clock but never score -- the environment
 keeps the best card, and an abandoned one is simply worse.
 
-**The infrastructure is working against this and the odds are not uniform.**
-Containers are replaced every 22-36 minutes at present, and a clean run has to fit
-inside one window. Against the arm's own wall times -- `sb26` 0.29 h, `ft09`
-0.54 h, `ka59` 1.34 h, `wa30` 2.34 h, `lf52` 3.55 h -- only the first two are
-comfortably feasible. The re-runs did come in faster than their arm runs (`sk48`
-0.95 h against 2.37 h), so those are pessimistic, but not by the factor `lf52`
-would need. Shortest-first ordering below is deliberate: it banks the achievable
-results before spending the window on a game that probably cannot finish.
+**The infrastructure was expected to work against this, and it did not.** The
+paragraph here used to say containers were being replaced every 22-36 minutes, so
+a clean run had to fit inside one window and only the two shortest games were
+comfortably feasible. That prediction was wrong in the event: all eight banked
+runs completed one-shot, including `lf52` at 10 levels and `wa30` at 9, across a
+10.78-hour continuous stretch on one `boot_id`. The container lifetime that
+shaped this design was a phase, not a constant.
+
+Shortest-first ordering is kept anyway, and still on its original reasoning: it
+banks achievable results before spending a window on a game that probably cannot
+finish, which costs nothing when windows are long and saves the queue when they
+are short. For the seventeen with no comparable arm run, published baseline total
+stands in for wall time -- the only length proxy available before the fact.
 """
 from __future__ import annotations
 
