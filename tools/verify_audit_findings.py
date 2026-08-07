@@ -82,6 +82,40 @@ def checks() -> list[tuple[str, str, bool]]:
         ("u3 high", "the withdrawn 25-environment figure is marked withdrawn",
          "is\nwithdrawn" in read("docs/ccarc3_results.md")
          or "withdrawn" in read("docs/ccarc3_results.md")),
+        # -- the rest of the 20 the workflow never adjudicated, worked through
+        #    2026-08-07 evening
+        ("u4 high", "session.ASSETS exports the UNSTRIPPED doctrine; §6 held real medians",
+         "(spent, baseline, 0.77)" in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")
+         and "190/h on this level" in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")),
+        ("u5 high", "the strip's own comment quoted a real total and its cap",
+         "518" not in read("tools/ablate_baselines.py")
+         and "2590" not in read("tools/ablate_baselines.py")),
+        # Anchored to the refusal itself, not to prose. The first version matched
+        # "this shim serves", which also appears in a comment three lines from
+        # the attribute it documents — so deleting the guard left the entry
+        # passing. Caught by mutating the file and watching this report 0 open.
+        ("u6 high", "a shim forwarded a sibling game's actions and billed itself",
+         'self._deny(403, f"this shim serves' in read("src/athanor/ccarc3/arc_proxy.py")
+         and 'asked != wanted' in read("src/athanor/ccarc3/arc_proxy.py")),
+        ("u7 high", "a median array in code was invisible: every check read prose() only",
+         "test_no_published_array_appears_anywhere_in_importable_source"
+         in read("tests/test_ccarc3_no_medians_in_source.py")),
+        ("u8 med", "post-strip scan promised every file and listed six suffixes",
+         "Every text file, not an extension whitelist" in read("tools/ablate_baselines.py")),
+        ("u9 med", "meta.json was stripped after four raise-capable assertions",
+         read("tools/ablate_baselines.py").index("meta.json carries the whole GameInfo")
+         < read("tools/ablate_baselines.py").index("no longer contains the conditional")),
+        ("u10 low", "the 403 body named a figure equal to the cap",
+         "exhausted after" not in read("src/athanor/ccarc3/arc_proxy.py")),
+        ("u11 low", "four doctrine arithmetic errors",
+         all(x in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")
+             for x in ("the rule is 20/0", "being slow on the\nlast one",
+                       "almost one action in three", "`tn36` has five runs"))),
+        ("u12 low", "25 evidence directories held only a copy of HEAD",
+         not list(pathlib.Path(REPO, "evidence/ccarc3/clean_rollouts")
+                  .glob("*/client.py.gz"))),
+        ("u13 low", "the store README described a store less than half its size",
+         "60 runs ->" in read("evidence/ccarc3/trace_audit/README.md")),
         # -- and the false positives that made earlier versions of these useless
         ("fp a", "reach must not fire on a `..` that lands back inside",
          not pt.strayed("sys.path.insert(0,'..')", WS)),
