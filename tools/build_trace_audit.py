@@ -31,8 +31,10 @@ import gzip
 import json
 import pathlib
 import re
+import hashlib
 import statistics
 import subprocess
+import tempfile
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -486,6 +488,79 @@ def backfill_start_times(runs: list) -> list[str]:
 HARNESS_PATHS = ("src/athanor/ccarc3/", "tools/ablate_baselines.py")
 
 
+# Exactly what a solver can see: the four files it reads, and the API surface it
+# is allowed to reach. Everything else in the harness is invisible to it by
+# construction.
+SOLVER_FILES = ("CLAUDE.md", "DOCTRINE.md", "session.py", "meta.json")
+
+
+def surface_digest(root: pathlib.Path) -> str:
+    """Digest of everything the run's solver could observe.
+
+    **This replaces counting commits, which counted diffs rather than
+    differences.** `sb26` was marked superseded by a commit that moved the
+    proxy's counter and cookie jar from module globals onto an instance -- 289
+    lines across three files, and byte-for-byte no change to anything the solver
+    reads. A refactor is not a new experiment.
+
+    The digest covers the four files in the workspace plus the proxy's allowlist
+    and the fields it strips from responses, which together define what the API
+    will do when the solver asks.
+
+    **Not the environment**, though that is solver-visible and matters more than
+    any of them -- whether `ARC_API_KEY` and `CCARC3_MAX_ACTIONS` reach the
+    child. It is excluded because it cannot be recovered from a finished run, so
+    including it on the reference side only would make every digest mismatch by
+    construction. (It did, briefly: both clean runs read `superseded` against a
+    workspace proven byte-identical.) The environment is checked directly
+    instead, per run, by `proofread_trace.py`, which reads it from the live
+    process rather than inferring it.
+
+    Two runs with the same digest saw the same harness, whatever happened to the
+    source in between.
+    """
+    h = hashlib.sha256()
+    for name in SOLVER_FILES:
+        path = root / name
+        h.update(name.encode() + b"\0")
+        h.update((path.read_bytes() if path.exists() else b"") + b"\0")
+    try:
+        sys.path.insert(0, str(REPO / "src"))
+        from athanor.ccarc3 import arc_proxy  # noqa: PLC0415
+
+        h.update(b"allow:" + ",".join(p.pattern for p in arc_proxy.ALLOW).encode())
+        h.update(b"hidden:" + ",".join(sorted(arc_proxy.HIDDEN_FIELDS)).encode())
+    except Exception:  # noqa: BLE001 -- a digest without it is still comparable
+        pass
+    return h.hexdigest()[:16]
+
+
+def reference_digest(game_id: str) -> str:
+    """What today's code would ship to this game. Empty if it cannot be built."""
+    try:
+        sys.path.insert(0, str(REPO / "src"))
+        sys.path.insert(0, str(REPO / "tools"))
+        import ablate_baselines as ab  # noqa: PLC0415
+
+        from athanor.ccarc3 import Ccarc3Config, list_games  # noqa: PLC0415
+        from athanor.ccarc3 import session as sess  # noqa: PLC0415
+
+        ab.install()
+        info = next((g for g in list_games() if g.game_id == game_id), None)
+        if info is None:
+            return ""
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = sess.build_workspace(
+                Ccarc3Config(game_id, out_dir=pathlib.Path(tmp), budget_multiple=5.0), info)
+            digest = surface_digest(ws.root)
+        ab.release_proxy(game_id)
+        return digest
+    except Exception as exc:  # noqa: BLE001
+        print(f"    reference surface unavailable for {game_id} ({exc.__class__.__name__})",
+              file=sys.stderr)
+        return ""
+
+
 def harness_commits() -> list[str]:
     """Commit timestamps that changed the harness, newest first."""
     try:
@@ -499,43 +574,48 @@ def harness_commits() -> list[str]:
 
 
 def mark_generation(runs: list) -> int:
-    """Replace the frozen `latest` label with how far behind each run actually is.
+    """Tier each run by whether the harness it saw still matches today's.
 
-    **`latest` was a string, not a measurement.** It was written into the store
-    when `b5f4651` was the newest runner and nothing ever recomputed it, so
-    thirteen runs went on claiming "current config" through twelve subsequent
-    harness commits -- including the ones that wired the key shim, moved the
-    action cap out of the solver's environment, and added two rules to the
-    doctrine. `sk48` was still badged `latest` while the doctrine had grown a
-    table row naming `sk48` and its exact loss.
+    **Only a change the solver could see supersedes a run.** This counted
+    commits to the package before, which counted diffs rather than differences:
+    `sb26` was superseded by a 289-line refactor that left every byte the solver
+    reads identical. So where a run recorded its solver surface, that digest is
+    compared against what today's code would ship to the same game, and the
+    commit count is reported alongside as context rather than as the verdict.
 
-    That is the same defect as the `CLEAN` badge: a label asserting a property
-    instead of reporting one. So the tier is derived here from the run's start
-    time against the git history of everything a solver reads, and it goes stale
-    on its own the moment the next harness commit lands.
+    Runs with no recorded surface -- the 25 arm games, whose workspaces were
+    never preserved -- keep the commit-based estimate and are marked
+    `estimated`, because a guess must not read as a measurement.
 
-    `void` and `excluded` outrank it -- a contaminated run's generation is not
+    `void` and `excluded` outrank both: a contaminated run's generation is not
     the interesting fact about it.
     """
     commits = harness_commits()
-    if not commits:
-        print("    generation check SKIPPED: no git history for the harness paths",
-              file=sys.stderr)
-        return 0
+    refs: dict[str, str] = {}
     moved = 0
     for row in runs:
         if row.get("tier") in {"void", "excluded"} or not row.get("started"):
             continue
-        started = row["started"].replace("Z", "+00:00")
         try:
-            when = dt.datetime.fromisoformat(started)
+            when = dt.datetime.fromisoformat(row["started"].replace("Z", "+00:00"))
         except ValueError:
             continue
-        behind = sum(1 for c in commits if dt.datetime.fromisoformat(c) > when)
-        row["behind"] = behind
-        was = row.get("tier")
-        row["tier"] = "current" if behind == 0 else "superseded"
-        moved += row["tier"] != was
+        row["behind"] = sum(1 for c in commits if dt.datetime.fromisoformat(c) > when)
+
+        surface = row.get("surface")
+        if surface:
+            gid = row["id"].split("@")[0]
+            if gid not in refs:
+                refs[gid] = reference_digest(gid)
+            if refs[gid]:
+                was = row.get("tier")
+                row["tier"] = "current" if surface == refs[gid] else "superseded"
+                row["estimated"] = False
+                moved += row["tier"] != was
+                continue
+        # No surface to compare: the commit count is all there is.
+        row["tier"] = "current" if row["behind"] == 0 else "superseded"
+        row["estimated"] = True
     return moved
 
 
@@ -678,6 +758,10 @@ def main() -> int:
         data[gid] = entry
         row = runs_row(entry["result"], game_dir)
         row["id"] = gid
+        # Captured now, because the workspace is on disk now. A digest stored in
+        # the row outlives the directory it was computed from, so a run stays
+        # judgeable long after its scratchpad copy is gone.
+        row["surface"] = surface_digest(game_dir)
         if label and "@" in label:
             row["game"] = f"{row['game']} {label.split('@')[1]}"
         runs = [r for r in runs if r.get("id") != gid] + [row]

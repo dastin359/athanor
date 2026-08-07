@@ -38,8 +38,14 @@ TICK=300
 
 # Everything that is evidence, and nothing that is a secret or regenerable.
 # Deliberately a whitelist: a blacklist would ship the next new file by default.
+# **The three files the solver reads are preserved too, not just the ones it
+# writes.** Without them a finished run's *surface* -- what harness it actually
+# saw -- is unrecoverable once the scratchpad copy goes, and the audit can only
+# guess its generation from commit timestamps. That guess is what marked `sb26`
+# superseded by a refactor that changed none of these three bytes. They are
+# small and they compress; the trace is 65x larger and has never been in doubt.
 KEEP=(trace.jsonl trace.state.json result.json scorecard.json rules.json
-      resume_state.json meta.json)
+      resume_state.json meta.json CLAUDE.md DOCTRINE.md session.py)
 
 log() { echo "$(date -u +%H:%M:%S) $*"; }
 

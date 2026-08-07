@@ -2799,6 +2799,7 @@ workspace rather than on the config that built it.
 | game | E | levels | actions | wall | cost | card agrees |
 |---|---|---|---|---|---|---|
 | `sb26` | **1.0000** | 8/8 | 126 | 20.4 min | $5.76 | yes — 126 |
+| `ft09` | **1.0000** | 6/6 | 78 | 30.1 min | $9.15 | yes — 78 |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -2837,6 +2838,34 @@ arm runs are `superseded` by 12 to 19 commits.
 actions against 130, and level 1 at 11 rather than 15. Not a difference worth
 reading anything into on n=1 — the point is that this one is attested, not that
 it is better.
+
+#### `ft09-0d8bbf25` — **1.0000 (6/6)**, every level at the efficiency ceiling
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 6 of 6, **0 deaths, 0 resets, 1 play** |
+| actions | **78**, against a 208 human total |
+| wall | 30.1 min, single process, 81 turns, $9.15 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 7 | 7 | 14 | 16 | 21 | 13 |
+| human | 43 | 12 | 23 | 28 | 65 | 37 |
+| ratio | **6.14×** | 1.71× | 1.64× | 1.75× | 3.10× | 2.85× |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**All six levels at the 1.15 ceiling**, which no run in the arm managed. `raw`
+1.1500 is the maximum the formula allows, so this is as efficient as the score
+can register — and it still reads `E` 1.0000, because the completion cap binds
+at 1.0 the moment every level is cleared. The surplus is real and discarded.
+
+Proofread by tool and by hand: 80 commands, none leaving the workspace; its own
+per-level array, its budget and the API surface absent from 108 kB of tool
+output; ARC's card corroborating 78 against 78. The eleven flagged passages are
+all inference, and the solver states the limit itself — *"baselines are hidden
+here, so that is an argument, not a measurement — I can show I won and that my
+routes were minimal, not the value of `raw` itself."*
 
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
