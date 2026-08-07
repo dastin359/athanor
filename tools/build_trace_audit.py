@@ -29,6 +29,7 @@ import argparse
 import datetime as dt
 import gzip
 import json
+import time
 import pathlib
 import re
 import hashlib
@@ -688,6 +689,63 @@ def summarise(data: dict) -> dict:
     }
 
 
+def live_games() -> list[dict]:
+    """Games with a solver running *right now*, for the page's live panel.
+
+    **The page is a snapshot, so this is stamped and says so.** A finished run is
+    immutable evidence; an in-flight one is a reading taken at build time, and
+    presenting the two identically would let a stale tile read as a live one.
+
+    A solver is the `claude` binary whose cwd is a workspace -- argv-exact, never
+    a `pgrep -f` substring. The workspaces themselves carry the progress: the
+    trace is one JSON row per action and its last row names the level.
+    """
+    out = []
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().decode().split("\0")
+            cwd = (entry / "cwd").resolve()
+        except (OSError, PermissionError):
+            continue
+        if not any(a.endswith("/claude") for a in argv):
+            continue
+        if "clean_rollouts" not in str(cwd) and "scratchpad/runs" not in str(cwd):
+            continue
+        trace = cwd / "trace.jsonl"
+        if not trace.exists():
+            continue
+        rows = level = 0
+        last = ""
+        try:
+            for line in trace.open():
+                if line.strip():
+                    rows += 1
+                    last = line
+            level = json.loads(last).get("level", 0) if last else 0
+        except (OSError, ValueError):
+            pass
+        meta = cwd / "meta.json"
+        levels = 0
+        try:
+            levels = json.loads(meta.read_text()).get("levels") or 0
+        except (OSError, ValueError):
+            pass
+        started = None
+        try:
+            started = (entry / "stat").stat().st_mtime
+        except OSError:
+            pass
+        out.append({
+            "id": cwd.name,
+            "actions": rows,
+            "level": level,
+            "levels": levels,
+            "elapsed_s": int(time.time() - started) if started else None,
+        })
+    return sorted(out, key=lambda r: r["id"])
+
 def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
     """Render, trimming tool payloads only as far as the size ceiling demands.
 
@@ -719,6 +777,10 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
     # was already at 500 chars with four of them, one rung from failing outright.
     drop_spans = {r["id"] for r in runs if r.get("tier") == "void"}
 
+    # Read once, outside `render`, so the two size-fitting passes cannot disagree
+    # about what was running.
+    live = live_games()
+
     def render(cap: int | None) -> str:
         payload = {k: v for k, v in data.items() if k not in drop_spans}
         if cap is not None:
@@ -738,7 +800,10 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
                 .replace("__NGAMES__", str(stats["games"]))
                 .replace("__BASH_CALLS__", f"{stats['bash']:,}")
                 .replace("__BASH_MEDIAN__", f"{stats['median']:.2f}")
-                .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}"))
+                .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}")
+                .replace("__LIVE_JSON__", json.dumps(live))
+                .replace("__BUILT_AT__", dt.datetime.now(dt.timezone.utc)
+                         .strftime("%Y-%m-%d %H:%M UTC")))
 
     page = render(None)
     if len(page.encode()) <= TARGET:

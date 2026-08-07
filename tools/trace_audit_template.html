@@ -263,6 +263,19 @@ tr.bad td { color: var(--bad); }
 @media (max-width: 700px) { .row { grid-template-columns: 170px 1fr 54px; } .wrap { padding: 28px 14px 60px; } }
 </style>
 
+<style>
+table.live{border-collapse:collapse;width:100%;max-width:640px;font-size:13px;margin:6px 0 18px}
+table.live th{text-align:left;font-weight:600;color:var(--ink-faint);
+  border-bottom:1px solid var(--rule);padding:4px 10px 4px 0}
+table.live td{padding:6px 10px 6px 0;border-bottom:1px solid var(--rule)}
+table.live .bar{height:4px;background:var(--rule);border-radius:2px;margin-top:4px;
+  width:120px;overflow:hidden}
+table.live .bar i{display:block;height:100%;background:var(--accent,#2f9e6e)}
+.livedot{display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:#2f9e6e;margin-left:8px;vertical-align:middle;
+  animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
 <div class="wrap">
 <header>
   <h1>CCARC3 solver trace audit</h1>
@@ -278,6 +291,8 @@ tr.bad td { color: var(--bad); }
   A span's parent is the tool named by its <code>parent_tool_use_id</code>, or the session
   root when it has none.
 </p>
+
+<div id="livewrap"></div>
 
 <h2>Where the wall clock actually goes</h2>
 <div class="split" id="split"></div>
@@ -351,6 +366,39 @@ tr.bad td { color: var(--bad); }
 <script>
 const DATA = __DATA_JSON__;
 const RUNS = __RUNS_JSON__;
+const LIVE = __LIVE_JSON__;
+const BUILT_AT = "__BUILT_AT__";
+
+// **In-flight games, read at build time.** A finished run is immutable evidence;
+// a running one is a reading, and rendering them identically would let a stale
+// tile pass for a live one. Hence the explicit stamp and the separate panel.
+(function renderLive() {
+  const host = document.getElementById("livewrap");
+  if (!host) return;
+  if (!LIVE || !LIVE.length) {
+    host.innerHTML = '<h2>Running now</h2><p class="prose" style="color:var(--ink-faint)">' +
+      'No solver was running when this page was built (' + BUILT_AT + ').</p>';
+    return;
+  }
+  const hhmm = s => s == null ? "?" :
+    (s >= 3600 ? Math.floor(s/3600) + "h " : "") + Math.floor((s % 3600)/60) + "m";
+  const rows = LIVE.map(g => {
+    const pct = g.levels ? Math.round(100 * g.level / g.levels) : 0;
+    return '<tr><td><code>' + g.id + '</code></td>' +
+      '<td>' + g.level + (g.levels ? " / " + g.levels : "") +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div></td>' +
+      '<td style="text-align:right">' + g.actions + '</td>' +
+      '<td style="text-align:right">' + hhmm(g.elapsed_s) + '</td></tr>';
+  }).join("");
+  host.innerHTML =
+    '<h2>Running now <span class="livedot"></span></h2>' +
+    '<p class="prose" style="font-size:12px;color:var(--ink-faint)">' +
+    'Read from <code>/proc</code> when this page was built, ' + BUILT_AT +
+    '. This is a snapshot, not a live feed — the page is rebuilt when a game finishes.</p>' +
+    '<table class="live"><thead><tr><th>game</th><th>level</th>' +
+    '<th style="text-align:right">actions</th><th style="text-align:right">elapsed</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+})();
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s) => s >= 60 ? `${(s/60).toFixed(1)}m` : `${s.toFixed(s<10?2:1)}s`;
