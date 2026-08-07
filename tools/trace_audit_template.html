@@ -290,7 +290,9 @@ const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
     <div class="n">${r.levels} · ${r.actions} acts · ${fmt(r.wall)} · $${r.cost.toFixed(2)}</div>
     <div class="n started">${r.started_local ? `started ${r.started_local}` : "start time unknown"}</div>
     <div class="tier" style="color:${ti.colour}" title="${ti.note}">${ti.label}${
-      r.behind ? `<span style="opacity:.7;font-weight:400"> · ${r.behind} commits behind</span>` : ""}</div>
+      r.estimated ? `<span style="opacity:.7;font-weight:400"> · estimated</span>` : ""}${
+      r.behind ? `<span style="opacity:.55;font-weight:400"> · ${r.behind} commit${
+        r.behind === 1 ? "" : "s"} since${r.tier === "current" ? ", none it could see" : ""}</span>` : ""}</div>
     <div class="cfg">${cfgStrip(r)}</div>
   </div>`;
 }).join(""); };
@@ -306,9 +308,12 @@ const FILTERS = [
          "Hides contaminated runs, runs pulled from the arm, and anything resumed " +
          "from an interrupted attempt."},
   {box: "currentonly", count: "currentcount", test: r => r.tier === "current",
-   note: "Current harness: no commit has touched the package, the doctrine or the " +
-         "baseline strip since this run started. Derived from git at build time, so " +
-         "it expires by itself the next time the harness moves."},
+   note: "Current harness: this run saw the same solver-visible surface today's code " +
+         "would ship — the four files in its workspace, plus the proxy's allowlist and " +
+         "the fields it strips. Compared by digest, not by counting commits: a refactor " +
+         "that leaves every byte the solver reads identical does not supersede a run. " +
+         "Runs marked <i>estimated</i> recorded no surface (their workspaces were never " +
+         "preserved) and fall back to the commit count, which is a guess."},
 ];
 FILTERS.forEach(f => {
   $(f.count).textContent = `(${RUNS.filter(f.test).length} of ${RUNS.length})`;
