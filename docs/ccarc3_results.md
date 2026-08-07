@@ -4384,3 +4384,62 @@ Nine for nine. The confound named in the last two entries is unchanged and still
 governs: `lf52` and `sk48` are the only environments that have ever scored below
 1.0 on a clean run, both sit in the superseded set, and until one is re-run under
 the current surface the 100% is not a harness effect.
+
+---
+
+## Rollout 18: `g50t-5849a774` — **1.0000 (7/7)**, ten for ten
+
+| | |
+|---|---|
+| levels | **7 of 7** |
+| actions | 684 total across 2 plays (399 + 285) |
+| `raw` | 1.0387 (play 1) → **1.1500** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 84 min, one-shot, exit 0 |
+| cost | $18.24 over 107 turns |
+
+Against baselines `[78, 175, 179, 230, 96, 54, 67]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| play 1 | 55 | 31 | 77 | 75 | 50 | **68** | 43 |
+| ratio | 0.71× | **0.18×** | 0.43× | 0.33× | 0.52× | **1.26×** | 0.64× |
+| play 2 | 17 | 31 | 64 | **31** | 50 | 49 | 43 |
+| ratio | 0.22× | 0.18× | 0.36× | **0.13×** | 0.52× | 0.91× | 0.64× |
+
+The inversion again, and cleanly separated this time. The three largest baselines
+in the game — levels 2, 3 and 4 at 175, 179 and 230 — were cleared at 0.18×,
+0.43× and 0.33×. The **only** level to run over was level 6, whose baseline is
+54, the second-smallest in the game. Across the current generation this is now the
+rule rather than a curiosity: a large human baseline predicts an *easy* level for
+this solver, and the levels that cost it are small-baseline ones where a human's
+route is short and the solver's model of the mechanic has to be exactly right.
+
+`raw` opened at 1.0387 — under the ceiling but above the cap, so the replay was
+worth nothing again. Ten replays under the repaired surface now, **two of which
+carried the score**.
+
+### Proofread
+
+Clean. 106 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 7 levels and 684
+actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **10 of 25** | **10.0000 / 10 = 100%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 7 | — |
+
+Ten for ten, and now a **majority of the environments that have been attempted at
+all** under the current surface. The comparison remains confounded in the way
+named three entries ago and nothing has changed it: `lf52` and `sk48` are the only
+environments ever to score below 1.0 on a clean run and both sit in the
+superseded set. What has changed is the sample — ten runs at a mean published
+baseline of 528 actions, against the superseded eight's 421 — so "the easy ones
+went first" is now clearly false, while "the two hardest have not been retried"
+remains true.
