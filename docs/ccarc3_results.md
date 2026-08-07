@@ -2805,6 +2805,8 @@ workspace rather than on the config that built it.
 | `lf52` | **0.4537** | **7/10 — lost** | 865 | 142 min | $59.72 | yes — 849 |
 | `sk48` | **0.9538** | 8/8 — **was 5/8** | 1111 (best play 488) | 152 min | $55.61 | yes — 1111 |
 | `sp80` | **1.0000** | 6/6 — **was 5/6** | 339 (best play 100) | 96 min | $20.88 | yes — 339 |
+| `tn36` | **1.0000** | 7/7 — **was 5/7** | 542 (best play 103) | 97 min | $31.51 | yes — 542 |
+| **8 games** | **7.4075 / 8 = 92.59%** | **7 wins** | | 13.4 h | **$278** | |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -3011,7 +3013,26 @@ clean single-process run on the current harness beat what the arm managed?
 |---|---|---|---|
 | `sk48` | 0.4167 — 5/8 | **0.9538 — 8/8** | won |
 | `sp80` | 0.7143 — 5/6 | **1.0000 — 6/6** | won |
-| `tn36` | 0.5357 — 5/7 | running | |
+| `tn36` | 0.5357 — 5/7 | **1.0000 — 7/7** | won |
+
+**`tn36-ef4dde99` — 1.0000 (7/7), every level at the ceiling**
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 7 | 9 | 9 | 13 | 16 | 21 | 28 |
+| human | 32 | 72 | 26 | 40 | 30 | 55 | 62 |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**103 actions on the scoring play against a 317 human total.** The arm run
+stopped at 5 of 7 having spent 289 — nearly three times as many actions for two
+fewer levels.
+
+**Three of three.** Every environment the arm lost was won on the re-run, and
+two of the three at `raw` 1.1500, the formula's maximum. That is the strongest
+result on this page and the one most in need of a caveat: three things moved
+between the arm and these runs — the doctrine gained §0b and the replay
+correction, the action cap became invisible, and the key shim was switched on.
+The reversals are real; their cause is not isolated.
 
 **`sk48-d8078629` — 0.9538 (8/8), and `raw` is the binding term**
 
