@@ -4809,3 +4809,70 @@ That is the fifth check today that reported success while doing nothing.
 | **repaired surface** | **14 of 25** | **13.7252 / 14 = 98.04%** |
 | superseded surface | 8 | 7.4075 / 8 = 92.59% |
 | never run | 3 | — |
+
+---
+
+## Rollout 23: `cd82-fb555c5d` — **1.0000 (6/6)** on the third attempt, and the queue's discipline paying off
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 245 across 2 plays (175 + 70) |
+| `raw` | 1.0267 (play 1) → **1.1500** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 40 min, one-shot, exit 0 |
+| cost | $8.85 over 70 turns |
+| attempt | **3** |
+
+Against baselines `[55, 8, 41, 21, 23, 23]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 | 54 | 6 | **72** | 14 | 13 | 16 |
+| ratio | 0.98× | 0.75× | **1.76×** | 0.67× | 0.57× | 0.70× |
+| play 2 | **5** | 6 | 16 | 14 | 13 | 16 |
+| ratio | **0.09×** | 0.75× | 0.39× | 0.67× | 0.57× | 0.70× |
+
+### Two prior attempts, both killed, neither wasted
+
+`cd82` is the shortest environment in the set (171-action baseline) and took three
+attempts to bank — not because it is hard, but because it kept being killed:
+
+| attempt | outcome |
+|---|---|
+| 1 | **discarded** — killed by SIGTERM after 82 min, 365 actions, at level 2 of 6 |
+| 2 | **discarded** — killed by SIGTERM after 68 min, 655 actions |
+| 3 | **CLEAN in 40 min**, 6/6, `E` 1.0000 |
+
+Both kills were session-worker restarts, not game failures: the first at 00:19
+PDT, the second at 08:16. Each orphaned the solver to init, and the next driver's
+`kill_orphan_solvers()` collected it — behaving exactly as designed, and costing
+150 minutes of play across the two.
+
+**It cost nothing in score and that is the design working.** A discarded attempt
+opens its own ARC scorecard and the environment keeps the best card, so an
+abandoned run is invisible in the result. The driver's *fewest-attempts-first*
+ordering then deprioritised `cd82` behind every zero-attempt game — which is why
+it ran last rather than blocking the queue while it kept dying. Both properties
+were written for exactly this and both did their job without supervision.
+
+### The replay, once more
+
+Play 1 came in at `raw` 1.0267 — above the cap, so the replay was worth nothing —
+and the solver replayed anyway. Level 1 went 54 actions to **5**, a 0.09× ratio.
+Twelve replays now under the repaired surface, **two of which carried the score**.
+
+### Proofread
+
+Clean. 69 commands, none left the workspace; nothing inbound; card corroborates 6
+levels and 245 actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **15 of 25** | **14.7252 / 15 = 98.17%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 2 | — |
