@@ -3996,3 +3996,58 @@ actions. Its orientation included importing `session` and printing `client.statu
 **11 clean rollouts, 10.4075 / 11 = 94.61%**, ten wins. Of these, **three ran
 under the repaired solver surface** (`r11l`, `tr87`, `lp85`) and all three scored
 1.0000. Fourteen environments outstanding.
+
+---
+
+## Rollout 12: `vc33-5430563c` — **1.0000 (7/7)**, the first run a replay genuinely rescued
+
+| | |
+|---|---|
+| levels | **7 of 7** |
+| actions | 436 total across 2 plays (269 + 167) |
+| `raw` | 1.0688 (play 1) → **1.1500** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths | **1** — the first death in twelve clean rollouts |
+| wall clock | 44 min, one-shot, exit 0 |
+| cost | $10.54 over 71 turns |
+
+Against baselines `[7, 18, 44, 61, 131, 34, 152]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| play 1 | 9 | 8 | 23 | 72 | 88 | 20 | 49 |
+| ratio | **1.29×** | 0.44× | 0.52× | **1.18×** | 0.67× | 0.59× | 0.32× |
+| play 2 | 3 | 7 | 23 | **21** | **44** | 20 | 49 |
+| ratio | 0.43× | 0.39× | 0.52× | 0.34× | 0.34× | 0.59× | 0.32× |
+
+**This is the first rollout where a solver actually went over baseline** — twice,
+on levels 1 and 4 — and the first where the replay did real work rather than
+shaving a rounding error. Level 4 went 72 → 21 actions and level 5 went 88 → 44,
+carrying `raw` from 1.0688 to the 1.1500 ceiling.
+
+It also still changed the environment score by nothing: `E = min(cap, raw)`, and
+with all seven levels cleared `cap` was already 1.0000. **That is now three
+distinct shapes of the same lesson** — a replay that was pure waste (`r11l`,
+`tr87`), one that moved `raw` by 0.0014 (`lp85`), and one that moved it by 0.08
+(`vc33`) — and in all three the environment score was identical either way.
+Efficiency has not been worth a single point in this project since the completion
+cap started binding.
+
+The level-1 overrun is worth noting on its own: a 7-action human baseline, spent
+9 on the first level of an unfamiliar game. There is no version of exploration
+that beats that, and the squared ratio makes 1.29× cost more than it looks —
+which is precisely why it is a `raw` problem and not a `cap` problem, and why it
+cost nothing.
+
+### Proofread
+
+Clean. 70 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 7 levels and 436
+actions. One probe, reading its own workspace.
+
+### Standing
+
+**12 clean rollouts, 11.4075 / 12 = 95.06%**, eleven wins. **Four under the
+repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33` — all four 1.0000.
+Thirteen environments outstanding.
