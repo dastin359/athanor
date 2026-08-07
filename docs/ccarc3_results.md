@@ -4534,3 +4534,104 @@ actions.
 | **repaired surface** | **11 of 25** | **11.0000 / 11 = 100%** |
 | superseded surface | 8 | 7.4075 / 8 = 92.59% |
 | never run | 6 | — |
+
+---
+
+## Rollout 20: `bp35-0a0ad940` — **0.7252 (9/9)**. It won every level and the harness told it to stop.
+
+The first sub-1.0 score under the repaired surface, and it is the harness's fault,
+not the solver's.
+
+| | |
+|---|---|
+| levels | **9 of 9** — every level cleared |
+| actions | 990 in a **single play** |
+| `raw` | **0.7252** |
+| `cap` | 1.0000 |
+| **`E`** | **0.7252** |
+| deaths | **14** |
+| wall clock | **292 min** (4 h 52 m), one-shot, exit 0 |
+| cost | **$78.96** over 301 turns — the most expensive run of the project |
+
+Against baselines `[21, 48, 44, 38, 33, 87, 86, 131, 163]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| actions | 30 | 75 | 42 | 33 | 36 | **309** | 90 | 100 | **275** |
+| ratio | 1.43× | 1.56× | 0.95× | 0.87× | 1.09× | **3.55×** | 1.05× | 0.76× | **1.69×** |
+
+`playthroughs: 1`, `full_resets: 0`. **It never replayed**, and a clean replay at
+the winning frame was worth up to **+0.2748**.
+
+### Why it stopped, in its own words
+
+> All nine levels are cleared with a perfect score, so the game is won. **I should
+> wrap this up with a summary for the user since there's nothing left to
+> accomplish.** All nine levels are cleared — `level 9/9 state=WIN`, **cap 1.000**.
+
+It read `cap 1.000` off `client.status()` and took it for its score. `cap` *was*
+1.000 — that is true and the harness printed it correctly. But
+`E = min(cap, raw)`, and with the medians withheld `status()` printed only the
+`cap` half:
+
+```
+[cap 1.000 = 9/9 levels]
+```
+
+Half the formula, with nothing to indicate the other half existed. At 9 of 9 that
+renders as a clean `1.000` and reads, reasonably, as a perfect score. §0a's rule —
+*if you cannot compute `raw`, replay anyway* — was an hour of context earlier and
+lost to a number on screen that appeared to settle the question.
+
+**This is the mirror image of `tu93`.** There the solver estimated `raw` from an
+in-game meter, concluded a replay would not help, and replayed anyway because the
+doctrine said to — gaining +0.1202. Here the estimate came from the *harness
+itself*, carried more authority, and pointed the wrong way. A rule that survives
+the solver's own arithmetic does not survive the harness contradicting it.
+
+### The fix
+
+`status()` now labels the number as what it is, and speaks at the one moment the
+instrument is available:
+
+```
+[cap 1.000 = 9/9 levels — a CEILING, not your score: efficiency is
+ unmeasurable here and can only lower it]
+WON — and `restart_for_replay()` is legal RIGHT NOW and illegal after any
+ further action. Your score is min(cap, raw); cap is 1.000 and raw is unknown
+ to you, so a clean replay can only raise it. Doctrine §0a: if you cannot
+ compute raw, replay anyway.
+```
+
+The replay is legal only while the server's action counter is zero — the frame
+straight after the final level advance — and any further action ends it
+permanently. Saying so at that frame is worth more than the doctrine paragraph
+saying it an hour earlier. Two tests pin both halves.
+
+### What this run also shows about the game
+
+Level 6 ran to 3.55× and level 9 to 1.69×, with 14 deaths and 990 actions against
+a 651-action baseline. It is the hardest environment encountered so far and it
+still fell completely — which is §0b working exactly as intended. **The solver's
+persistence was not the failure; only its exit was.** Under the pre-reframe
+doctrine, a run 1.5× over the whole game's baseline at level 6 would have been a
+candidate to stop, and stopping there would have scored roughly 0.28.
+
+### Proofread
+
+Clean. 299 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 9 levels and 990
+actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **12 of 25** | **11.7252 / 12 = 97.71%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 5 | — |
+
+The first blemish on the current generation, and worth stating plainly: it is a
+*harness* defect that cost 0.2748, found only because the run happened to clear
+every level badly. Nine of the previous eleven never had a `raw` below `cap`, so
+the display had no opportunity to mislead them.

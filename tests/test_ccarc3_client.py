@@ -1156,12 +1156,46 @@ def test_a_lost_ceiling_names_the_instrument_that_recovers_it(monkeypatch, tmp_p
 
 
 def test_without_baselines_status_still_shows_the_cap(monkeypatch, tmp_path):
+    """The cap is shown, and labelled as a bound rather than a score.
+
+    It used to print `[cap 0.067 = 2/9 levels]` and stop. That is half of
+    `E = min(cap, raw)` with nothing to say the other half exists, and at 9 of 9
+    it renders as `cap 1.000`, which reads as a perfect score. `bp35` read
+    exactly that, wrote "all nine levels are cleared with a perfect score, so the
+    game is won", and stopped. Its `raw` was 0.7252 and the replay it skipped was
+    worth up to +0.2748.
+
+    The `score_ceiling` *warning* still must not appear -- that one is computed
+    from the medians and is genuinely unavailable here, which is what this test
+    originally guarded.
+    """
     c, post = _levelled(monkeypatch, tmp_path, (), 9, show_score=True)
     for level in (1, 2):
         _clear(c, post, level, 3)
     s = c.status()
     assert "cap 0.067 = 2/9 levels" in s
-    assert "CEILING" not in s, "no baselines, no ceiling to claim"
+    assert "not your score" in s, "a bare cap reads as a score"
+    assert "CEILING 0." not in s, "no baselines, no score_ceiling to claim"
+
+
+def test_winning_without_baselines_points_at_the_replay_instrument(monkeypatch, tmp_path):
+    """The one moment the advice is actionable is the one moment it was missing.
+
+    `restart_for_replay()` is legal only while the server's action counter is
+    zero -- the frame immediately after the final level advance -- and any
+    further action makes it illegal for good. The doctrine says so in §0a, an
+    hour of context earlier. `bp35` reached that frame, saw `cap 1.000`, and
+    wrapped up.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (), 2, show_score=True)
+    _clear(c, post, 1, 3)
+    for _ in range(2):
+        c.act(1)
+    post.next = {"levels_completed": 2, "state": "WIN"}
+    c.act(1)
+    s = c.status()
+    assert "`restart_for_replay()` is legal RIGHT NOW" in s
+    assert "replay anyway" in s
 
 
 def test_a_resumed_run_rebuilds_its_level_costs_from_the_trace(monkeypatch, tmp_path):

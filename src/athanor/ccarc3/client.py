@@ -1053,10 +1053,38 @@ class ArcClient:
         if self.show_score:
             ceiling = self.score_ceiling
             if ceiling is None:
-                # Baselines withheld: the completion cap is still exact, and it
-                # is the half of the score that does not need them.
+                # **Label it a ceiling, because a bare "cap 1.000" reads as a
+                # perfect score and cost a run 0.2748.** `E = min(cap, raw)`.
+                # With the medians withheld only `cap` is computable, so this
+                # used to print `[cap 1.000 = 9/9 levels]` and stop -- half the
+                # formula, with no sign that the other half existed. On
+                # 2026-08-07 `bp35` cleared 9 of 9 in 990 actions against a
+                # 651-action baseline, read that line, and concluded: "All nine
+                # levels are cleared with a perfect score, so the game is won. I
+                # should wrap this up." Its `raw` was 0.7252. It never replayed,
+                # and the replay was available at that exact frame and worth up
+                # to +0.2748.
+                #
+                # The fix is to say what the number is not. A solver that knows
+                # `cap` is an upper bound and `raw` is unmeasurable has the
+                # information §0a's blind-replay rule needs; one shown `cap
+                # 1.000` has a number that contradicts the rule.
                 facts.append(f"[cap {self.completion_cap:.3f} = {len(self.level_costs)}"
-                             f"/{self.win_levels or '?'} levels]")
+                             f"/{self.win_levels or '?'} levels — a CEILING, not "
+                             f"your score: efficiency is unmeasurable here and can "
+                             f"only lower it]")
+                # At the winning frame the replay instrument is legal and one
+                # action from being gone forever. Saying so once, at exactly the
+                # moment it applies, is worth more than the doctrine paragraph
+                # that says the same thing an hour earlier.
+                if self.state == "WIN":
+                    warnings.append(
+                        "WON — and `restart_for_replay()` is legal RIGHT NOW and "
+                        "illegal after any further action. Your score is "
+                        "min(cap, raw); cap is 1.000 and raw is unknown to you, "
+                        "so a clean replay can only raise it. Doctrine §0a: if "
+                        "you cannot compute raw, replay anyway."
+                    )
             else:
                 facts.append(
                     f"[score {self.score_now:.3f}, ceiling {ceiling:.3f}, "
