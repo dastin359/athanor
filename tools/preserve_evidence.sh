@@ -161,7 +161,28 @@ the scratchpad lost twelve games' traces by existing only on disk.
 
 Gzipped ledgers, state, scorecards, rule books and streams. No secret and no
 virtualenv -- the file set is a whitelist, and a guard refuses the commit if the
-live API key appears anywhere under evidence/."
+live API key appears anywhere under evidence/." || {
+                # **A failed commit must not be reported as a push.** Commits
+                # here are ssh-signed through `/tmp/code-sign`, and on 2026-08-07
+                # that signer returned 503: the commit died with "failed to write
+                # commit object", and this loop then logged "pushed 10 files"
+                # anyway -- because the push ran regardless, succeeded trivially
+                # on an unchanged tree, and `n` had been counted before the commit
+                # that never happened. A total preservation failure produced a
+                # log line indistinguishable from success.
+                #
+                # It also left a stale `.git/index.lock`, which blocks every later
+                # commit -- daemon and session alike -- until something removes
+                # it. Clearing it here is safe only because no other git process
+                # runs in this repo unattended; the check is not decoration.
+                log "COMMIT FAILED — $n files staged, nothing preserved this cycle"
+                if [ -f "$REPO/.git/index.lock" ] && ! pgrep -x git >/dev/null 2>&1; then
+                    rm -f "$REPO/.git/index.lock"
+                    log "  removed a stale .git/index.lock left by the failed commit"
+                fi
+                sleep "$TICK"
+                continue
+            }
             pushed=0
             for i in 1 2 3 4; do
                 if git push -q origin "$BRANCH" 2>/dev/null; then
