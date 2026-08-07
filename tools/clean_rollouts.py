@@ -265,6 +265,13 @@ def fails_proofread(game_dir: pathlib.Path) -> str:
     A crash in the proofreader is not a verdict on the run: it is reported and
     the run proceeds, because a broken checker silently discarding good runs is
     worse than one that occasionally lets a run through to be read by hand.
+
+    **But a crash must not be mistaken for exit 1.** It was, until 2026-08-07:
+    an uncaught exception exits 1 in Python, so any failure after the reach pass
+    banked the run *and printed* "PROOFREAD: passages above need reading", a
+    sentence asserting that a proofread had happened. `proofread_trace.py` now
+    exits 3 on its own failure, and anything outside {0, 1, 2} is reported here
+    as "did not run" rather than as a verdict.
     """
     script = pathlib.Path(__file__).resolve().parent / "proofread_trace.py"
     if not script.exists():
@@ -282,6 +289,12 @@ def fails_proofread(game_dir: pathlib.Path) -> str:
     if p.returncode == 1:
         print("    ^ PROOFREAD: passages above need reading before this is trusted",
               flush=True)
+    elif p.returncode not in (0, 1, 2):
+        # Loud and distinguishable: the run is banked, but nothing checked it.
+        print(f"    ^ PROOFREAD DID NOT RUN (exit {p.returncode}) — banking "
+              f"UNCHECKED, re-run tools/proofread_trace.py on this directory",
+              flush=True)
+        print("    " + "\n    ".join(p.stderr.strip().splitlines()[-8:]), flush=True)
     return ""
 
 

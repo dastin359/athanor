@@ -265,6 +265,17 @@ def strip_baselines(root: pathlib.Path) -> None:
             out.append(line)
     if inside:
         raise RuntimeError("DOCTRINE.md: unclosed BASELINE-ONLY fence")
+    # **Count, do not merely require one.** `if not fenced` passes when one of
+    # the two fence pairs is lost to an edit, shipping the passage it guarded --
+    # and the passages are the "a replay gains you nothing" bullets, which are
+    # the exact thing a baseline-free solver must not read.
+    EXPECTED_FENCES = 2
+    if fenced and fenced != EXPECTED_FENCES:
+        raise RuntimeError(
+            f"DOCTRINE.md has {fenced} BASELINE-ONLY fence(s), expected "
+            f"{EXPECTED_FENCES}. One was lost to an edit and the passage it "
+            f"guarded just shipped."
+        )
     if not fenced and not already_stripped:
         # Not a no-op: a fence silently lost to an edit puts the "a replay gains
         # you nothing" bullets back in front of a solver that cannot evaluate

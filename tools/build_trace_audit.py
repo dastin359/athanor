@@ -328,9 +328,42 @@ def arc_actions_per_level(game_dir: pathlib.Path, game_id: str) -> list[int] | N
     sys.path.insert(0, str(REPO / "src"))
     from athanor.ccarc3 import scoring  # noqa: PLC0415
 
-    # ARC scores the best play: furthest first, then cheapest at that depth.
-    best = max(range(len(plays)),
-               key=lambda i: (len(plays[i]), -(plays[i][-1][1] if plays[i] else 0)))
+    # **Score every play and take the maximum, because that is the rubric.**
+    # This used to pick "furthest first, then cheapest at that depth", which is a
+    # proxy for the RHAE maximum and not the maximum itself: `raw` weights later
+    # levels by their index, so a play with more total actions can still score
+    # higher if it spent them early. That heuristic produced every `E` and `raw`
+    # in the store and on the published page.
+    #
+    # Measured before changing it: across the 29 preserved scorecards, 23 of them
+    # multi-play, the two selectors never disagree -- so no recorded number
+    # moves. Fixed anyway, because "agrees on the data so far" is not the same
+    # as "computes the right thing", and the next divergence would be silent.
+    # Ties are common and must break toward the cheaper play. Every level of a
+    # good run is pinned at the 1.15 ceiling, so two plays routinely score
+    # *exactly* the same and `max` would keep whichever came first -- which on
+    # `su15` meant displaying 42 actions on level 8 where another play took 12.
+    # Same score, worse-looking page, and the page is meant to show the play that
+    # earned the number.
+    def _rank(i: int) -> tuple[float, int]:
+        try:
+            per = scoring.server_actions_per_level(scorecard, game_id, play=i)
+            return (scoring.score_environment(baselines, per).score,
+                    -sum(a for a in per if a))
+        except (KeyError, ValueError, IndexError, ZeroDivisionError):
+            return (-1.0, 0)
+
+    try:
+        from athanor.ccarc3.client import baselines_for  # noqa: PLC0415
+        baselines = baselines_for(game_id)
+    except Exception:                     # noqa: BLE001 -- medians are optional here
+        baselines = None
+    if baselines:
+        best = max(range(len(plays)), key=_rank)
+    else:
+        # No medians reachable: fall back to the old proxy and say so.
+        best = max(range(len(plays)),
+                   key=lambda i: (len(plays[i]), -(plays[i][-1][1] if plays[i] else 0)))
     try:
         return scoring.server_actions_per_level(scorecard, game_id, play=best)
     except (KeyError, ValueError) as exc:

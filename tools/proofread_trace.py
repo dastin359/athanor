@@ -308,4 +308,20 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # **Exit 3 for "this checker broke", because 1 already means something.**
+    # 1 is "passages need a human to read", which `clean_rollouts.fails_proofread`
+    # treats as keep-the-run. An uncaught exception exits 1 too, so any crash
+    # after the reach pass banked the run while printing "PROOFREAD: passages
+    # above need reading" -- a message asserting a proofread happened when none
+    # finished. The crash window is not narrow: `baselines()` does a live
+    # `GET /api/games` and raises on a retired id, a missing key, or a dead proxy.
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:                        # noqa: BLE001 -- report, do not mask
+        import traceback
+        traceback.print_exc()
+        print("PROOFREAD DID NOT COMPLETE — this is not a verdict on the run",
+              file=sys.stderr)
+        raise SystemExit(3)

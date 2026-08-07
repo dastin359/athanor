@@ -60,12 +60,28 @@ log() { echo "$(date -u +%H:%M:%S) $*"; }
 # should make this impossible; that is exactly why it is worth asserting, because
 # a guard that only fires when the whitelist is already broken is the one that
 # matters. Compares against the live key without ever printing it.
+# **It has to read through the gzip, and a missing key is not a pass.** The first
+# version ran `grep -rlF` over $DEST straight after gz_atomic() had gzipped every
+# file in it, so the plaintext needle could not match anything it was guarding --
+# 780 of 785 files compressed. And `[ -n "$ARC_API_KEY" ] || return 0` reported
+# CLEAN, and committed, whenever the daemon had no key in its environment: the
+# one state in which the check is definitionally incapable of running.
 key_is_clean() {
-    local hits
-    [ -n "${ARC_API_KEY:-}" ] || return 0
-    hits=$(grep -rlF "$ARC_API_KEY" "$DEST" 2>/dev/null | head -3)
+    local hits f body
+    if [ -z "${ARC_API_KEY:-}" ]; then
+        log "REFUSING TO COMMIT — ARC_API_KEY unset, so the key check cannot run"
+        return 1
+    fi
+    hits=""
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        body=$(gzip -cd -- "$f" 2>/dev/null || cat -- "$f" 2>/dev/null)
+        case "$body" in
+            *"$ARC_API_KEY"*) hits="$hits $f";;
+        esac
+    done <<< "$(git -C "$REPO" diff --cached --name-only -- evidence 2>/dev/null)"
     if [ -n "$hits" ]; then
-        log "REFUSING TO COMMIT — the API key appears in: $hits"
+        log "REFUSING TO COMMIT — the API key appears in:$hits"
         return 1
     fi
     return 0
