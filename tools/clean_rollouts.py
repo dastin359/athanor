@@ -364,7 +364,12 @@ def main() -> int:
             key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
         )
         if not outstanding:
-            print("\nall five have a clean run", flush=True)
+            # Was "all five have a clean run", hardcoded when GAMES held five.
+            # It kept printing after the queue grew to eight and then to 25, so
+            # the one line that says "there is nothing left to do" was reporting
+            # a count that had been wrong for two days -- and it read as a
+            # completed queue while seventeen environments sat unrun.
+            print(f"\nall {len(GAMES)} have a clean run", flush=True)
             break
         print(f"\n--- pass {pass_no}/{MAX_PASSES}: {len(outstanding)} outstanding "
               f"({', '.join(g.split('-')[0] for g in outstanding)}) ---", flush=True)
