@@ -123,7 +123,38 @@ stop_politely() {
     done
 }
 
+# **Refresh the outbound proxy before every launch, and refuse to launch without
+# one that answers.** Outbound HTTPS leaves this box through an agent proxy on a
+# loopback port, and that port CHANGES when the session worker restarts. A daemon
+# keeps whatever it inherited: on 2026-08-07 this supervisor, started hours
+# earlier, still exported 127.0.0.1:37827 while the live proxy had moved to
+# :41751 -- so every driver it spawned inherited a dead proxy and died on its
+# first `list_games()` with [Errno 111] Connection refused. Retrospectively that
+# is also the unexplained incident earlier the same day, where seven games churned
+# on Connection refused and the cause was never found.
+#
+# The session is the only thing that can see the current value, so it writes
+# `$SP/proxy_env` and this reads it back. The validation matters as much as the
+# refresh: without it a stale proxy produces a driver that starts, fails, exits,
+# and is restarted ten minutes later forever, with each cycle writing a fresh
+# traceback nobody reads. A launch that cannot possibly work should be a loud
+# skip, not a quiet retry.
+refresh_proxy() {
+    [ -f "$SP/proxy_env" ] && . "$SP/proxy_env"
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+           "${HTTPS_PROXY:-http://127.0.0.1:1}/__agentproxy/status" 2>/dev/null)
+    if [ "$code" != "200" ]; then
+        echo "$(date -u +%H:%M) SKIPPING LAUNCH — proxy ${HTTPS_PROXY:-unset} did not"\
+             "answer (got '${code:-no response}'). Every outbound call would fail."\
+             "Refresh $SP/proxy_env from a live session."
+        return 1
+    fi
+    return 0
+}
+
 start() {
+    refresh_proxy || return 1
     echo "$(date -u +%H:%M) util=$1 < $RESUME — starting $(basename "$RUNNER")"
     set -a
     . "$SP/arc3/.env"
