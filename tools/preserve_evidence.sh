@@ -36,6 +36,16 @@ DEST="$REPO/evidence/ccarc3"
 BRANCH="claude/athanor-cc-harness-variant-jpqw7t"
 TICK=300
 
+# **Source the key rather than inherit it.** `key_is_clean` refuses to commit
+# without `ARC_API_KEY`, which is right -- the one state where the check cannot
+# run must not read as a pass -- but it made a long-lived daemon's correctness
+# depend on an undocumented inheritance from whichever shell happened to start
+# it. That is the same shape as the proxy port the supervisor carried for hours
+# after it had moved. Reading the file each start makes the daemon
+# self-sufficient, and it is the same file every other component reads.
+# shellcheck disable=SC1091
+[ -f "$SP/arc3/.env" ] && . "$SP/arc3/.env"
+
 # Everything that is evidence, and nothing that is a secret or regenerable.
 # Deliberately a whitelist: a blacklist would ship the next new file by default.
 # **The three files the solver reads are preserved too, not just the ones it
