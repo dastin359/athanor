@@ -2801,6 +2801,7 @@ workspace rather than on the config that built it.
 | `sb26` | **1.0000** | 8/8 | 126 | 20.4 min | $5.76 | yes — 126 |
 | `ft09` | **1.0000** | 6/6 | 78 | 30.1 min | $9.15 | yes — 78 |
 | `ka59` | **1.0000** | 7/7 | 607 (best play 319) | 72.6 min | $22.73 | yes — 607 |
+| `wa30` | **1.0000** | 9/9 | 2125 (best play 723) | 129 min | — | yes — 2125 |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -2907,6 +2908,54 @@ Proofread: 120 commands, none left the workspace; its own array, its budget and
 the API surface absent from 148 kB of tool output; card corroborating 607 against
 607. Ten flagged passages, all inference — *"I can't calculate the raw score
 since the baselines are hidden."*
+
+#### `wa30-ee6fef47` — **1.0000 (9/9)**, and the run my own gate threw away
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1367**, `cap` 1.0000) |
+| levels | 9 of 9, **2 plays, 1 full reset** |
+| actions | **2,125** total, **723** on the scoring play, against a 1,843 human total |
+| wall | 129 min, single process, 175 commands |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| agent | 47 | 63 | 87 | 98 | 105 | 55 | 66 | 140 | **62** |
+| human | 71 | 119 | 183 | 98 | 368 | 68 | 79 | 442 | **415** |
+| ratio | 1.51× | 1.89× | 2.10× | 1.00× | 3.50× | 1.24× | 1.20× | 3.16× | **6.69×** |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.00 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**The blind replay again, and this time it is visible in the numbers.** Play 1
+took 484 actions on level 8 and 271 on level 9; play 2 took 140 and 62. Eight of
+nine levels finished at the 1.15 ceiling on the replay against six on the first
+pass. `E` was 1.0000 either way.
+
+**It was discarded, and the gate was wrong.** `proofread_trace.py` classified
+reading your own environment as leaving the workspace, so this run failed on
+
+    echo "CAP=${CCARC3_MAX_ACTIONS:-unset}"; env | grep -i ccarc
+
+after 129 minutes and 2,125 actions. The command returned `CAP=unset` and
+nothing else of use: the solver went looking for its budget and the strip had
+already taken it. **That is the defence succeeding, and the gate punished it as
+a failure.** Probing is now reported for reading and never fatal — whether a
+probe *yielded* anything is what the inbound scan already tests, and here it
+yielded nothing.
+
+**What the probe did expose was a real hole.** Its output included
+`CCARC3_PROXY_URL`, the startup shim `install()` uses to prove a proxy can bind.
+That shim is created with no budget, so `MAX_ACTIONS` is 0 and anything reaching
+it spends without limit — and `build_workspace` copied the parent's whole
+environment, so every solver held the address of an uncapped route to ARC. No
+run ever used it; `wa30` printed it while hunting for its cap and moved on. The
+probe now shuts down once it has proved the port binds, and the child's
+environment carries exactly one root, its own.
+
+**The twenty flagged passages are inference from the game, not from the
+harness.** `wa30` has an in-game tick bar, and the solver reverse-engineered
+per-level budgets from it — *"I get something like 196, 70, 100, 100, 125 …
+possibly around twice the human baseline."* The real medians are 71, 119, 183,
+98, 368. It guessed, and it guessed wrong.
 
 ### Clean rollouts: converting the five interrupted environments, one at a time
 

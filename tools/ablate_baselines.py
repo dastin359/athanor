@@ -357,6 +357,15 @@ def install() -> None:
         probe = arc_proxy.Proxy()
         os.environ["CCARC3_PROXY_URL"] = probe.url
         print(f"arc_proxy: {probe.url} (key withheld from solvers, cap enforced here)")
+        # **And shut it down again.** It exists to prove a shim can bind before
+        # any game is launched, and a listener kept past that is an uncapped
+        # route to ARC -- `Proxy()` starts with `MAX_ACTIONS = 0`, so anything
+        # reaching it spends without limit. Its URL was in `os.environ`, and
+        # `build_workspace` copies the environment wholesale, so every solver
+        # was handed the address of a proxy that would not have counted its
+        # actions. `wa30` printed it while probing for its cap and never used
+        # it; the next one might have.
+        probe.shutdown()
 
 
 def assert_installed() -> None:

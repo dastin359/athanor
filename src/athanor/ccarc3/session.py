@@ -338,6 +338,13 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
         env["CCARC3_ARC_ROOT"] = proxy
         env.pop("ARC_API_KEY", None)
         env.pop("ARCPRIZE_API_KEY", None)
+    # **The parent's own bookkeeping never goes to the child.** `install()` keeps
+    # `CCARC3_PROXY_URL` in this process's environment, and `env = dict(os.environ)`
+    # copied it straight through -- so a solver held the address of a shim that was
+    # not its own. With games running concurrently that is another game's budget;
+    # with the startup probe it is no budget at all. The child needs exactly one
+    # root, `CCARC3_ARC_ROOT`, and it is set above.
+    env.pop("CCARC3_PROXY_URL", None)
 
     return Workspace(
         root=root,
