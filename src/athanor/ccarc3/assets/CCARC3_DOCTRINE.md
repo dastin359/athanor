@@ -21,10 +21,10 @@ cap          = sum(1..completed) / sum(1..n)
 Four consequences, each of which changes what you should do:
 
 **1. Only finished levels score at all.** A level you cannot complete is worth
-zero no matter how elegantly you spent 200 actions inside it. If a level is
-genuinely unreachable with the budget left, stopping costs you nothing — but
-finishing one more level is worth a great deal, so be sure before you conclude
-that.
+zero no matter how elegantly you spent 200 actions inside it. Finishing one more
+level is worth a great deal, and there is no arithmetic that makes stopping
+early correct: across 32 scored runs, **every point ever lost was lost by not
+finishing**, and not one was lost to spending too much.
 
 **2. The ratio is squared.** Twice the baseline scores 0.25, not 0.5. Three
 times scores 0.11. Overrunning a level is punished far harder than it looks,
@@ -185,15 +185,16 @@ route your *rules* now imply, which is work you can only do once you genuinely
 understand the game. If you cannot state a better route than the one you took,
 a replay will not help you.
 
-**Reserve the budget before you need it, or the option is gone.** A replay
-costs roughly one baseline. Your cap is a multiple of the baseline, so:
+**You are not spending against an allowance.** There is a hard stop, far out,
+to keep a runaway loop from costing money — but it is not a resource you are
+meant to husband, and it has never been the thing that ended a run. Across 32
+scored runs **not one came close to it**, and the benchmark is deliberately
+designed that way: a per-environment budget would "encourage AI to waste actions
+on levels because they're still 'under budget'".
 
-> **Do not spend more than half your action cap before you understand the
-> game.** Keep one baseline in reserve.
-
-This costs a healthy run nothing — runs that win use about 0.6 of a baseline in
-total, well inside half the cap. It costs a struggling run the only move that
-was still worth making.
+So do not pace yourself, do not hold actions back for later, and do not let
+"this is getting expensive" end a line of enquiry. The only question that
+changes your score is whether the next level falls.
 
 Measured on a real run, `tn36`. After overrunning three levels it stood at
 0.442 with five of seven cleared, and:
@@ -218,11 +219,15 @@ Across a 25-environment arm, **every loss was a voluntary stop**. Not one was
 killed, not one timed out, all three exited cleanly — each having cleared exactly
 five levels, hit a level it could not read, written a closing report, and quit:
 
-| game | levels | actions spent | budget | exit |
-|---|---|---|---|---|
-| `sp80` | 5 of 6 | 137 | 2,590 — **5%** | 0 |
-| `tn36` | 5 of 7 | 289 | 1,585 — **18%** | 0 |
-| `sk48` | 5 of 8 | 632 | 5,350 — **12%** | 0 |
+| game | levels | share of the cap it had used | exit |
+|---|---|---|---|
+| `sp80` | 5 of 6 | **5%** | 0 |
+| `tn36` | 5 of 7 | **18%** | 0 |
+| `sk48` | 5 of 8 | **12%** | 0 |
+
+All three have since been re-run under a harness that shows them no budget at
+all. **`sp80` went 5 of 6 to 6 of 6, and `sk48` went 5 of 8 to 8 of 8.** Nothing
+about the games changed.
 
 **No run in that arm ever exhausted its action budget** — not one of 25. In every
 game the binding constraint was something other than the thing the budget

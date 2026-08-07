@@ -9,6 +9,7 @@ that role, so it must be the only thing consulted.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -801,12 +802,29 @@ def test_the_doctrine_explains_when_a_replay_is_worth_it(ws):
     )
 
 
-def test_the_doctrine_says_to_reserve_budget_for_a_replay(ws):
-    """Measured on `tn36`: a replay was worth twice what finishing was worth,
-    and was impossible because exploration had spent the budget it needed."""
-    d = (ws.root / "DOCTRINE.md").read_text()
-    assert "half your action cap" in d
-    assert "one baseline in reserve" in d
+def test_the_doctrine_never_tells_a_solver_to_ration_actions(ws):
+    """The rule this replaces was wrong, and the project's own data says so.
+
+    It read *"do not spend more than half your action cap before you understand
+    the game; keep one baseline in reserve"* — advice a solver cannot follow once
+    the cap is withheld, and advice that points at the wrong objective anyway.
+    ARC-AGI-3 scores `min(cap, raw)`; across 32 scored runs the completion term
+    was binding in 30, and **every point ever lost was lost by not finishing**.
+    Not one run came near its limit — the doctrine's own §0b table shows the
+    three arm losses stopping at 5%, 18% and 12% of theirs.
+
+    Rationing induces exactly the failure §0b is about. `lf52` stopped at 7 of 10
+    having spent 13% of its actions and four of its six hours, with §0b in front
+    of it. So the doctrine must not carry a rule that competes with §0b, and it
+    must not hand the solver an allowance to husband.
+    """
+    # Collapsed, so the assertions survive the doctrine being re-wrapped.
+    d = re.sub(r"\s+", " ", (ws.root / "DOCTRINE.md").read_text())
+    for banned in ("half your action cap", "one baseline in reserve",
+                   "stopping costs you nothing"):
+        assert banned not in d, f"rationing guidance is back: {banned!r}"
+    assert "not spending against an allowance" in d
+    assert "every point ever lost was lost by not finishing" in d
 
 
 def test_an_unstripped_workspace_leaks_the_baselines_through_meta_json(ws):

@@ -190,14 +190,22 @@ client = ArcClient(
     trace_path=HERE / "trace.jsonl",
     info=INFO,
     gate=gate,
-    # **The cap is a silent guardrail.** Read from the environment rather than
-    # written here: ARC's FrameResponse carries no budget field and the technical
-    # report designed *away* from a per-environment allowance -- "we won't ...
-    # encourage AI to waste actions on levels because they're still 'under
-    # budget' for a given environment". Telling the solver a number it would not
-    # have at test time changes how it paces itself. It still stops the run; it
-    # just does not announce itself.
-    max_actions=int(os.environ.get("CCARC3_MAX_ACTIONS", "0")),
+    # **There is no client-side cap, and that is deliberate.** ARC's
+    # FrameResponse carries no budget field and the technical report designed
+    # *away* from a per-environment allowance -- "we won't ... encourage AI to
+    # waste actions on levels because they're still 'under budget' for a given
+    # environment". A solver that knows its allowance paces itself against it,
+    # which is the wrong objective: the score is completion first and efficiency
+    # only as a tiebreak, and across 32 scored runs every point lost was lost by
+    # not finishing.
+    #
+    # A hard stop does exist, far out, so a runaway loop cannot spend without
+    # limit -- but it is enforced in `arc_proxy`, out of this process, and it is
+    # not a number to plan against. This line used to read the cap from the
+    # environment; the environment no longer carries it, so it evaluated to 0
+    # and told the solver there was no limit at all. Saying so plainly beats a
+    # lookup that quietly means the opposite of its comment.
+    max_actions=0,
     level_budget_multiple={level_budget_multiple!r},
     # Withhold the human medians from every solver-facing surface: the pace
     # ratio, `pace()`, and the `raw`/ceiling half of the score block. The array
