@@ -183,19 +183,8 @@ class GameInfo:
         return None
 
     def suggested_budget(self, multiple: float = 4.0) -> int:
-        # **Rationale lives in a comment, not the docstring.** `GameInfo` is
-        # imported by name in every workspace `session.py`, so `help(arc.GameInfo)`
-        # is a natural call for an orienting solver -- and this docstring used to
-        # print the full envelope of per-game baseline totals across the public
-        # set ("real games span 171 to 1843 baseline actions"). That is the exact
-        # quantity class the strip and the proxy exist to withhold, handed over
-        # by the standard introspection path. It also cited design note §2.6, a
-        # document the solver is told not to read.
-        #
-        # The multiple exists because the published baseline is what a
-        # playthrough costs when the rules are already known, and a solver must
-        # discover them too; a flat cap cannot work because real games differ by
-        # an order of magnitude in length.
+        # A flat ceiling cannot work: real games differ by an order of magnitude
+        # in length. See docs/ccarc3_withholding.md.
         """A ceiling derived from the game rather than guessed. Harness-side only."""
         return max(200, int(self.baseline_total * multiple))
 
@@ -232,26 +221,10 @@ having gone looking for nothing at all. Check the traces, do not assume.
 """
 
 
-# **Harness-side only, and this used to be the docstring.** The runner needs the
-# real numbers to size a game and to score it; the solver must not have them.
-# Those two live in different processes, so the process is where the line is
-# drawn: this raises under `HIDE_BASELINES_ENV`, which only a solver's
-# environment carries.
-#
-# It did not always. It was written to *ignore* the flag, on the reasoning that a
-# solver could call `/api/games` by hand anyway, so the barrier was only ever
-# against incidental exposure. A live solver refuted that: `cd82` ran `dir(arc)`
-# on its first orientation turn -- an obvious thing to do in an unfamiliar
-# package -- and read back `'actions_per_level', 'as_grid', 'baselines_for',
-# 'block_size'`. Nothing deliberate was required; the name advertises itself and
-# the next step is one call.
-#
-# **That story belongs in a comment, because `help()` renders docstrings and
-# `dir(arc)` is exactly how the incident started.** Spelling out which function
-# holds the withheld numbers, and that it is guarded, is a far better signpost
-# than the bare name `cd82` found. Also deliberately not re-exported from
-# `athanor.ccarc3`, so it is absent from `dir(arc)` in the namespace a solver
-# actually holds; harness code imports it from this module by name.
+# Harness-side only; raises under `HIDE_BASELINES_ENV`, which only a solver's
+# environment carries. Not re-exported from `athanor.ccarc3`, so it is absent from
+# `dir(arc)` in the namespace a solver holds.
+# See docs/ccarc3_withholding.md.
 def baselines_for(
     game_id: str, api_key: str | None = None, root: str = ROOT_URL
 ) -> tuple[int, ...]:
@@ -275,15 +248,7 @@ def baselines_for(
 # Harness callers are unaffected -- the runner never sets the flag on itself, only
 # on the child it spawns.
 # Per-level reference counts come back empty under `HIDE_BASELINES_ENV`. There is
-# deliberately no bypass argument: there was one, `_unfiltered`, for harness-side
-# callers, and it made the flag advisory, because a keyword any caller can pass is
-# not a boundary. The environment variable is now the whole rule, honoured in
-# exactly one place. Harness callers are unaffected -- the runner never sets the
-# flag on itself, only on the child it spawns.
-#
-# Kept out of the docstring for the reason above `baselines_for`: `help()` reaches
-# docstrings, and `list_games` *is* exported into the solver's namespace, so
-# `help(arc.list_games)` is one step from `dir(arc)`.
+# deliberately no bypass argument. See docs/ccarc3_withholding.md.
 def list_games(api_key: str | None = None, root: str = ROOT_URL) -> list[GameInfo]:
     """Every public game, with its title and action-type tags."""
     raw = _get(f"{root}/api/games", _api_key(api_key))
@@ -347,22 +312,8 @@ class ArcClient:
     its entire budget executing a plan it should have abandoned.
     """
 
-    # **Renamed from `hide_baselines` on 2026-08-07, because the solver reads the
-    # keyword.** The workspace `session.py` passes it literally and the doctrine
-    # tells the solver to import that file, so the old name announced in one word
-    # that per-level human medians exist and are being kept from it -- and
-    # `help(ArcClient)` repeated it in the constructor signature. A knob named for
-    # the secret is a signpost to the secret. This name describes the visible
-    # effect instead: `status()` stops reporting a pace ratio.
-    #
-    # Withholds the medians from every solver-facing surface while the harness
-    # keeps using them. That is the right way to run the baseline-free arm, and
-    # the way it was not run: that arm hid the numbers by blanking
-    # `GameInfo.baseline_actions`, which is the same array `level_budget` derived
-    # the 5n per-level rule from -- so hiding the information silently removed the
-    # rule too, making it a two-variable experiment. One environment ran a level
-    # to 8.65x and another to 22.75x with the cap inert. Splitting the two is what
-    # this flag is for.
+    # Silences the pace ratio and the raw/ceiling half of the score block while
+    # the harness keeps using the underlying values. See docs/ccarc3_withholding.md.
     quiet_pace: bool = False
     """Stop reporting pace against the per-level reference count."""
 
@@ -772,18 +723,8 @@ class ArcClient:
     def dead(self) -> bool:
         return self.state == "GAME_OVER"
 
-    # Every solver-facing surface reads this one property -- the pace line in
-    # `status()`, `pace()`, the score block -- so returning None here silences all
-    # of them at once. `_baseline_here_enforced` is what the harness's own
-    # machinery reads, and it is deliberately not the same.
-    #
-    # **That paragraph used to be the docstring, and `help(client)` renders it.**
-    # `pydoc.render_doc(ArcClient)` prints it under "Readonly properties defined
-    # here", so a solver orienting itself learned that a per-level human median
-    # exists, that it is being denied on purpose, and the name of the attribute
-    # that holds the real one. The harness's own note below records `cd82`
-    # reading `baselines_for` straight out of `dir(arc)` having gone looking for
-    # nothing at all, so this is observed behaviour, not a hypothetical.
+    # Every solver-facing surface reads this one property, so returning None
+    # here silences all of them at once. See docs/ccarc3_withholding.md.
     @property
     def baseline_here(self) -> int | None:
         """Reference action count for this level, or ``None`` when unavailable."""
@@ -794,16 +735,8 @@ class ArcClient:
         """This level's human median, whatever the solver is allowed to see."""
         return self.info.baseline_for(self.level) if self.info else None
 
-    # Reads the enforced baseline rather than the visible one, so hiding a number
-    # from the solver does not silently switch a limit off.
-    #
-    # **Off by default, and the docstring used to say otherwise.** It read
-    # "Actions allowed on the current level" and asserted that ARC terminates an
-    # agent at 5n per level -- a rule this harness deliberately stopped modelling
-    # on 2026-08-04, when `level_budget_multiple` went to 0.0. So `help(client)`
-    # told the solver it was under a per-level termination rule that does not
-    # exist, in a property that returns 0 on every shipped run, and pre-empted
-    # the obvious check by claiming the rule is enforced out of sight.
+    # Reads the enforced value rather than the visible one, so hiding a number
+    # does not silently switch a limit off. See docs/ccarc3_withholding.md.
     @property
     def level_budget(self) -> int:
         """Per-level ceiling when one is configured; ``0`` means none is."""

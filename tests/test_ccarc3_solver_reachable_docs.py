@@ -157,3 +157,38 @@ def test_the_objects_the_solver_holds_by_name_render_clean(name):
     ):
         found = [m.group(0) for m in pattern.finditer(page)]
         assert not found, f"help({name}) shows {label}: {sorted(set(found))}"
+
+
+def test_the_class_source_carries_no_operator_commentary():
+    """`inspect.getsource` on the class reaches comments; `help()` does not.
+
+    The first repair moved rationale out of docstrings into `#` comments, on the
+    argument that `help()` renders docstrings and cannot see comments. Correct,
+    and it closed `help()`. It did nothing for `inspect.getsource(ArcClient)`,
+    which spans the whole class body — comments included — and returned all 1011
+    lines with "Renamed from hide_baselines", "help(client) told the solver" and
+    the `cd82` story intact.
+
+    That was not hypothetical. On 2026-08-07 a solver ran, on its first
+    orientation turn::
+
+        print([n for n in dir(client) if not n.startswith('_')])
+        import inspect
+        print(inspect.getsource(client.restart_for_replay))
+
+    — one command short of the class. The near-miss is also why the bug survived
+    a spot check: `getsource` on a single *method* starts at its `def` and
+    excludes preceding comments, so inspecting a property returned clean output
+    and looked like proof.
+
+    The rationale now lives in `docs/ccarc3_withholding.md`, which is not on the
+    solver's `PYTHONPATH`.
+    """
+    import inspect  # noqa: PLC0415
+
+    src = inspect.getsource(arc.ArcClient)
+    for phrase in ("Renamed from", "help(client)", "pydoc", "cd82",
+                   "announced in one word", "the strip", "baseline-free arm"):
+        assert phrase not in src, (
+            f"inspect.getsource(ArcClient) still briefs the solver: {phrase!r}"
+        )
