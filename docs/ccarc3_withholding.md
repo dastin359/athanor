@@ -65,6 +65,60 @@ job and is verified per-run by `tools/proofread_trace.py`.
 
 **The distinction that matters, and the standard to hold new code to:** a *map* is
 whether information is being withheld, by what, and where it lives; the *treasure*
-is the numbers. Both matter, but only the treasure changes a score. Every finding
-above was a map leak. None of them ever handed over a number, because layer 1 held
-throughout.
+is the numbers. Both matter, but only the treasure changes a score.
+
+## The treasure did leak, 2026-08-07
+
+Every finding above this line was a map leak. **Eight sites were not.** They put
+real human medians into the package the solver imports — `arc_proxy.py`
+documented its own response filter with a live scorecard, so the module whose
+job is stripping `level_baseline_actions` contained one environment's complete
+array; `client.py` carried four more in prose explaining why each fix was made;
+`gate.py` quoted a total inside a comment about having removed that total.
+Purged in `9eae0bd`, with three tests that fail on reintroduction of any of them.
+
+## What is enforced, and what is only asked
+
+Stated plainly because the layers above read stronger than they are.
+
+**The solver runs as `root`, in this container, and the API key is on this
+disk.** `scratchpad/arc3/.env` is mode 600 owned by root — and the solver *is*
+root, so it is readable, and one `GET /api/games` with it returns
+`baseline_actions` for all 25 environments, past the proxy, past the environment
+stripping, past the workspace strip. `scratchpad/best_or_last/card.json` is a
+real card with a complete median array. `docs/ccarc3_results.md` holds more.
+
+So layers 1–5 are what stands between an *incurious* solver and the medians. What
+stands between a determined one and them is the sentence in `CLAUDE.md` that says
+not to read outside the workspace, plus detection after the fact. Closing that
+needs a separate uid or container, which is a change to the harness rather than a
+patch to it.
+
+**Detection was blind where it mattered most, until it was measured.**
+`proofread_trace.py` flagged `/home/user/athanor`, so the repo was covered — but
+not the scratchpad, a different root, which is where the key and the card are.
+Measured: `cat <scratchpad>/best_or_last/card.json` passed the reach pass, and
+its contents passed the inbound pass too, because the per-level-array check is
+built from *this* game's medians and that card belongs to another. **For 24 of
+the 25 environments that read was invisible to both passes.** Reach is now a path
+question — any absolute path outside the run's own workspace — and inbound looks
+for any game's median array.
+
+## What the corpus actually shows
+
+Two scans over all 30 preserved attempts, covering all 25 environments:
+
+| check | result |
+|---|---|
+| `proofread_trace.py`, tightened reach + foreign-median inbound | **0 findings** |
+| `leak_exposure.py` — the exact pre-purge leak strings, in inbound and outbound | **0 exposures** |
+
+`leak_exposure.py` first asserts that all twelve patterns really were live in the
+package before `9eae0bd`, recovered from git rather than retyped. A scan for
+strings that were never there proves nothing, and this project has shipped five
+guards that reported success while doing nothing.
+
+So: the leaks were real and present for the whole arm, and **no banked run
+received one**. The 25-environment result stands. What that does not establish is
+that the design prevents it — it does not, per the section above — only that it
+did not happen.
