@@ -4443,3 +4443,94 @@ superseded set. What has changed is the sample — ten runs at a mean published
 baseline of 528 actions, against the superseded eight's 421 — so "the easy ones
 went first" is now clearly false, while "the two hardest have not been retried"
 remains true.
+
+---
+
+## Rollout 19: `m0r0-492f87ba` — **1.0000 (6/6)**, a 500-action baseline in 56, and a hole in my own repair
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 424 total across 2 plays (245 + 179) |
+| `raw` | **1.1500** on both plays |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 70 min, one-shot, exit 0 |
+| cost | $13.43 over 110 turns |
+
+Against baselines `[30, 111, 203, 26, 500, 237]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 | 20 | 43 | 65 | 16 | **56** | 45 |
+| ratio | 0.67× | 0.39× | 0.32× | 0.62× | **0.11×** | 0.19× |
+| play 2 | 15 | 23 | 53 | 11 | **39** | 38 |
+| ratio | 0.50× | 0.21× | 0.26× | 0.42× | **0.08×** | 0.16× |
+
+**Level 5 carries a 500-action human baseline — the largest single-level baseline
+in the set — and fell in 56, then 39.** That is 0.08×, and it displaces `cn04`'s
+300-in-33 from an hour ago. Every level came in under baseline on both plays.
+
+### The run that found a hole in the surface repair
+
+This solver ran, on its own initiative:
+
+```
+python -c "
+from session import client, gate, arc
+print([n for n in dir(client) if not n.startswith('_')])
+import inspect
+print(inspect.getsource(client.restart_for_replay))
+print(client.status())
+"
+```
+
+`dir(client)` then `inspect.getsource`. That is the fifth solver in eleven to
+inspect the harness on turn one, and the first to use `inspect`.
+
+The `f66cc91` repair moved operator rationale **out of docstrings and into `#`
+comments**, on the argument that `help()` renders docstrings and cannot see
+comments. That argument is correct and the fix works for `help()`. It does not
+work for `inspect.getsource` **on the class**:
+
+```
+inspect.getsource(ArcClient)  ->  1011 lines
+  "Renamed from hide_baselines ... because the solver reads the keyword"   PRESENT
+  "help(client) told the solver it was under a per-level termination rule" PRESENT
+  "cd82 ran dir(arc) ... read baselines_for straight out of the listing"   PRESENT
+```
+
+Every comment I moved for safety is in there. `getsource` on a single method
+starts at its `def` and excludes preceding comments — which is why the property
+above came back clean — but `getsource` on the *class* spans the whole block,
+comments included. I closed one standard introspection path and left an equally
+standard one open, and a solver was one command away from it in this very run.
+
+**What it would have disclosed, and what it would not.** Not the numbers: the
+strip leaves `baseline_actions=()` in the shipped workspace, so
+`_baseline_here_enforced` returns `None` however it is reached — verified against
+this run's own `session.py`. What it discloses is the *mechanism* — that medians
+exist, that they are withheld deliberately, which flag does it, and the history of
+previous leaks. By the standard the proofread itself set ("a map to where they
+live is a leak"), that is a finding, and the repair it came from was incomplete.
+
+Recorded here rather than quietly patched, because the pattern is now four for
+four today: **every fix I have shipped closed the path I was looking at and left
+an adjacent one open** — the proxy port for the driver but not the evidence
+daemon, the abort for the raising thread but not its siblings, `help()` but not
+`inspect`.
+
+### Proofread
+
+Clean. 109 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 6 levels and 424
+actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **11 of 25** | **11.0000 / 11 = 100%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 6 | — |
