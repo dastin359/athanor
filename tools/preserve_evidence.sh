@@ -46,6 +46,13 @@ TICK=300
 # small and they compress; the trace is 65x larger and has never been in doubt.
 KEEP=(trace.jsonl trace.state.json result.json scorecard.json rules.json
       resume_state.json meta.json CLAUDE.md DOCTRINE.md session.py)
+# Copied in from the package, not written by the run: the solver imports these off
+# PYTHONPATH rather than from its workspace, so nothing preserves them unless this
+# does. They are the *runtime* surface -- what `status()` and every refusal say
+# back -- and on 2026-08-07 a `status()` line cost a run 0.2748 by printing a
+# completion cap that read as a score. Without a per-run copy there is no way to
+# tell afterwards which version a finished run was talking to.
+RUNTIME=(client.py gate.py)
 
 log() { echo "$(date -u +%H:%M:%S) $*"; }
 
@@ -113,6 +120,10 @@ preserve_dir() {
     done
     # Streams are the solver's reasoning, big and highly compressible. Kept
     # separately so a reader can fetch ledgers without them.
+    for f in "${RUNTIME[@]}"; do
+        [ -f "$REPO/src/athanor/ccarc3/$f" ] || continue
+        gz_atomic "$REPO/src/athanor/ccarc3/$f" "$out/$f.gz"
+    done
     for f in "$src"/stream*.jsonl; do
         [ -f "$f" ] || continue
         gz_atomic "$f" "$out/$(basename "$f").gz"

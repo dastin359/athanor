@@ -4635,3 +4635,39 @@ The first blemish on the current generation, and worth stating plainly: it is a
 *harness* defect that cost 0.2748, found only because the run happened to clear
 every level badly. Nine of the previous eleven never had a `raw` below `cap`, so
 the display had no opportunity to mislead them.
+
+### Generation note: the `status()` fix is a boundary the digest cannot see
+
+The `bp35` fix changes `client.py`, and `client.py` is **not** covered by
+`surface_digest`. That digest hashes the four workspace files plus the proxy's
+allowlist — what the solver *reads*. `status()` is what the solver is *told*,
+every turn, and it just changed materially.
+
+I tried adding it and reverted. `client.py` is imported off `PYTHONPATH` and
+never copied into a workspace, so a finished run holds no record of the version
+it saw; hashing the repo's current copy on the reference side while every stored
+digest predates the field makes them all mismatch by construction. All twelve
+`current` runs flipped to `superseded` at once and the page rendered empty — the
+same failure the digest's own docstring already warned about, from the first time
+it happened with the environment.
+
+So the boundary is recorded here by hand instead:
+
+- **Rollouts 9–20** (`r11l` … `bp35`) ran against the `status()` that printed
+  `[cap N = k/n levels]` with no indication that `cap` is only half of
+  `min(cap, raw)`.
+- **Rollouts from 21 on** get the labelled ceiling and the win-frame replay
+  prompt.
+- Of the twelve, **only `bp35` could have been affected**: the other eleven never
+  had `raw` below `cap`, so the display had nothing to mislead them about. The
+  fix is not retroactively invalidating; it closes a hole one run fell through.
+
+`preserve_evidence.sh` now copies `client.py` and `gate.py` beside every run, so
+the next generation boundary can be asserted by digest on both sides rather than
+narrated.
+
+**Three of the twelve are still in flight as this lands** — `ls20`, `dc22` and
+`re86`. `client.py` is re-imported on every action, by design, so they pick the
+new `status()` up mid-run. That makes them mixed-surface runs, and it is worth
+knowing rather than discovering later: `ls20` in particular has been going 4 h 21 m
+and started long before the fix.

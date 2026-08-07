@@ -533,6 +533,27 @@ def surface_digest(root: pathlib.Path) -> str:
     instead, per run, by `proofread_trace.py`, which reads it from the live
     process rather than inferring it.
 
+    **`client.py` is solver-visible and is deliberately still not in here.** What
+    `status()` prints is read by the solver every turn, and on 2026-08-07 that
+    line changed materially: `bp35` lost 0.2748 by reading `[cap 1.000 = 9/9
+    levels]` as a perfect score, and the fix relabels it a ceiling. So the case
+    for including it is real.
+
+    It is excluded for the same reason as the environment, and I re-learned this
+    by breaking it: **stored digests are historical and cannot be recomputed.**
+    `client.py` is imported off `PYTHONPATH`, never copied into a workspace, so a
+    finished run holds no record of the version it saw. Hashing the repo's current
+    copy on the reference side while every stored digest predates the field makes
+    all of them mismatch by construction -- which is exactly what happened when I
+    tried it: all twelve current runs flipped to `superseded` at once and the page
+    rendered empty.
+
+    `preserve_evidence.sh` now copies `client.py` and `gate.py` beside each run,
+    so this becomes possible symmetrically for runs from 2026-08-07 onward. Until
+    there is a generation with that data on both sides, the boundary is tracked in
+    `docs/ccarc3_results.md` by hand rather than asserted by a digest that would
+    have to guess.
+
     Two runs with the same digest saw the same harness, whatever happened to the
     source in between.
     """
