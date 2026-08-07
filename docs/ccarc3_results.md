@@ -2803,6 +2803,8 @@ workspace rather than on the config that built it.
 | `ka59` | **1.0000** | 7/7 | 607 (best play 319) | 72.6 min | $22.73 | yes — 607 |
 | `wa30` | **1.0000** | 9/9 | 2125 (best play 723) | 129 min | — | yes — 2125 |
 | `lf52` | **0.4537** | **7/10 — lost** | 865 | 142 min | $59.72 | yes — 849 |
+| `sk48` | **0.9538** | 8/8 — **was 5/8** | 1111 (best play 488) | 152 min | $55.61 | yes — 1111 |
+| `sp80` | **1.0000** | 6/6 — **was 5/6** | 339 (best play 100) | 96 min | $20.88 | yes — 339 |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -2998,6 +3000,52 @@ the game is still accepting moves, the action cap must be higher than that."*
 resumed, so the pair is a clean single-process run against a resumed one, not a
 like-for-like. What it does establish is that this environment is not a
 guaranteed win for the harness.
+
+#### The decisive experiment: two of the three arm losses reverse
+
+`sp80`, `tn36` and `sk48` are the only environments the arm lost. They were
+queued last because they are the question the rollouts exist to answer: does a
+clean single-process run on the current harness beat what the arm managed?
+
+| game | arm | clean rollout | |
+|---|---|---|---|
+| `sk48` | 0.4167 — 5/8 | **0.9538 — 8/8** | won |
+| `sp80` | 0.7143 — 5/6 | **1.0000 — 6/6** | won |
+| `tn36` | 0.5357 — 5/7 | running | |
+
+**`sk48-d8078629` — 0.9538 (8/8), and `raw` is the binding term**
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| agent | 14 | 32 | 33 | 75 | 43 | 56 | 57 | **178** |
+| human | 61 | 177 | 101 | 103 | 230 | 181 | 125 | **92** |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | **0.27** |
+
+Seven of eight levels at the ceiling and one at 0.27 — 178 actions against a 92
+median on the level the arm never reached. **The only current-harness win where
+`cap` is not binding**, so unlike every other 1.0000 on this page, its remaining
+0.046 is real and collectable. It replayed once already (2 plays, 488 on the
+scoring play of 1,111); the gap is level 8 being genuinely hard for it, not a
+missed replay.
+
+**`sp80-589a99af` — 1.0000 (6/6), every level at the ceiling**
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| agent | 5 | 9 | 10 | 22 | 18 | 36 |
+| human | 39 | 58 | 25 | 148 | 96 | 152 |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**100 actions on the scoring play against a 518 human total**, `raw` at the
+formula's maximum. The arm run stopped at 5 of 6 having spent 137.
+
+**What this does and does not show.** Both reversals are real and both are
+proofread clean — no array, no budget, no API surface, cards corroborating
+1,111 and 339. But three things moved between the arm and these runs: the
+doctrine gained §0b and the replay correction, the action cap became invisible,
+and the key shim was switched on. Two of those plausibly help and one plausibly
+hurts, so a 2-of-2 reversal is encouraging rather than attributable. `tn36` is
+the third draw and it is still running.
 
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
