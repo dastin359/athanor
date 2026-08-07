@@ -31,3 +31,8 @@ replicate/
 # Test artifact: LevelGate.rulebook_path defaults to a relative "rules.json",
 # so anything constructing a gate without a path writes one here.
 /rules.json
+
+# Atomic-write scratch files from tools/preserve_evidence.sh. They live beside
+# their target so rename(2) stays within one filesystem; they must never be
+# staged by that script's own `git add evidence`.
+evidence/**/*.tmp.*

@@ -64,6 +64,35 @@ key_is_clean() {
     return 0
 }
 
+# **Write through a temp file and rename, because `>` is not atomic and this
+# loop commits whatever it finds.** `gzip -c src > dest` truncates dest, then
+# fills it over many write() calls. Anything reading dest in between sees a
+# valid-looking prefix at a write-buffer boundary -- and this script's own
+# `git status --porcelain evidence` runs every 5 minutes against the same tree it
+# is rewriting.
+#
+# Caught on 2026-08-07: a stop-hook git check reported `wa30`'s stream.jsonl.gz
+# as modified, 1060904 -> **786432** bytes. 786432 is exactly 768 KiB, which is a
+# buffer multiple and not a compressed size. Re-reading it a moment later gave
+# 1060904 again, byte-identical to HEAD and passing `gzip -t`. Nothing had
+# changed; git had photographed a half-written file.
+#
+# That was a harmless false alarm only because a human-facing check saw it first.
+# Had the 5-minute cycle landed in the same window, `git add evidence` would have
+# staged the truncated 768 KiB blob and committed it over a good one -- silently
+# destroying the only surviving copy of a banked 9/9 run's reasoning, since the
+# scratchpad is not durable. rename(2) within a filesystem is atomic, so a reader
+# sees either the old file or the new one and never a prefix of the new one.
+gz_atomic() {
+    local src="$1" dest="$2" tmp="$2.tmp.$$"
+    if gzip -9 -n -c "$src" > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$dest"
+    else
+        rm -f "$tmp"
+        log "WARNING: failed to compress $src; left $dest as it was"
+    fi
+}
+
 preserve_dir() {
     local src="$1" name out f
     name=$(basename "$src")
@@ -80,13 +109,13 @@ preserve_dir() {
         # -n so the gzip header carries no name/timestamp: byte-identical output
         # for unchanged input, so git sees no diff and the log stays honest about
         # what actually changed.
-        gzip -9 -n -c "$src/$f" > "$out/$f.gz"
+        gz_atomic "$src/$f" "$out/$f.gz"
     done
     # Streams are the solver's reasoning, big and highly compressible. Kept
     # separately so a reader can fetch ledgers without them.
     for f in "$src"/stream*.jsonl; do
         [ -f "$f" ] || continue
-        gzip -9 -n -c "$f" > "$out/$(basename "$f").gz"
+        gz_atomic "$f" "$out/$(basename "$f").gz"
     done
 }
 
