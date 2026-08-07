@@ -4925,3 +4925,75 @@ Clean. 175 commands, none left the workspace; nothing inbound.
 
 **One environment left in the entire queue.** When `su15` banks, all 25 will have
 a clean one-shot result and 17 of them will be under the repaired surface.
+
+---
+
+## Rollout 25: `su15-1944f8ab` — **1.0000 (9/9)**, and the queue is empty
+
+The last environment. **All 25 now have a clean baseline-free one-shot result.**
+
+| | |
+|---|---|
+| score | **1.0000** — `raw` 1.1500, `cap` 1.000 |
+| levels | 9 of 9 |
+| actions | 459 across three plays; **89** in the play that scored |
+| per-level | 7, 9, 14, 11, 6, 14, 5, 12, 11 — **every one at the 1.15 ceiling** |
+| deaths | 1 |
+| wasted actions | 0 |
+| wall clock | 127 min, 189 turns, $45.59 |
+| attempt | 1 — no restart, no interruption |
+
+Nine levels is the deepest environment in the set, and the scoring play cleared
+all nine in 89 actions with nothing wasted. Every level hit the `1.15` cap, so
+the raw score is the maximum the rubric allows and the completion cap is what
+binds — which is the shape every good run here has.
+
+**It replayed twice.** Play 1 explored, play 2 and play 3 executed. That is the
+`restart_for_replay()` instrument used exactly as §0a describes, by a solver that
+could not compute `raw` and replayed anyway.
+
+### The drain bar, tested rather than assumed
+
+§1a says a per-action display may or may not be able to kill you, and that the
+only way to know is to let it run out early, where a death is cheap. `su15`'s
+solver did precisely that: it drove the bar to zero, took the `GAME_OVER`, and
+concluded *"the bar hit exactly 0 at index 48 and triggered GAME_OVER, which
+strongly confirms the bar is a per-level action budget"*. It also established
+that board-neutral actions — header clicks, `ACTION7` — do not drain it.
+
+That is the one death in the run, and it bought the mechanic that the other 458
+actions were spent against. On the environment §1a was originally written from,
+the same bar refills harmlessly; here it kills. The doctrine does not claim to
+know which — it claims the question is worth one cheap death, and this run is the
+case where the answer went the other way.
+
+### Proofread
+
+Clean. 188 commands, none left the workspace; nothing inbound. Its own per-level
+array, the action ceiling, `/api/games` and the pace line are all absent.
+
+Five passages mention a "budget" and all five are the **in-game** bar the solver
+had just reverse-engineered — *"a per-level action budget of 32 clicks"* is its
+own measurement of a game mechanic, not the harness cap and not a human median.
+Reading each was the right call and none of them is a leak.
+
+### Standing — all 25 environments, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **17 of 25** | **16.7252 / 17 = 98.38%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| **all** | **25 of 25** | **24.1327 / 25 = 96.53%** |
+
+**Under the repaired surface, 17 of 17 won every level and 16 of 17 scored
+exactly 1.0000.** The single exception is `bp35` at 0.7252 — and it is the only
+run in the cohort with **one play**. Every run that replayed scored 1.0000;
+the one that did not is the only one below it.
+
+That is as clean a result as this project has produced on the replay question,
+and it is worth being careful about what it does and does not show. The plays are
+not randomised — a solver chose to replay — so this is not evidence that replay
+*causes* the perfect score. What it does show is that the ceiling was reachable
+in all 17 and was collected in 16, and that the one miss has the one mechanism
+§0a exists to prevent. The same day's repair rewrote the passages that had told
+`bp35` a replay might be worth nothing.
