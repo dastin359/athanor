@@ -404,8 +404,13 @@ const TIER = {
 const CFG = [["nobase","baselines withheld"],["wall4h","4 h wall clock"],
              ["think","thinking captured"],["arcn","ARC-notation actions"]];
 
-const cfgStrip = r => CFG.map(([k, title]) =>
-  `<span class="cf${r.cfg && r.cfg[k] ? " on" : ""}" title="${title}: ${r.cfg && r.cfg[k] ? "yes" : "no"}">${k}</span>`
+// A `current` tile does not need these: the tier already says this run saw the
+// harness today's code ships, which is what the flags were being read for. And
+// an unknown flag is omitted rather than drawn struck-through — a chip that
+// renders identically for "off" and "not recorded" is a claim, not a default.
+const cfgStrip = r => r.tier === "current" ? "" : CFG.map(([k, title]) =>
+  r.cfg == null || r.cfg[k] == null ? "" :
+  `<span class="cf${r.cfg[k] ? " on" : ""}" title="${title}: ${r.cfg[k] ? "yes" : "no"}">${k}</span>`
 ).join("");
 
 const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {

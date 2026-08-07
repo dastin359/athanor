@@ -358,7 +358,17 @@ def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
         "plays": result.get("playthroughs"),
         "baseline": result.get("baseline_total"),
         "won": result.get("won"),
-        "cfg": {"nobase": True, "wall4h": False, "think": False, "arcn": False},
+        # **Derived, not assumed.** These were hardcoded to
+        # `{nobase: True, wall4h: False, think: False, arcn: False}` for every
+        # ingested run, so `sb26` and `ft09` were published as having neither
+        # thinking capture nor ARC-notation counting. Both had both. A default
+        # that renders as a struck-through chip is not a default, it is a claim.
+        #
+        # `think` and `arcn` are recoverable from the run itself. `wall4h` is
+        # not -- the configured limit leaves no trace in a run that finished
+        # inside it -- so it is left None and the chip is omitted rather than
+        # asserted either way.
+        "cfg": {"nobase": True, "wall4h": None, "think": None, "arcn": None},
         "tier": "clean" if not result.get("error") else "crashed",
     }
     if started := result.get("_started"):
@@ -370,6 +380,12 @@ def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
             row["started_local"] = (when - dt.timedelta(hours=7)).strftime("%b %-d %H:%M")
         except ValueError:
             pass
+    # ARC bills every action except the opening RESET of each playthrough, so a
+    # trace one row longer than the billed count is the notation working.
+    rows, used = result.get("trace_rows"), result.get("actions_used")
+    if isinstance(rows, int) and isinstance(used, int):
+        row["cfg"]["arcn"] = rows != used
+
     try:  # optional: only possible when the API is reachable
         sys.path.insert(0, str(REPO / "src"))
         from athanor.ccarc3.client import baselines_for  # noqa: PLC0415
@@ -684,11 +700,21 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
     were computed on, and nothing in the page said so.
     """
     stats = summarise(data)
+    # **A run on the current harness is never trimmed.** Trimming is a size
+    # concession, and it should be paid by the runs nobody is going to read
+    # closely -- superseded and void ones are kept for the record, not for
+    # study. The runs that describe the harness as it stands are the ones worth
+    # reading a 40 kB tool payload out of, so they ship whole and the older ones
+    # absorb the ceiling.
+    keep_whole = {r["id"] for r in runs if r.get("tier") == "current"}
+
     def render(cap: int | None) -> str:
         payload = data
         if cap is not None:
             payload = json.loads(json.dumps(data))
-            for entry in payload.values():
+            for rid, entry in payload.items():
+                if rid in keep_whole:
+                    continue
                 for attempt in entry["attempts"]:
                     for span in attempt["spans"]:
                         for field in ("out", "input", "text"):
@@ -711,7 +737,8 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
         page = render(cap)
         if len(page.encode()) <= TARGET:
             trimmed = sum(
-                1 for e in data.values() for a in e["attempts"] for s in a["spans"]
+                1 for rid, e in data.items() if rid not in keep_whole
+                for a in e["attempts"] for s in a["spans"]
                 for f in ("out", "input", "text")
                 if isinstance(s.get(f), str) and len(s[f]) > cap
             )
@@ -770,6 +797,11 @@ def main() -> int:
         # the row outlives the directory it was computed from, so a run stays
         # judgeable long after its scratchpad copy is gone.
         row["surface"] = surface_digest(game_dir)
+        # Non-empty thinking means the stream carried it; every run before
+        # `b5f4651` has `redacted: true` on all of them.
+        row["cfg"]["think"] = any(
+            s["kind"] == "THINK" and not s.get("redacted")
+            for a in entry["attempts"] for s in a["spans"])
         if label and "@" in label:
             row["game"] = f"{row['game']} {label.split('@')[1]}"
         runs = [r for r in runs if r.get("id") != gid] + [row]
