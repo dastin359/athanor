@@ -2800,6 +2800,7 @@ workspace rather than on the config that built it.
 |---|---|---|---|---|---|---|
 | `sb26` | **1.0000** | 8/8 | 126 | 20.4 min | $5.76 | yes — 126 |
 | `ft09` | **1.0000** | 6/6 | 78 | 30.1 min | $9.15 | yes — 78 |
+| `ka59` | **1.0000** | 7/7 | 607 (best play 319) | 72.6 min | $22.73 | yes — 607 |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -2866,6 +2867,46 @@ output; ARC's card corroborating 78 against 78. The eleven flagged passages are
 all inference, and the solver states the limit itself — *"baselines are hidden
 here, so that is an argument, not a measurement — I can show I won and that my
 routes were minimal, not the value of `raw` itself."*
+
+#### `ka59-38d34dbb` — **1.0000 (7/7)**, and the first valid score this game has ever had
+
+Its arm run is the one that queried `/api/games` for its own baselines and said
+so; it has been `excluded` since. The rollout that was meant to replace it was
+void with the other six. This is the first `ka59` result that is neither.
+
+| | |
+|---|---|
+| E | **1.0000** (`raw` **1.1500**, `cap` 1.0000) |
+| levels | 7 of 7, **0 deaths, 2 plays, 1 full reset** |
+| actions | **607** total, **319** on the scoring play, against a 730 human total |
+| wall | 72.6 min, single process, 121 turns, $22.73 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|
+| agent | 21 | 36 | 36 | 44 | 20 | 59 | **103** |
+| human | 28 | 109 | 51 | 51 | 33 | 132 | **326** |
+| ratio | 1.33× | 3.03× | 1.42× | 1.16× | 1.65× | 2.24× | **3.17×** |
+| `S_l` | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 | 1.15 |
+
+**The blind replay paid, and it is the rule that produced it.** The solver could
+not compute `raw` — the baselines are withheld — so under §0 it replayed anyway
+rather than banking the first win, and every level came in at the 1.15 ceiling.
+Against the excluded arm run's `raw` 1.1318 that is a real improvement, though
+`E` was 1.0000 either way: the completion cap binds the moment all seven levels
+fall, so the surplus is earned and discarded. Recorded because the rule keeps
+being right, not because it moved the score.
+
+**Hiding the cap changed how it spent.** The solver reasoned *"since the action
+cap isn't enforced by the harness, there's no practical limit on actions"* — and
+it is enforced, in the proxy, at 3,650. It spent 607. The excluded arm run,
+which could see its budget, spent 364. Withholding the number removed the
+solver's budget discipline along with the leak. Nothing was lost here, and on a
+game where the cap binds it would be.
+
+Proofread: 120 commands, none left the workspace; its own array, its budget and
+the API surface absent from 148 kB of tool output; card corroborating 607 against
+607. Ten flagged passages, all inference — *"I can't calculate the raw score
+since the baselines are hidden."*
 
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
