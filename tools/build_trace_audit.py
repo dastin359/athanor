@@ -438,6 +438,12 @@ def runs_row(result: dict, game_dir: pathlib.Path | None = None) -> dict:
     return row
 
 
+# The window in which the workspace doctrine spelled out a real human median.
+# `ea407ce` introduced the worked example; `f66cc91` made it symbolic.
+MEDIAN_IN_DOCTRINE_FROM = dt.datetime.fromisoformat("2026-08-03T05:02:23+00:00")
+MEDIAN_IN_DOCTRINE_UNTIL = dt.datetime.fromisoformat("2026-08-07T05:47:33+00:00")
+
+
 def mark_contaminated(data: dict, runs: list) -> list[str]:
     """Void every run whose solver could read its own game's baselines.
 
@@ -469,12 +475,44 @@ def mark_contaminated(data: dict, runs: list) -> list[str]:
 
     voided = []
     for rid, entry in data.items():
-        arr = base.get(rid.split("@")[0])
-        if not arr:
-            continue
-        pattern = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in arr) + r"\s*[\])]"
-        if re.search(pattern, json.dumps(entry.get("attempts", []))):
+        blob = json.dumps(entry.get("attempts", []))
+        hit = False
+
+        # 1. Any game's array, not only this run's. The original check built its
+        #    pattern from `base[own_game]`, so a transcript carrying a *different*
+        #    environment's medians read clean -- and that is what happened.
+        for gid, arr in base.items():
+            pattern = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in arr) + r"\s*[\])]"
+            if re.search(pattern, blob):
+                hit = True
+                break
+
+        if hit:
             voided.append(rid)
+    # **A median spelled out in the rubric is not an array, and no content check
+    # over a transcript can find it without crying wolf.** Between `ea407ce` and
+    # `f66cc91` the workspace doctrine carried the worked example
+    # `65.533 = (17/21)^2 x 100` -- `17` is a real per-level median, stated in
+    # the first file every solver reads. Eight banked runs have it, and the
+    # array-shaped check above is blind to it by construction.
+    #
+    # Matching `(\d+/\d+)` against published medians was tried and is useless:
+    # with ~200 medians, many of them small, it voided 45 of 60 runs including
+    # ones independently verified clean. So this is a *provenance* test rather
+    # than a content one -- it asks when the run read its doctrine, not what the
+    # transcript happens to contain. Exact, and corroborated below against the
+    # preserved workspaces that still hold the file.
+    for row in runs:
+        started = row.get("started")
+        if not started or row.get("id") in voided:
+            continue
+        try:
+            when = dt.datetime.fromisoformat(started.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if MEDIAN_IN_DOCTRINE_FROM <= when < MEDIAN_IN_DOCTRINE_UNTIL:
+            voided.append(row["id"])
+
     for row in runs:
         if row.get("id") in voided and row.get("tier") != "excluded":
             row["tier"] = "void"
@@ -1041,7 +1079,7 @@ def main() -> int:
 
     voided = mark_contaminated(data, runs)
     if voided:
-        print(f"VOID: {len(voided)} run(s) could read their own baselines — "
+        print(f"VOID: {len(voided)} run(s) could read a human median — "
               f"{', '.join(voided)}")
 
     if (added or voided or filled) and not args.no_save:

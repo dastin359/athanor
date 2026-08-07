@@ -4977,13 +4977,33 @@ had just reverse-engineered — *"a per-level action budget of 32 clicks"* is it
 own measurement of a game mechanic, not the harness cap and not a human median.
 Reading each was the right call and none of them is a leak.
 
-### Standing — all 25 environments, split by generation
+### Standing — 17 environments baseline-free, and a withdrawn figure
 
 | | environments | score |
 |---|---|---|
-| **repaired surface** | **17 of 25** | **16.7252 / 17 = 98.38%** |
-| superseded surface | 8 | 7.4075 / 8 = 92.59% |
-| **all** | **25 of 25** | **24.1327 / 25 = 96.53%** |
+| **baseline-free, repaired surface** | **17 of 25** | **16.7252 / 17 = 98.38%** |
+| contaminated — a median was in the doctrine they read | 8 | **not poolable** |
+
+**The 25-environment figure published here (24.1327 / 25 = 96.53%) is
+withdrawn.** Its eight non-repaired contributors were labelled *superseded*,
+meaning "older harness". They are *contaminated*: between `ea407ce` and
+`f66cc91` the workspace `DOCTRINE.md` carried the worked example
+`65.533 = (17/21)² × 100`, and 17 is a real per-level human median — stated
+outright in the first file every solver reads. All eight ran inside that window;
+the eight preserved workspaces still contain the string.
+
+`mark_contaminated` did not catch it because it searched each transcript for
+*that run's own game's* array in literal bracket-and-comma form. This was a
+different game's median, and not an array at all — the same two blindnesses the
+2026-08-07 audit found in `proofread_trace`'s inbound scan, in a second place.
+
+The check is now a provenance test: a run that read its doctrine inside that
+window is void, whatever its transcript contains. A content test was tried first
+and is useless — matching `(\d+/\d+)` against ~200 published medians voided 45
+of 60 runs, including ones independently verified clean.
+
+**None of the 17 is affected** — all of them started after the fix — so the
+98.38% stands unchanged and is the only figure that means what it says.
 
 **Under the repaired surface, 17 of 17 won every level and 16 of 17 scored
 exactly 1.0000.** The single exception is `bp35` at 0.7252 — and it is the only

@@ -67,6 +67,22 @@ job and is verified per-run by `tools/proofread_trace.py`.
 whether information is being withheld, by what, and where it lives; the *treasure*
 is the numbers. Both matter, but only the treasure changes a score.
 
+## The doctrine itself leaked a median, and eight banked runs read it
+
+Everything below this line concerns the *package*. The workspace leaked first and
+for longer: between `ea407ce` (2026-08-03) and `f66cc91` (2026-08-07) `§0a` of
+`DOCTRINE.md` carried the worked example `65.533 = (17/21)² × 100`. `17` is a
+real per-level human median, in the first file every solver is told to read.
+
+Eight banked runs are inside that window and their preserved workspaces still
+contain the string. They were tiered `superseded` — "older harness" — and pooled
+into a published 25-environment figure that is now withdrawn. See
+`docs/ccarc3_results.md`.
+
+So the claim that layer 1 "held throughout" was false for four days. What is
+true is narrower and worth stating exactly: **the 17 runs of the repaired-surface
+cohort are baseline-free, and no run in any cohort received a per-level array.**
+
 ## The treasure did leak, 2026-08-07
 
 Every finding above this line was a map leak. **Eight sites were not.** They put

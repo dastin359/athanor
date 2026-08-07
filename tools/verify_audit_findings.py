@@ -74,6 +74,14 @@ def checks() -> list[tuple[str, str, bool]]:
          "| `sk48` | 5 of 8 | 632 | 0 |" in doctrine),
         ("16 low", "'the two worst scores on record' — they are not",
          "worst scores on record" not in doctrine),
+        # -- from the 20 findings the audit workflow never adjudicated
+        ("u1 high", "workspace doctrine spelled out a median; 8 banked runs read it",
+         "MEDIAN_IN_DOCTRINE_FROM" in read("tools/build_trace_audit.py")),
+        ("u2 high", "contamination check saw only the run's OWN game's array",
+         "Any game's array, not only this run's" in read("tools/build_trace_audit.py")),
+        ("u3 high", "the withdrawn 25-environment figure is marked withdrawn",
+         "is\nwithdrawn" in read("docs/ccarc3_results.md")
+         or "withdrawn" in read("docs/ccarc3_results.md")),
         # -- and the false positives that made earlier versions of these useless
         ("fp a", "reach must not fire on a `..` that lands back inside",
          not pt.strayed("sys.path.insert(0,'..')", WS)),
