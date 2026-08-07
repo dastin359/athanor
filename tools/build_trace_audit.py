@@ -708,10 +708,21 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
     # absorb the ceiling.
     keep_whole = {r["id"] for r in runs if r.get("tier") == "current"}
 
+    # **A void run's spans do not ship at all.** Ten of them cost 9.8 MB of a
+    # 16 MB budget, and not one is a result -- they are the contaminated runs,
+    # kept for the record rather than for reading. Their tiles stay, so the page
+    # still says what happened and why; only the tree is dropped. The full spans
+    # remain in the store, which is where anyone auditing a void run should be
+    # looking anyway.
+    #
+    # This is what pays for the untrimmed `current` runs. Without it the ladder
+    # was already at 500 chars with four of them, one rung from failing outright.
+    drop_spans = {r["id"] for r in runs if r.get("tier") == "void"}
+
     def render(cap: int | None) -> str:
-        payload = data
+        payload = {k: v for k, v in data.items() if k not in drop_spans}
         if cap is not None:
-            payload = json.loads(json.dumps(data))
+            payload = json.loads(json.dumps(payload))
             for rid, entry in payload.items():
                 if rid in keep_whole:
                     continue

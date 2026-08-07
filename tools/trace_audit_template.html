@@ -425,8 +425,9 @@ const renderTiles = (rows) => { $("tiles").innerHTML = rows.map(r => {
   // The tile and the chip name the same 14 runs. Making only the chip clickable
   // meant reading a tile, then hunting the matching chip in a second list below.
   return `
-  <div class="tile" data-k="${r.id}" role="button" tabindex="0"
-       title="Show the span tree for ${r.game}"${edge ? ` style="border-left:3px solid ${edge}"` : ""}>
+  <div class="tile"${DATA[r.id] ? ` data-k="${r.id}" role="button" tabindex="0"
+       title="Show the span tree for ${r.game}"` : ` title="Contaminated run — its tree is not published here. Full spans are in evidence/ccarc3/trace_audit/."`}${
+       edge ? ` style="border-left:3px solid ${edge}"` : ""}>
     <div class="k">${r.game}${st.label ? ` <span style="color:${st.colour}">· ${st.label}</span>` : ""}</div>
     <div class="v" style="color:${col}">${val}</div>
     <div class="n">${r.levels} · ${r.actions} acts · ${fmt(r.wall)} · $${r.cost.toFixed(2)}</div>

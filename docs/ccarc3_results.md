@@ -2802,6 +2802,7 @@ workspace rather than on the config that built it.
 | `ft09` | **1.0000** | 6/6 | 78 | 30.1 min | $9.15 | yes — 78 |
 | `ka59` | **1.0000** | 7/7 | 607 (best play 319) | 72.6 min | $22.73 | yes — 607 |
 | `wa30` | **1.0000** | 9/9 | 2125 (best play 723) | 129 min | — | yes — 2125 |
+| `lf52` | **0.4537** | **7/10 — lost** | 865 | 142 min | $59.72 | yes — 849 |
 
 #### `sb26-7fbdac44` — **1.0000 (8/8)**, and the first run on the current harness
 
@@ -2956,6 +2957,47 @@ harness.** `wa30` has an in-game tick bar, and the solver reverse-engineered
 per-level budgets from it — *"I get something like 196, 70, 100, 100, 125 …
 possibly around twice the human baseline."* The real medians are 71, 119, 183,
 98, 368. It guessed, and it guessed wrong.
+
+#### `lf52-271a04aa` — **0.4537 (7/10)**, the first clean loss, and it stopped voluntarily
+
+Its arm run scored 1.0000 at 10/10. This one cleared seven and stopped.
+
+| | |
+|---|---|
+| E | **0.4537** (`raw` 0.4537, `cap` 0.5091 — `raw` is binding) |
+| levels | **7 of 10**, 0 deaths, 0 resets, 1 play |
+| actions | **865 of a 6,695 cap — 13%** |
+| wall | 142 min of a 6 h limit, no timeout, exit 0 |
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| agent | 9 | 65 | 77 | 53 | 249 | 190 | 166 | — | — | — |
+| human | 32 | 81 | 60 | 71 | 205 | 148 | 244 | 109 | 164 | 225 |
+| `S_l` | 1.15 | 1.15 | 0.61 | 1.15 | 0.68 | 0.61 | 1.15 | **0** | **0** | **0** |
+
+**It was not stopped; it stopped.** No timeout, no crash, no signal, no budget
+exhaustion — 87% of the action cap unspent and four hours of wall clock unused.
+The final message is a polished write-up of the game's mechanics, delivered
+after level 7 as though the task were complete.
+
+**And it had read §0b.** The doctrine it shipped with contains
+*"Being stuck with budget left is a reason to change technique, not to stop"* —
+`grep` confirms the section is present and that the redaction never touched it,
+because §0b names `sp80`, `tn36` and `sk48`, not `lf52`. So the one rule written
+specifically against this failure was in front of the solver, and the solver did
+it anyway. That is a negative result about §0b and it should not be softened:
+the rule is not sufficient on its own.
+
+**Why it is not a leak.** Proofread clean — 281 commands, none left the
+workspace; own array, budget and API surface absent from 324 kB of tool output;
+card corroborates 7 levels. Its five flagged passages are inference, including
+one that shows the cap working as intended: *"we're at 596 actions now, and since
+the game is still accepting moves, the action cap must be higher than that."*
+
+**On comparability.** The arm's 1.0000 came from a run that was interrupted and
+resumed, so the pair is a clean single-process run against a resumed one, not a
+like-for-like. What it does establish is that this environment is not a
+guaranteed win for the harness.
 
 ### Clean rollouts: converting the five interrupted environments, one at a time
 
