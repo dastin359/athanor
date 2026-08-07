@@ -4876,3 +4876,52 @@ levels and 245 actions.
 | **repaired surface** | **15 of 25** | **14.7252 / 15 = 98.17%** |
 | superseded surface | 8 | 7.4075 / 8 = 92.59% |
 | never run | 2 | — |
+
+---
+
+## Rollout 24: `re86-8af5384d` — **1.0000 (8/8)**, the largest environment in the set
+
+| | |
+|---|---|
+| levels | **8 of 8** |
+| actions | 1962 across 3 plays (737 + 644 + 581) |
+| `raw` | 1.0512 → **1.1500** |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 98 min, one-shot on attempt 2, exit 0 |
+| cost | $33.44 over 176 turns |
+
+Against baselines `[26, 42, 86, 108, 189, 139, 424, 241]` — **1255 actions, the
+largest published total of the 25**:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| play 1 | 25 | 44 | 47 | 71 | 73 | 64 | **139** | **274** |
+| ratio | 0.96× | 1.05× | 0.55× | 0.66× | 0.39× | 0.46× | **0.33×** | **1.14×** |
+| play 2 | 20 | 36 | 47 | 44 | 67 | 114 | 106 | **210** |
+| ratio | 0.77× | 0.86× | 0.55× | 0.41× | 0.35× | 0.82× | 0.25× | 0.87× |
+
+Level 7 carries a **424-action** baseline — the second-largest single level in the
+project — and fell in 139, then 106. The one level that resisted was level 8 at
+1.14× on the first play, taken to 0.87× on the second, which is what lifted `raw`
+from 1.0512 to the ceiling.
+
+Like `cd82`, this is attempt 2: attempt 1 was killed by the 08:16 PDT worker
+restart after 86 minutes and 904 actions. Also like `cd82`, it cost nothing —
+the environment keeps the best card and the discarded attempt is invisible.
+
+### Proofread
+
+Clean. 175 commands, none left the workspace; nothing inbound.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **16 of 25** | **15.7252 / 16 = 98.28%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| **remaining** | **1** (`su15`, in flight) | — |
+
+**One environment left in the entire queue.** When `su15` banks, all 25 will have
+a clean one-shot result and 17 of them will be under the repaired surface.
