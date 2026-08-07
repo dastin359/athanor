@@ -104,6 +104,35 @@ GAMES = [
     "sp80-589a99af",   # 6 levels, 3.18 h in the arm, lost 5/6
     "tn36-ef4dde99",   # 7 levels, 1.48 h, lost 5/7
     "sk48-d8078629",   # 8 levels, 2.37 h, lost 5/8
+
+    # **The remaining 17, opened 2026-08-07 once the solver-surface repair
+    # landed.** Held closed until then deliberately: the audit's `surface_digest`
+    # keys on `CLAUDE.md`, `DOCTRINE.md`, `session.py` and `meta.json`, and two
+    # proofread passes were rewriting all four. A run started first would have been
+    # marked superseded the moment the fix shipped -- real quota, no result. The
+    # repair is `a63232a` and `f66cc91`; these are the first runs under it.
+    #
+    # Ordered by published baseline total, shortest first, for the same reason as
+    # the block above: bank what can finish before betting a window on what
+    # probably cannot. Baseline total is the only length proxy available for the
+    # eleven of these that have no comparable arm run.
+    "cd82-fb555c5d",   # 6 levels, baseline total 171
+    "r11l-495a7899",   # 6 levels, 233
+    "sc25-635fd71a",   # 6 levels, 350
+    "su15-1944f8ab",   # 9 levels, 361
+    "lp85-305b61c3",   # 8 levels, 388
+    "tr87-cd924810",   # 6 levels, 414
+    "vc33-5430563c",   # 7 levels, 447
+    "tu93-0768757b",   # 9 levels, 462
+    "s5i5-18d95033",   # 8 levels, 638
+    "bp35-0a0ad940",   # 9 levels, 651
+    "ar25-0c556536",   # 8 levels, 748
+    "ls20-9607627b",   # 7 levels, 776
+    "cn04-2fe56bfb",   # 6 levels, 789
+    "g50t-5849a774",   # 7 levels, 879
+    "m0r0-492f87ba",   # 6 levels, 1107
+    "dc22-fdcac232",   # 6 levels, 1228
+    "re86-8af5384d",   # 8 levels, 1255
 ]
 BUDGET_MULTIPLE = 5.0
 
