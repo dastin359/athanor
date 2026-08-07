@@ -119,6 +119,14 @@ preserve_dir() {
     done
 }
 
+# **Re-read the outbound proxy every cycle, because the port moves.** Outbound
+# HTTPS leaves this box through an agent proxy on a loopback port that changes
+# when the session worker restarts, and a daemon keeps whatever it inherited at
+# launch. This one ran for two hours pushing into a dead proxy. The session
+# writes the live value to $SP/proxy_env; sourcing it per cycle costs nothing and
+# is the difference between self-healing and silently useless.
+refresh_proxy() { [ -f "$SP/proxy_env" ] && . "$SP/proxy_env"; }
+
 mkdir -p "$DEST"
 log "preserving evidence every ${TICK}s -> $DEST"
 
@@ -139,6 +147,7 @@ while true; do
         done
     done
 
+    refresh_proxy
     cd "$REPO" || exit 1
     if [ -n "$(git status --porcelain evidence 2>/dev/null)" ]; then
         if key_is_clean; then
@@ -153,10 +162,22 @@ the scratchpad lost twelve games' traces by existing only on disk.
 Gzipped ledgers, state, scorecards, rule books and streams. No secret and no
 virtualenv -- the file set is a whitelist, and a guard refuses the commit if the
 live API key appears anywhere under evidence/."
+            pushed=0
             for i in 1 2 3 4; do
-                git push -q origin "$BRANCH" 2>/dev/null && { log "pushed $n files"; break; }
+                if git push -q origin "$BRANCH" 2>/dev/null; then
+                    log "pushed $n files"; pushed=1; break
+                fi
                 sleep $((2**i))
             done
+            # **Say so when the push fails.** It used to retry four times and
+            # fall through in silence, so a daemon that could not reach the
+            # remote looked identical to one with nothing to do -- and the only
+            # symptom was commits piling up locally for someone else to notice.
+            # That happened on 2026-08-07: this process started at 05:21 with
+            # HTTPS_PROXY=127.0.0.1:37827, the agent proxy moved to :41751 when
+            # the session worker restarted, and every push after that failed
+            # without a word.
+            [ "$pushed" = 1 ] || log "PUSH FAILED after 4 tries — proxy=${HTTPS_PROXY:-unset}; $n files committed locally only"
         fi
     fi
     sleep "$TICK"
