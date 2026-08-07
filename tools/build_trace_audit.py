@@ -689,6 +689,38 @@ def summarise(data: dict) -> dict:
     }
 
 
+def current_generation_only(runs: list, data: dict, keep_all: bool) -> tuple[list, dict, int]:
+    """Render only runs made under the current solver surface.
+
+    **Operator instruction, 2026-08-07: exclude everything run before the 22:47
+    PDT fix.** The page had accumulated three harness generations at once -- the
+    25-environment arm, the contaminated first rollouts, and the repaired ones --
+    and showing them side by side invites exactly the mistake I made in the
+    write-ups: quoting a pooled score across runs that were not the same
+    experiment. Eight of the excluded rollouts read a doctrine that printed a real
+    human median, a `session.py` that named where the action ceiling is enforced,
+    and prompts that framed actions as an allowance. That is a different
+    treatment, and a page that lists it next to the current one implies otherwise.
+
+    `tier` is the measured answer, not a label: `mark_generation` compares each
+    run's `surface_digest` against the current one, so `current` means the solver
+    read byte-identical files. Verified against the alternative -- filtering by
+    start time relative to the fix commit -- and the two agree exactly on all
+    seven.
+
+    **Nothing is deleted.** The store keeps every span of every generation, and
+    `--all-generations` renders them again. Dropping evidence to tidy a page would
+    be the opposite of what this page is for; this only changes what it *shows*.
+    """
+    if keep_all:
+        return runs, data, 0
+    keep = {r["id"] for r in runs if r.get("tier") == "current"}
+    dropped = len(runs) - len(keep)
+    return ([r for r in runs if r["id"] in keep],
+            {k: v for k, v in data.items() if k in keep},
+            dropped)
+
+
 def _built_at() -> str:
     """The build stamp, in the operator's timezone rather than the box's.
 
@@ -768,7 +800,7 @@ def live_games() -> list[dict]:
         })
     return sorted(out, key=lambda r: r["id"])
 
-def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
+def fit(data: dict, runs: list, template: str, excluded: int = 0) -> tuple[str, int, int | None]:
     """Render, trimming tool payloads only as far as the size ceiling demands.
 
     Returns the page plus how many payloads were trimmed and at what cap, so the
@@ -824,7 +856,8 @@ def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
                 .replace("__BASH_MEDIAN__", f"{stats['median']:.2f}")
                 .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}")
                 .replace("__LIVE_JSON__", json.dumps(live))
-                .replace("__BUILT_AT__", _built_at()))
+                .replace("__BUILT_AT__", _built_at())
+                .replace("__EXCLUDED__", str(excluded)))
 
     page = render(None)
     if len(page.encode()) <= TARGET:
@@ -868,6 +901,8 @@ def main() -> int:
                     help="run directory of a finished game to merge in")
     ap.add_argument("--as", action=_Ingest, dest="as_id", metavar="ID",
                     help="store the preceding --ingest under this id")
+    ap.add_argument("--all-generations", action="store_true",
+                    help="render every generation, not just the current surface")
     ap.add_argument("--out", default=str(STORE / "trace_audit.html"))
     ap.add_argument("--no-save", action="store_true",
                     help="render without writing the merged store back")
@@ -922,7 +957,11 @@ def main() -> int:
             json.dump(runs, fh)
         print(f"store updated: {len(data)} games")
 
-    page, trimmed, cap = fit(data, runs, TEMPLATE.read_text())
+    runs, data, dropped = current_generation_only(runs, data, args.all_generations)
+    if dropped:
+        print(f"page shows the current generation only — {dropped} earlier run(s) "
+              f"kept in the store, not rendered")
+    page, trimmed, cap = fit(data, runs, TEMPLATE.read_text(), dropped)
     out = pathlib.Path(args.out)
     out.write_text(page)
     size = len(page.encode())
