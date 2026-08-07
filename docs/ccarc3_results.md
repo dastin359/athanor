@@ -4745,3 +4745,67 @@ actions.
 | **repaired surface** | **13 of 25** | **12.7252 / 13 = 97.89%** |
 | superseded surface | 8 | 7.4075 / 8 = 92.59% |
 | never run | 4 | — |
+
+---
+
+## Rollout 22: `dc22-fdcac232` — **1.0000 (6/6)**, three plays, all three at the ceiling
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 1574 across **3 plays** (668 + 458 + 448) |
+| `raw` | **1.1500 on every play** |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 113 min, one-shot, exit 0 |
+| cost | $42.11 over 189 turns |
+
+Against baselines `[59, 102, 67, 98, 324, 578]` — a 1228-action published total,
+the second-largest in the set:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 | 39 | 56 | 59 | 69 | 224 | **221** |
+| ratio | 0.66× | 0.55× | 0.88× | 0.70× | 0.69× | **0.38×** |
+| play 3 | 20 | 56 | 51 | 62 | 110 | **149** |
+| ratio | 0.34× | 0.55× | 0.76× | 0.63× | 0.34× | **0.26×** |
+
+**Level 6 carries a 578-action baseline — the largest single level in the entire
+25-environment set — and fell in 221 on the first attempt, 149 on the third.**
+That beats `m0r0`'s 500-in-56 on absolute size, though not on ratio.
+
+The first play already hit `raw` 1.1500, so both replays were worth nothing. It
+replayed twice anyway, which is §0a followed exactly: the solver could not see
+that it was already at the ceiling, and the bet cost 906 actions and no score.
+Eleven replays now under the repaired surface, **two of which carried the score**.
+
+### Proofread
+
+Clean. 188 commands, none left the workspace; nothing inbound; card corroborates
+6 levels and 1574 actions.
+
+### The heartbeat's unscored check was broken, and this run exposed it
+
+`dc22` finished at 07:57 PDT and no `UNSCORED` event fired. The check grepped
+`docs/ccarc3_results.md` for the bare game id — and **all 25 environments already
+appear in this file from the 25-game arm**, so it matched arm-era prose and could
+never report anything. It had been silently vacuous since I added it; `bp35` had
+already slipped through a different hole in the same check an hour earlier.
+
+Anchoring to `^## Rollout .*\`<id>\`` fixed that but then flagged the eight
+superseded-generation runs, which were written up before the rollout numbering
+existed and will never gain such a heading. So `scratchpad/unscored.sh` now also
+requires the game's own preserved `session.py` to carry `quiet_pace` — the
+measured marker of the current surface, the same one `standing.sh` uses. A run
+from an older generation is not unscored, it is scored differently.
+
+That is the fifth check today that reported success while doing nothing.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **14 of 25** | **13.7252 / 14 = 98.04%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 3 | — |
