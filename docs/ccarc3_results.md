@@ -3762,3 +3762,104 @@ for. And the guard against `dir(arc)` was shipped with a docstring beside it
 explaining what it guards. Each was found by rendering the artifact and reading
 it, rather than reading the code that produces it — and the surface was larger
 each time I looked.
+
+---
+
+## Rollout 9: `r11l-495a7899` — **1.0000 (6/6)**, and the surface repair confirmed live
+
+The first game run under the repaired solver surface (`a63232a`, `f66cc91`), and
+the first of the seventeen environments that had no result under the current
+harness.
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 166 total across 2 plays (94 + 72) |
+| `raw` | **1.1500** — the ceiling, on *both* plays |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths | 0 |
+| wasted actions | 0 |
+| wall clock | 46 min, one-shot, exit 0 |
+| cost | $14.69 over 116 turns |
+
+Per-level against the published baselines `[22, 33, 51, 26, 52, 49]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 actions | 12 | 19 | 15 | 13 | 17 | 18 |
+| ratio | 0.55× | 0.58× | **0.29×** | 0.50× | **0.33×** | 0.37× |
+
+Every level cleared at or under 0.58× of its human median, so every one of them
+clipped at the 1.15 per-level ceiling and `raw` landed exactly on 1.1500. With
+all six levels cleared the completion cap is 1.0 and binds, which is the usual
+shape here: **the 30th of 33 scored runs where `cap`, not `raw`, decided the
+score.**
+
+### The replay was free, correct, and worth nothing — which is the point
+
+The solver replayed after winning, cutting 94 actions to 72. In score terms it
+gained exactly zero: both plays were already at `raw` 1.1500 with the cap
+binding at 1.0. It said so itself, without being able to check:
+
+> I can't compute `raw` — the API returns no per-level baselines, so I know the
+> ceiling is 1.0 but not my distance below it. **I replayed because that bet costs
+> actions and cannot cost score, not because I measured a gain.**
+
+That is §0a executed exactly as written. The doctrine tells a solver with no
+baselines to replay anyway, on the grounds that the server keeps the best play
+and the bet cannot lose score. Across the 25-environment arm that bet paid about
++0.35 `E` in total and was wasted roughly seven times. This is the eighth waste,
+and it cost 72 actions and nothing else.
+
+### The proofread: 8 passages, all of them the strip holding
+
+Mechanical checks clean — 115 commands, none left the workspace, and the inbound
+scan found no per-level array, no ceiling figure, no `api/games`, no pace line.
+The card corroborates: 6 levels, 166 actions, matching `result.json` exactly.
+
+All 8 flagged passages are the solver reasoning about *not* having the numbers:
+*"I don't know the human baselines"*, *"The scorecard doesn't include baseline
+level scores, so I can't calculate the raw score"*, *"if they're typical for
+ARC-AGI-3 (often in the tens)"*. It guessed at the magnitude and got no
+confirmation. That is what a working strip reads like from the inside.
+
+### It ran `cat session.py`, and that is the whole proofread in one line
+
+On its first orientation turn the solver ran:
+
+```
+cat meta.json resume_state.json session.py && ls notes/
+```
+
+and the tool result contains, verbatim:
+
+```python
+client = ArcClient(
+    'r11l-495a7899',
+    trace_path=HERE / "trace.jsonl",
+    info=INFO,
+    gate=gate,
+    max_actions=0,
+    quiet_pace=True,
+    show_score=True,
+)
+```
+
+Eight lines and nothing else. **Three hours earlier the same command would have
+returned thirty lines of operator commentary** telling the solver that a hidden
+action ceiling exists and is enforced in `arc_proxy`, that the human medians are
+withheld deliberately and are "resolved at import and never written to a
+workspace file", and what a different environment had scored — plus the keyword
+`hide_baselines=True`, which names the secret in the one file the doctrine
+instructs the solver to import.
+
+The proofread's argument for removing all of it was that `cat session.py` is
+"one of the first things a careful solver does". The first solver to run under
+the fix did it on turn one. The prediction was not clever; it was just a matter
+of reading what the harness hands over and asking who reads it.
+
+### Standing
+
+**9 clean rollouts, 8.4075 / 9 = 93.42%**, eight wins. Sixteen environments
+outstanding.
