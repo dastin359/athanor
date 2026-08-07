@@ -84,6 +84,54 @@ def test_the_strip_does_not_trip_over_its_own_blanking(workspace):
     ab.strip_baselines(workspace.root)      # idempotent, and still clean
 
 
+def test_the_strip_removes_prose_by_the_paragraph_not_by_the_line(workspace):
+    """Line-wise removal on hard-wrapped prose is a shredder, not a redaction.
+
+    `CLAUDE.md`'s baseline paragraph wraps across four lines, two of which
+    contain the word. Deleting those two left the other two standing as a pair of
+    orphaned half-sentences — *"must also discover them, hence the larger
+    budget. But if you are several times / wrong — go re-explore rather than
+    grind."* — which is what all eight clean rollouts read during orientation.
+    Incoherent, and still asserting an allowance the harness had spent four
+    commits removing.
+
+    A sentence is the smallest unit that means anything, and a hard-wrapped
+    paragraph is the smallest unit that reliably contains whole sentences.
+    """
+    ab.strip_baselines(workspace.root)
+    body = (workspace.root / "CLAUDE.md").read_text()
+
+    for orphan in ("must also discover them", "But if you are several times",
+                   "wrong — go re-explore"):
+        assert orphan not in body, f"line-wise shredding is back: {orphan!r}"
+    # Nothing left dangling: every prose line outside a fence still ends in a
+    # sentence or continues into one.
+    assert "\n\n\n" not in body
+    assert "baseline" not in body.lower()
+
+
+def test_the_strip_keeps_the_code_examples_it_only_needs_to_edit(workspace):
+    """Paragraph-dropping must not swallow a fenced block over one comment.
+
+    The driving example is one paragraph by the prose rule, so treating it as
+    prose would take `client.reset()` and `client.act()` out along with the
+    `client.pace()` line that actually mentions a baseline — leaving a
+    baseline-free solver with no documented way to drive the game at all. Code
+    has no wrapped sentences, so inside a fence the line is the unit.
+    """
+    ab.strip_baselines(workspace.root)
+    body = (workspace.root / "CLAUDE.md").read_text()
+
+    assert "client.reset()" in body
+    assert "client.act(6, x=10, y=20)" in body
+    assert "arc.effective_actions" in body
+    # `status()` survives and `pace()` does not: under withheld baselines the
+    # first still reports level, state, actions and the completion cap, and the
+    # second can only report ratios against numbers that are gone.
+    assert "client.status()" in body
+    assert "client.pace()" not in body
+
+
 def test_assert_installed_fails_before_install_is_called():
     """The failure mode is a *successful* run against a contaminated workspace.
 

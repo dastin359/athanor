@@ -157,6 +157,43 @@ class Workspace:
         return self.root / "rules.json"
 
 
+# **The solver reads this template, so the reasoning behind it lives here and not
+# inside it.** The rendered `session.py` sits in the workspace, the doctrine tells
+# the solver to import it, and `cat session.py` is one of the first things a
+# careful one does. Until 2026-08-07 the `ArcClient(...)` call carried thirty
+# lines of operator commentary explaining, to the solver, that a hidden action cap
+# exists and is enforced in `arc_proxy`; that the human medians are withheld on
+# purpose and are "resolved at import and never written to a workspace file"; and
+# what a *different* environment had scored. Each of those is a map to something
+# the harness spends real machinery hiding, handed over in the one file the solver
+# is instructed to open. It also named `su15` outright, which
+# `redact_self_reference` never sees because that function only rewrites
+# `DOCTRINE.md` -- so a run of `su15` would have read about its own past failure.
+#
+# The four arguments below, and why they are what they are:
+#
+# `max_actions=0` -- no client-side cap, deliberately. ARC's FrameResponse carries
+# no budget field and the technical report designed away from a per-environment
+# allowance: "we won't ... encourage AI to waste actions on levels because they're
+# still 'under budget' for a given environment". A solver that knows its allowance
+# paces itself against it, which is the wrong objective -- the score is completion
+# first and efficiency only as a tiebreak, and across 32 scored runs every point
+# lost was lost by not finishing. A hard stop does exist far out, enforced in
+# `arc_proxy` where the solver does not run, so a runaway loop cannot spend
+# without limit. This line used to read the cap from the environment; the
+# environment no longer carries it, so it evaluated to 0 anyway.
+#
+# `hide_baselines=True` -- withhold the human medians from every solver-facing
+# surface: the pace ratio, `pace()`, and the `raw`/ceiling half of the score
+# block. (This used to also switch ARC's 5n rule on; that cap was removed on
+# 2026-08-04 -- see `level_budget_multiple`.)
+#
+# `show_score=True` -- report the running score in `status()`. With baselines
+# available that is `raw`, its ceiling and the completion cap; without them the
+# cap alone, which needs no baselines because it is which levels fell rather than
+# how fast. A solver could not previously see its own score at all: one run blew
+# two levels to 8.65x and 22.75x with nothing able to tell it that its ceiling had
+# already dropped to 0.82.
 SESSION_TEMPLATE = '''\
 """Pre-wired client and gate for {game_id}. Import this; do not rebuild it.
 
@@ -190,35 +227,8 @@ client = ArcClient(
     trace_path=HERE / "trace.jsonl",
     info=INFO,
     gate=gate,
-    # **There is no client-side cap, and that is deliberate.** ARC's
-    # FrameResponse carries no budget field and the technical report designed
-    # *away* from a per-environment allowance -- "we won't ... encourage AI to
-    # waste actions on levels because they're still 'under budget' for a given
-    # environment". A solver that knows its allowance paces itself against it,
-    # which is the wrong objective: the score is completion first and efficiency
-    # only as a tiebreak, and across 32 scored runs every point lost was lost by
-    # not finishing.
-    #
-    # A hard stop does exist, far out, so a runaway loop cannot spend without
-    # limit -- but it is enforced in `arc_proxy`, out of this process, and it is
-    # not a number to plan against. This line used to read the cap from the
-    # environment; the environment no longer carries it, so it evaluated to 0
-    # and told the solver there was no limit at all. Saying so plainly beats a
-    # lookup that quietly means the opposite of its comment.
     max_actions=0,
-    level_budget_multiple={level_budget_multiple!r},
-    # Withhold the human medians from every solver-facing surface: the pace
-    # ratio, `pace()`, and the `raw`/ceiling half of the score block. The array
-    # itself is resolved at import and never written to a workspace file, so
-    # there is no number to `cat`. (This used to also switch ARC's 5n rule on;
-    # that cap was removed on 2026-08-04 -- see `level_budget_multiple`.)
-    hide_baselines=True,
-    # Report the running score in status(). With baselines available this is
-    # `raw`, its ceiling, and the completion cap; without them the cap alone,
-    # which needs no baselines because it is which levels fell, not how fast.
-    # A solver could not previously see its own score at all -- `su15` blew two
-    # levels to 8.65x and 22.75x with nothing able to tell it that its ceiling
-    # had already dropped to 0.82.
+{level_budget_line}    hide_baselines=True,
     show_score=True,
 )
 client.open()
@@ -274,7 +284,15 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
             tags=tuple(info.tags),
             baseline=tuple(info.baseline_actions),
             budget=budget,
-            level_budget_multiple=config.level_budget_multiple,
+            # **A disabled knob still reads as a knob.** The per-level cap has
+            # been off (0.0) since 2026-08-04, but the keyword stayed in the
+            # rendered file, where the only word the solver sees is `budget` --
+            # in a harness whose whole point is that it is not running one. Emit
+            # it only when it is actually doing something.
+            level_budget_line=(
+                f"    level_budget_multiple={config.level_budget_multiple!r},\n"
+                if config.level_budget_multiple else ""
+            ),
         ),
         encoding="utf-8",
     )
@@ -384,10 +402,14 @@ before your first action.
 | action types | {', '.join(info.tags) or 'not published — read `available_actions`'} |
 | baseline actions per level | {list(info.baseline_actions)} |
 
-The baseline is what a playthrough costs when the rules are *already known*. You
-must also discover them, hence the larger budget. But if you are several times
-over the baseline for the level you are on, that is evidence your hypothesis is
-wrong — go re-explore rather than grind.
+The baseline is what a playthrough costs someone who already knows the rules, so
+running some way over it is normal — you are still working them out. Running
+*several times* over it on one level is not: that is evidence your hypothesis is
+wrong, and the answer is to go re-explore rather than grind.
+
+Your job is to clear as many levels as you can. Nothing here is rationed and
+there is nothing to save for later; a level you never reach scores zero however
+carefully you played.
 
 ## Driving it
 
@@ -397,7 +419,7 @@ from session import client, gate, arc
 client.reset()                  # start
 client.act(1)                   # ACTION1..5,7 take no arguments
 client.act(6, x=10, y=20)       # ACTION6 is a click; x,y in [0,63]
-client.status()                 # level, state, and pace against this level's baseline
+client.status()                 # level, state, actions, and your completion cap
 client.pace()                   # {{level: (spent, baseline, ratio)}} for every level
 client.transitions()            # everything recorded so far
 ```
@@ -409,7 +431,7 @@ over — importing `session` again continues where you left off.
 
 `client` refuses moves that are known to destroy runs — acting while dead, a
 RESET immediately after a level advance, actions this game does not accept. A
-refusal costs no budget and is telling you something.
+refusal costs you nothing and is telling you something.
 
 ## Analysing
 

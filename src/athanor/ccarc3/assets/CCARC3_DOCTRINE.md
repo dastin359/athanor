@@ -42,7 +42,7 @@ eight times as much. **Depth beats polish.** Clearing five levels scrappily
 beats clearing three immaculately, every time.
 
 Put together: get under the baseline, stop optimising once you are, and push as
-deep as the budget allows.
+deep as the game goes.
 
 ### 0a. Exploration and execution can be separated. Use it when you were slow.
 
@@ -122,30 +122,33 @@ after: the winning frame is a level advance, so the action counter is zero and
 while every other action is refused too because the state is terminal — the run
 is then stuck with the score it has.
 
-Measured on this project's own runs: one won 6/6 with `raw` **0.9785** and
-**71% of its action budget unspent**, and stopped. That 0.0215 was free.
+Measured on this project's own runs: one won 6/6 with `raw` **0.9785**, had the
+route in hand, and stopped anyway. That 0.0215 was free.
 
-**If you cannot compute `raw`, replay anyway when the budget is there.** Without
-the per-level baselines you cannot tell whether you finished a level at 1.15 or
-at 0.90, so *"I won"* and *"I scored what this game was worth"* are different
-claims and you can only check the first. A replay that walks the route you now
-know spends actions you were not going to spend, and **cannot lower your score**
-— the server keeps each play separately and takes the best one.
+**If you cannot compute `raw`, replay anyway.** Without the per-level baselines
+you cannot tell whether you finished a level at 1.15 or at 0.90, so *"I won"* and
+*"I scored what this game was worth"* are different claims and you can only check
+the first. A replay that walks the route you now know spends actions you were not
+going to spend, and **cannot lower your score** — the server keeps each play
+separately and takes the best one.
 
 Measured across the 25-environment baseline-free arm, where no solver could
 compute `raw`: blind replay **paid three times** — `tu93` 0.8286 → 1.0000,
 `cn04` 0.8910 → 1.0000, `g50t` 0.8941 → 1.0000, about +0.12 `E` each — and was
 wasted roughly seven times, where play 1 was already at or above 1.0. The waste
 is real in actions and wall clock and **zero in score**, so the bet paid: about
-+0.35 `E` across the arm for no score risk. It is only a good bet while actions
-are cheap. **No run in that arm ever exhausted its action budget** — the three
-that lost stopped voluntarily with 82–95% unspent — so nothing was traded away.
-If your budget is tight, or a deadline can cut the run mid-replay, spend the
-actions on an unreached level instead: completion moves `cap`, and `cap` is the
-term that was binding in all 25 environments.
++0.35 `E` across the arm for no score risk, and nothing was traded away to make
+it.
 
-Check before deciding: `arc.score_run(client.transitions(), baselines)` gives
-`raw`, `cap` and the per-level breakdown.
+The one case where a replay is the wrong call is when a level you have never
+cleared is still in front of you: completion moves `cap`, `cap` was the binding
+term in all 25 environments, and an unreached level is worth more than a
+re-walked one. Replay when you have run out of game, not when you have run out
+of patience.
+
+If you *do* have the per-level baselines, `arc.score_run(client.transitions(),
+baselines)` gives `raw`, `cap` and the breakdown. If you do not, you are in the
+case above and the decision does not need them.
 
 **Fix whichever term is binding.** `E = min(cap, raw)`, so only the smaller one
 is costing you, and the two are improved by opposite actions:
@@ -176,7 +179,7 @@ you `raw` is far below `cap` in any units.
 
 And a replay you cannot finish costs nothing but the actions. Each play carries
 its own completion cap and the environment takes the **best** play, so a replay
-that runs out of budget on level 3 simply scores worse and is discarded.
+that stalls on level 3 simply scores worse and is discarded.
 
 **What earns the score is understanding, not the recording.** Replaying your
 own trace verbatim reproduces your own fumbling — the same actions give the
@@ -205,12 +208,11 @@ Measured on a real run, `tn36`. After overrunning three levels it stood at
 | finish the last two as it was going | 0.726 (+0.284) |
 | restart and replay cleanly | **1.000 (+0.558)** |
 
-The replay was worth twice as much as finishing — and was **impossible**,
-because 317 actions were needed and 145 remained. The exploration had eaten
-the budget the recovery required. Nothing about the game prevented it; only the
-spending did.
+The replay was worth twice as much as finishing. It was also the option that run
+never took, because by the time the arithmetic favoured it the run had already
+decided it was near the end of something. Nothing about the game prevented it.
 
-### 0b. Being stuck with budget left is a reason to change technique, not to stop.
+### 0b. Being stuck is a reason to change technique, not to stop.
 
 This is the single largest thing separating a good run from a bad one, and it is
 measured, not exhortation.
@@ -219,20 +221,20 @@ Across a 25-environment arm, **every loss was a voluntary stop**. Not one was
 killed, not one timed out, all three exited cleanly — each having cleared exactly
 five levels, hit a level it could not read, written a closing report, and quit:
 
-| game | levels | share of the cap it had used | exit |
+| game | levels | actions spent when it quit | exit |
 |---|---|---|---|
-| `sp80` | 5 of 6 | **5%** | 0 |
-| `tn36` | 5 of 7 | **18%** | 0 |
-| `sk48` | 5 of 8 | **12%** | 0 |
+| `sp80` | 5 of 6 | 137 | 0 |
+| `tn36` | 5 of 7 | 289 | 0 |
+| `sk48` | 5 of 8 | 251 | 0 |
 
-All three have since been re-run under a harness that shows them no budget at
-all. **`sp80` went 5 of 6 to 6 of 6, and `sk48` went 5 of 8 to 8 of 8.** Nothing
-about the games changed.
+Three-figure totals, on games whose own published playthroughs run to several
+hundred. All three have since been re-run and **`sp80` went 5 of 6 to 6 of 6,
+`tn36` 5 of 7 to 7 of 7, and `sk48` 5 of 8 to 8 of 8.** Nothing about the games
+changed. What changed is that the later runs kept going.
 
-**No run in that arm ever exhausted its action budget** — not one of 25. In every
-game the binding constraint was something other than the thing the budget
-measures. If you are considering stopping, you almost certainly have more actions
-than you think.
+Nothing external stopped any of the 25 either — not one was cut off, and in
+every game the binding constraint was something the solver brought with it. If
+you are considering stopping, the reason is in your head and not in the game.
 
 **And stopping is the expensive mistake, because completion is the only axis left
 once you are fast.** In all 25 environments the *completion cap* was what limited
@@ -247,7 +249,7 @@ cleared **7 of 7 in 220 actions**. Same harness, same environment. The level tha
 stopped one run was routine for another. Treat "stuck" as evidence that your
 current model of the mechanic is wrong, not that the mechanic is unbeatable.
 
-So, when you are stuck and the budget is not:
+So, when you are stuck:
 
 - **Say what you think is impossible, precisely.** "The reds cannot cross the gap"
   is testable. "Level 6 is too hard" is not. Write the claim down, then attack it
@@ -258,12 +260,13 @@ So, when you are stuck and the budget is not:
   different part of the frame, build the forward model you skipped (§5a), or
   deliberately die to see what the failure state reveals (§1).
 - **Spend the actions.** Dying is cheap; a level you never cleared scores zero
-  however carefully you conserved. Exploration you did not do is the only thing
+  however carefully you played. Exploration you did not do is the only thing
   that is definitely worth nothing.
-- **Stop only when you can state what you would need and show you cannot afford
-  it.** `su15` is the legitimate case: the recovery needed 317 actions and 145
-  remained. That is a reason. "I have run out of ideas" is not — it is a report on
-  your search, and the search is the part you control.
+- **There is no version of this where stopping is the move.** Every stop on
+  record was written up as a reasoned decision, and every one of them was wrong:
+  the three games above were re-run and all three fell. "I have run out of ideas"
+  is a report on your search, and the search is the part you control. Go back to
+  §5 and find the belief that is wrong instead.
 
 ---
 
@@ -303,8 +306,8 @@ The two possibilities call for opposite play:
 - **A resource that kills at zero.** Running out is `GAME_OVER`. Wandering is
   genuinely dangerous and exploration has a hard deadline.
 - **A cycle that simply repeats.** Running out costs nothing. Treating it as
-  lethal makes you rush, skip experiments and waste the exploration budget that
-  every other line here tells you to spend.
+  lethal makes you rush, skip experiments and hurry past exactly the exploration
+  every other line here tells you to do.
 
 Measured on `ls20`, the second is what happens: the bar holds 42 cells, drains
 exactly one per action, reads 0, and **refills to 42 automatically** with nothing
@@ -467,7 +470,7 @@ model* — check the model with `arc.predict()` before trusting a route from it.
 An unexpectedly small `reachable()` set usually means your model puts a wall
 where there is none.
 
-## 6. Budget against the published baseline.
+## 6. Pace against the published baseline.
 
 Every game publishes `baseline_actions` — one figure per level, what a
 playthrough costs when the rules are *already known*. Real games range from 171

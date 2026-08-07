@@ -827,6 +827,61 @@ def test_the_doctrine_never_tells_a_solver_to_ration_actions(ws):
     assert "every point ever lost was lost by not finishing" in d
 
 
+def test_no_solver_facing_file_frames_actions_as_an_allowance(ws):
+    """The reframe is only real if it survives a full read, and it did not.
+
+    Removing the two rationing rules left ten places still describing actions as
+    a balance to draw down: *"push as deep as the budget allows"*, *"71% of its
+    action budget unspent"*, *"if your budget is tight"*, *"a replay that runs
+    out of budget"*, *"the exploration had eaten the budget"*, §0b's own heading,
+    and — sharpest of all — the only sanctioned reason to stop, *"show you cannot
+    afford it"*, which asks the solver to compute a remaining balance the harness
+    deliberately does not show it. A solver reading all of that concludes there is
+    an allowance no matter what one paragraph says to the contrary.
+
+    The single legitimate mention is the paragraph that denies it, which has to
+    name the thing it is denying.
+    """
+    text = {name: re.sub(r"\s+", " ", (ws.root / name).read_text())
+            for name in ("DOCTRINE.md", "CLAUDE.md", "session.py")}
+    allowed = "a per-environment budget would"      # the ARC quote, in the denial
+    for name, body in text.items():
+        for phrase in ("budget allows", "budget is tight", "runs out of budget",
+                       "action budget unspent", "eaten the budget",
+                       "cannot afford", "with budget left", "the budget is not",
+                       "carefully you conserved", "costs no budget"):
+            assert phrase not in body, f"{name} still frames actions as an allowance: {phrase!r}"
+        # A window wide enough to cover the whole quoted sentence, which says
+        # "budget" twice -- once naming the design and once inside ARC's words.
+        stray = [m.start() for m in re.finditer(r"budget", body)
+                 if allowed not in body[max(0, m.start() - 200):m.start() + 200]]
+        assert not stray, f"{name} has {len(stray)} unaccounted 'budget' mention(s)"
+
+
+def test_the_workspace_session_file_carries_no_operator_commentary(ws):
+    """`session.py` is a file the solver is told to import, and it was a briefing.
+
+    The rendered template used to carry thirty lines explaining that a hidden
+    action cap exists and is enforced in `arc_proxy`, that the human medians are
+    withheld on purpose and are "resolved at import and never written to a
+    workspace file", and what a named other environment had scored. That is a map
+    to everything the harness hides, in the one file the doctrine tells the solver
+    to open — and `redact_self_reference` never looked at it, because that
+    function only rewrites `DOCTRINE.md`, so a run of the named game would have
+    read its own history.
+
+    The reasoning still exists; it lives above `SESSION_TEMPLATE` in the repo,
+    where the operator reads it and the workspace does not carry it.
+    """
+    body = (ws.root / "session.py").read_text()
+    for leak in ("arc_proxy", "resolved at import", "Withhold", "hard stop"):
+        assert leak not in body, f"workspace session.py describes the strip: {leak!r}"
+    others = {m.group(0) for m in re.finditer(r"\b[a-z]{2}\d{2}\b", body)} - {
+        INFO.game_id.split("-")[0]
+    }
+    assert not others, f"workspace session.py names other environments: {sorted(others)}"
+
+
 def test_an_unstripped_workspace_leaks_the_baselines_through_meta_json(ws):
     """The leak that voided three re-runs and eight rollouts.
 

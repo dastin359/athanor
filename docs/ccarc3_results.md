@@ -3530,3 +3530,115 @@ is a lower bound rather than a measurement: evidence preserves on a 5-minute
 poll, and the ledger sat at 87 actions from 02:41:25Z through 02:54:59Z and was
 growing again by 03:00:07Z, so the idle gap was at least 13.6 minutes and
 possibly ~19. Both claims are corrected in the source (`817bfbf`).
+
+---
+
+## Cognitive proofread of the reframed harness — four defects, all in the rendered surface
+
+Commit `2003a4a` removed the two rules that told a solver to ration actions, and
+the test suite went green. That is not the same as the reframe being real: the
+tests checked that two banned phrases were gone from the doctrine *source*, and
+what a solver reads is the doctrine, `CLAUDE.md` and `session.py` **after the
+baseline strip has rewritten all three**. Nobody had read that.
+
+Reading it turned up four defects, three of which every one of the eight clean
+rollouts had already seen.
+
+### 1. `CLAUDE.md`'s baseline paragraph was being shredded, not redacted
+
+`strip_baselines` filtered `CLAUDE.md` **line by line**, dropping any line
+containing "baseline". The paragraph it was aimed at is hard-wrapped over four
+lines, two of which contain the word. What the solver actually received was the
+other two, standing alone:
+
+```
+must also discover them, hence the larger budget. But if you are several times
+wrong — go re-explore rather than grind.
+```
+
+Incoherent, and still asserting an allowance. This was in every clean-rollout
+workspace, read during orientation, for the whole rollout.
+
+Fixed both ends: the strip now drops whole paragraphs outside code fences and
+stays line-wise inside them, and the source paragraph was rewritten so what
+survives says the opposite — *"Nothing here is rationed and there is nothing to
+save for later."*
+
+The same line filter had also removed `client.status()` from the driving
+example, because its trailing comment mentioned a baseline. Combined with §6
+being stripped wholesale, the baseline-free solver was never told the call
+exists — while `status()` under withheld baselines still reports level, state,
+actions and the exact completion cap. Its comment no longer names a baseline, so
+it survives; `client.pace()`, which genuinely cannot work without them, still
+goes.
+
+### 2. The doctrine still described an allowance in ten places
+
+Removing the two rationing rules left the frame intact everywhere else: *"push as
+deep as the budget allows"*, *"71% of its action budget unspent"*, *"if your
+budget is tight"*, *"a replay that runs out of budget"*, *"the exploration had
+eaten the budget"*, §0b's own heading, *"when you are stuck and the budget is
+not"*.
+
+The sharpest was §0b's only sanctioned reason to stop — *"stop only when you can
+state what you would need and show you cannot afford it"* — which asks the solver
+to compute a remaining balance the harness deliberately does not show it. An
+unfollowable stopping rule that re-installs the exact mental model the reframe
+removed. It now reads **"There is no version of this where stopping is the
+move"**, with the three arm losses as the evidence: every stop on record was
+written up as a reasoned decision and every one was later reversed.
+
+§0b's table changed too. It listed each loss as a *share of its cap* — 5%, 18%,
+12% — which is a fraction of a number the solver cannot see. It now gives the
+absolute action counts (137, 289, 251), which mean something on their own.
+
+### 3. `session.py` was a briefing on the strip, in the file the solver imports
+
+The rendered `ArcClient(...)` call carried thirty lines of operator commentary
+telling the solver that a hidden action cap exists **and is enforced in
+`arc_proxy`**; that the human medians are withheld on purpose and are "resolved
+at import and never written to a workspace file"; and what a named other
+environment had scored. A map to everything the harness spends real machinery
+hiding, handed over in the one file the doctrine instructs the solver to open —
+and `cat session.py` is already a tracked probe in `proofread_trace.py`.
+
+It also named `su15` outright, which `redact_self_reference` never sees because
+that function only rewrites `DOCTRINE.md`. A run of `su15` would have read about
+its own past failure from a file no redaction pass looks at.
+
+The commentary now lives above `SESSION_TEMPLATE` in the repo, where the operator
+reads it and the workspace does not carry it. A test asserts the rendered file
+names no environment but its own and describes none of the strip.
+
+### 4. A dead knob that reads as a live one
+
+`level_budget_multiple=0.0` was rendered into every workspace. The per-level cap
+has been off since 2026-08-04, but the keyword stayed — and the only word the
+solver sees in it is `budget`, in a harness whose entire claim is that it is not
+running one. It is now emitted only when non-zero.
+
+### What this does to the eight rollouts
+
+Nothing to their scores, and something to their interpretation. All eight ran
+under defects 1, 3 and 4 — a mangled orientation paragraph asserting a budget, no
+documented `status()`, and a `session.py` describing the cap and the strip. Seven
+still won. The result stands; what cannot be claimed is that they were run under
+the doctrine as written, because the file they read was not the file that was
+written.
+
+Defect 2 is different: the doctrine reframe landed *after* all eight finished, so
+none of them saw either version of §0b's stopping rule in its current form.
+
+### The pattern, again
+
+Every defect here is the session's recurring shape: **a mechanism that looked
+like it worked because the visible outcome was unchanged.** The strip ran, raised
+no error, and left prose it had destroyed. The reframe removed the two phrases a
+test looked for and left ten it did not. The commentary explaining why the
+harness hides a number was itself the disclosure. Each was found the same way —
+by rendering the artifact and reading it, rather than reading the code that
+produces it.
+
+Four tests now pin it: two on the strip's paragraph and code-fence behaviour, one
+that no solver-facing file frames actions as an allowance, and one that the
+workspace `session.py` carries no operator commentary and names no other game.

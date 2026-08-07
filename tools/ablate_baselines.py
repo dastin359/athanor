@@ -132,13 +132,60 @@ def strip_baselines(root: pathlib.Path) -> None:
         raise RuntimeError(f"{sp}: baseline_actions not found; template changed?")
     sp.write_text(stripped, encoding="utf-8")
 
+    # **Drop whole paragraphs, not lines.** The filter used to be line-wise, and
+    # on hard-wrapped prose that is not a redaction, it is a shredder. The
+    # baseline paragraph in `CLAUDE.md` wraps across four lines, two of which
+    # happen to contain the word; deleting those two left the other two standing
+    # as a pair of orphaned half-sentences:
+    #
+    #     must also discover them, hence the larger budget. But if you are several times
+    #     wrong — go re-explore rather than grind.
+    #
+    # That is what all eight clean rollouts read during orientation — incoherent,
+    # and still asserting an allowance the harness spent four commits removing.
+    # A paragraph is the smallest unit of prose that survives having a sentence
+    # taken out of it, so a paragraph is the unit.
+    #
+    # Table rows and list items are their own paragraphs for this purpose: they
+    # are self-contained, and taking one out leaves the rest of the table intact.
+    #
+    # **Code blocks stay line-wise, and that is not an inconsistency.** A fenced
+    # block is one paragraph by this rule, so paragraph-dropping it would take
+    # the whole `client.reset()` / `client.act()` example out over a single
+    # trailing comment. Code has no wrapped sentences to shred, so the objection
+    # above does not apply inside a fence — each line is already self-contained.
     cm = root / "CLAUDE.md"
-    kept = []
+    kept, para, fenced = [], [], False
+
+    def flush() -> None:
+        if para and not any("baseline" in line.lower() for line in para):
+            kept.extend(para)
+        para.clear()
+
     for line in cm.read_text(encoding="utf-8").splitlines():
-        if "baseline" in line.lower():
+        if line.lstrip().startswith("```"):
+            flush()
+            fenced = not fenced
+            kept.append(line)
             continue
-        kept.append(line)
-    cm.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        if fenced:
+            if "baseline" not in line.lower():
+                kept.append(line)
+            continue
+        if not line.strip() or line.lstrip().startswith(("|", "- ", "* ", "#")):
+            flush()
+            if "baseline" not in line.lower():
+                kept.append(line)
+            continue
+        para.append(line)
+    flush()
+    # Collapse the runs of blank lines the removals leave behind.
+    tidy: list[str] = []
+    for line in kept:
+        if not line.strip() and (not tidy or not tidy[-1].strip()):
+            continue
+        tidy.append(line)
+    cm.write_text("\n".join(tidy).rstrip() + "\n", encoding="utf-8")
 
     # §6 and §6a tell the solver to steer by a number it can no longer read.
     doc = root / "DOCTRINE.md"
