@@ -158,3 +158,49 @@ def test_a_raised_limit_is_picked_up_without_a_restart(driver, monkeypatch):
         "a raised limit never took effect; the timed wait is what picks it up "
         "and nothing else signals the condition"
     )
+
+
+def test_an_abort_stops_the_games_that_have_not_started(driver, monkeypatch):
+    """The breaker exists to stop the queue burning, and it could not.
+
+    `_run_one` raises SystemExit when the ARC endpoint is unreachable, because
+    every remaining game would fail identically. The raise unwinds one worker
+    thread and reaches none of the others: `one_pass` only learns of it through
+    `as_completed`, so on 2026-08-07 seventeen futures failed in milliseconds and
+    **thirteen games started and failed before the main thread saw the first
+    one**. The abort that exists to stop the queue arrived last.
+
+    An exception cannot reach a sibling. A flag can, so `_take_slot` and
+    `_guarded` check one.
+    """
+    monkeypatch.setattr(driver, "concurrency", lambda: 1)
+    driver._aborted.clear()
+    ran: list[int] = []
+    lock = threading.Lock()
+
+    def worker(rank: int) -> None:
+        try:
+            driver._take_slot(f"g{rank}", rank)
+        except driver._Aborted:
+            return
+        try:
+            if driver._aborted.is_set():
+                return
+            with lock:
+                ran.append(rank)
+            if rank == 0:                     # the endpoint dies on the first game
+                driver._aborted.set()
+                with driver._slots:
+                    driver._slots.notify_all()
+        finally:
+            driver._free_slot()
+
+    driver._register_queue(10)
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    driver._aborted.clear()
+
+    assert ran == [0], f"games ran after the abort: {ran}"

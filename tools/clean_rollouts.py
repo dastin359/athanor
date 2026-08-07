@@ -358,6 +358,7 @@ def main() -> int:
     # Bounded rather than infinite: a game that cannot fit in a window will burn
     # quota forever otherwise, and MAX_PASSES makes the give-up point explicit and
     # visible in the log rather than implicit in whoever stops watching.
+    _aborted.clear()
     for pass_no in range(1, MAX_PASSES + 1):
         # **Fewest attempts first, GAMES order as the tie-break.** A plain GAMES
         # walk starves the tail: the driver dies with its container, and on
@@ -438,6 +439,19 @@ _running = 0
 _last_limit = 0
 _waiting: set[int] = set()
 
+# **The abort has to be a flag, because an exception cannot reach a sibling.**
+# `_run_one` raises SystemExit when the ARC endpoint is unreachable, on the
+# reasoning that every remaining game fails identically so the queue should stop
+# rather than burn through. That reasoning is right and the mechanism was not:
+# the raise happens inside a worker thread, `one_pass` only learns of it through
+# `as_completed`, and on 2026-08-07 seventeen futures failed in milliseconds --
+# so thirteen games had already started and failed before the main thread
+# processed the first. The abort that exists to stop the queue arrived last.
+#
+# A flag is checked by whoever is about to act, which is the only thing that
+# stops work that has not begun.
+_aborted = threading.Event()
+
 
 def _take_slot(gid: str, rank: int) -> None:
     """Block until the live limit leaves room, and until it is this game's turn.
@@ -473,6 +487,9 @@ def _take_slot(gid: str, rank: int) -> None:
         # set it is not in.
         _waiting.add(rank)
         while True:
+            if _aborted.is_set():
+                _waiting.discard(rank)
+                raise _Aborted()
             limit = concurrency()
             if limit != _last_limit:
                 print(f"    concurrency = {limit}"
@@ -555,9 +572,20 @@ def one_pass(games: list[str], infos: dict) -> None:
                 print(f"    {futures[fut]}: driver error {exc!r}", flush=True)
 
 
+class _Aborted(Exception):
+    """This game never started because the pass was aborted. Not a failure."""
+
+
 def _guarded(gid: str, infos: dict, rank: int) -> None:
-    _take_slot(gid, rank)
     try:
+        _take_slot(gid, rank)
+    except _Aborted:
+        # Never started, so nothing to free and nothing to report. It stays
+        # outstanding and the next pass picks it up.
+        return
+    try:
+        if _aborted.is_set():
+            return
         _run_one(gid, infos)
     finally:
         _free_slot()
@@ -623,6 +651,13 @@ def _run_one(gid: str, infos: dict) -> None:
             # burns its 12 passes and gives up on games it never launched.
             # Stop instead, and let the supervisor restart the driver -- a
             # fresh process rebuilds the proxy that went missing.
+            # **Set the flag before raising.** The raise unwinds this thread;
+            # the flag is what reaches the other sixteen. Without it they all
+            # ran -- thirteen games launched and failed in the milliseconds
+            # before the main thread even saw the first SystemExit.
+            _aborted.set()
+            with _slots:
+                _slots.notify_all()          # wake every waiter to see the flag
             raise SystemExit(
                 "aborting: the ARC endpoint is unreachable, so every "
                 "remaining game would fail identically. Restart the driver."
