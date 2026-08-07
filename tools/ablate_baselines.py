@@ -187,6 +187,50 @@ def strip_baselines(root: pathlib.Path) -> None:
         tidy.append(line)
     cm.write_text("\n".join(tidy).rstrip() + "\n", encoding="utf-8")
 
+    # **Turn the conditionals into statements, because the condition is always
+    # true here.** The doctrine has to serve a run that CAN see the baselines, so
+    # it phrases the replay rule as "if you cannot compute `raw`, replay anyway",
+    # offers `arc.score_run(transitions, baselines)` for the case where you can,
+    # and says "if you do not know the baselines, you still know the cap". In a
+    # stripped workspace every one of those antecedents holds unconditionally --
+    # `baseline_actions` is `()` and there is no path to a median.
+    #
+    # Leaving them as conditionals is not neutral. It tells the solver that
+    # computing `raw` is a thing that might be possible, which invites it to
+    # reach for whatever looks closest: `tu93` estimated `raw` from an in-game
+    # drain bar and concluded a replay would not help (it was worth +0.1202), and
+    # `bp35` read the harness's own `cap 1.000` as its score and stopped (it was
+    # worth +0.2748). A branch whose true arm is unreachable should not be
+    # written as a branch.
+    #
+    # Asserted rather than best-effort: if a doctrine edit breaks a match, this
+    # raises instead of silently shipping the conditional again.
+    doc_text = (root / "DOCTRINE.md").read_text(encoding="utf-8")
+    for old, new_text in (
+        ("**If you cannot compute `raw`, replay anyway.** Without the per-level baselines\n"
+         "you cannot tell whether",
+         "**You cannot compute `raw` on this run, so replay at the winning frame.**\n"
+         "There are no per-level baselines here and no way to obtain them, so you\n"
+         "cannot tell whether"),
+        ("If you *do* have the per-level baselines, `arc.score_run(client.transitions(),\n"
+         "baselines)` gives `raw`, `cap` and the breakdown. If you do not, you are in the\n"
+         "case above and the decision does not need them.",
+         "There is no call that will give you `raw`. `arc.score_run` needs the\n"
+         "per-level baselines as an argument and you do not have them, so do not go\n"
+         "looking for a substitute: an in-game meter is not the human median, and\n"
+         "neither is `cap`. The decision above does not need `raw` at all."),
+        ("**If you do not know the baselines, you still know the cap.**",
+         "**You do not know the baselines. You do know the cap.**"),
+    ):
+        if new_text in doc_text:
+            continue                      # already rewritten; the strip is idempotent
+        if old not in doc_text:
+            raise RuntimeError(
+                f"DOCTRINE.md no longer contains the conditional this rewrites:\n{old[:80]}..."
+            )
+        doc_text = doc_text.replace(old, new_text, 1)
+    (root / "DOCTRINE.md").write_text(doc_text, encoding="utf-8")
+
     # §6 and §6a tell the solver to steer by a number it can no longer read.
     doc = root / "DOCTRINE.md"
     lines = doc.read_text(encoding="utf-8").splitlines()

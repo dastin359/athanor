@@ -183,3 +183,35 @@ def test_a_resumed_game_seeds_the_cap_from_what_it_already_spent(tmp_path, monke
         Ccarc3Config(INFO.game_id, out_dir=tmp_path, fresh=False), INFO
     )
     assert ab.proxy_for(INFO.game_id).actions_used == 291
+
+
+def test_the_strip_turns_the_raw_conditionals_into_statements(workspace):
+    """A branch whose true arm is unreachable should not be written as a branch.
+
+    The doctrine serves runs that *can* see the baselines too, so it phrases the
+    replay rule conditionally: "if you cannot compute `raw`, replay anyway",
+    offers `arc.score_run(transitions, baselines)` for the case where you can,
+    and says "if you do not know the baselines, you still know the cap". In a
+    stripped workspace every antecedent holds unconditionally — `baseline_actions`
+    is `()` and there is no path to a median.
+
+    Leaving them conditional is not neutral. It tells the solver that computing
+    `raw` might be possible, which invites reaching for whatever looks closest:
+    `tu93` estimated it from an in-game drain bar and concluded a replay would not
+    help (worth +0.1202), and `bp35` read the harness's own `cap 1.000` as its
+    score and stopped (worth +0.2748).
+    """
+    ab.strip_baselines(workspace.root)
+    doc = (workspace.root / "DOCTRINE.md").read_text()
+
+    for conditional in ("If you cannot compute `raw`",
+                        "If you *do* have the per-level baselines",
+                        "If you do not know the baselines, you still know the cap"):
+        assert conditional not in doc, f"conditional survived the strip: {conditional!r}"
+
+    assert "You cannot compute `raw` on this run" in doc
+    assert "There is no call that will give you `raw`" in doc
+    # The two proxies solvers actually reached for, named so they are not reached
+    # for again.
+    assert "an in-game meter is not the human median, and" in doc
+    assert "neither is `cap`" in doc
