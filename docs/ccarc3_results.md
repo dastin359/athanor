@@ -4671,3 +4671,77 @@ narrated.
 new `status()` up mid-run. That makes them mixed-surface runs, and it is worth
 knowing rather than discovering later: `ls20` in particular has been going 4 h 21 m
 and started long before the fix.
+
+---
+
+## Rollout 21: `ls20-9607627b` — **1.0000 (7/7)** in five plays, and the controlled experiment `bp35` set up
+
+`ls20` finished eighteen minutes after `bp35`. Their first plays are nearly
+identical and their decisions were opposite, which makes this the cleanest natural
+experiment the project has produced.
+
+| | `bp35` | `ls20` |
+|---|---|---|
+| levels cleared, play 1 | **9 of 9** | **7 of 7** |
+| `raw`, play 1 | **0.7252** | **0.7236** |
+| `cap` | 1.0000 | 1.0000 |
+| what it did next | **stopped** | **replayed, four times** |
+| **`E`** | **0.7252** | **1.0000** |
+
+Two solvers reached the same place — every level cleared, `raw` around 0.72, `cap`
+at 1.0 — and the one that kept going scored **+0.2764** more. `bp35` left
++0.2748 behind. The two numbers are the same quantity seen from either side.
+
+### The five plays
+
+| play | levels | actions | ratios | `raw` | `E` |
+|---|---|---|---|---|---|
+| 1 | 7 | 898 | 1.09, 0.65, 0.89, 0.58, **1.38**, **1.57**, **1.32** | 0.7236 | 0.7236 |
+| 2 | 4 | 439 | 0.59, 0.37, 0.56, 0.51 | 0.4107 | 0.3571 |
+| 3 | 7 | 737 | …, **2.38**, 0.38, **1.59** | 0.7882 | 0.7882 |
+| 4 | 7 | **313** | 0.59, 0.37, 0.56, 0.51, 0.46, 0.38, **0.30** | **1.1500** | **1.0000** |
+| 5 | 7 | 365 | 0.59, 0.37, 0.56, 0.51, 0.46, 0.38, 0.58 | 1.1500 | 1.0000 |
+
+Play 2 was **abandoned at four levels** — it scored 0.3571 and was simply worse
+than what came before. That is §0a's "a replay you cannot finish costs nothing but
+the actions" happening in practice: the environment keeps the best play, so a
+discarded attempt is invisible in the score. Play 3 recovered the full clear but
+still overran levels 5 and 7. Play 4 got it right and hit the ceiling.
+
+**Levels 5, 6 and 7 are where the whole gain lives.** They went 132/302/246 on
+play 1 to 44/72/55 on play 4 — the route was there all along and the first pass
+was paying to find it. This is exactly the case §0a describes: *"what differed was
+spending them rather than finding them."*
+
+### What this does and does not show about the `status()` fix
+
+The fix landed at 06:56 PDT; `ls20` finished at 07:07 and had been replaying for
+hours before that. **Its behaviour is not evidence the fix works** — it replayed
+on its own, under the same display that misled `bp35`. What the pair shows is that
+the *decision* was worth ~0.28 and that solvers were already split on it, which is
+the thing the fix is meant to stop leaving to chance.
+
+`ls20` is also a mixed-surface run by the note above: `client.py` is re-imported
+every action, so its final play saw the new `status()`. Play 4 had already reached
+the ceiling by then, so nothing in this result turns on it.
+
+### Cost
+
+2752 actions, 271 minutes, $35.78 over 205 turns, 1 death. The 2752 actions are
+3.5× the game's published baseline of 776 — and cost nothing, because only the
+best play is scored. `bp35` spent 990 actions and lost 0.27; `ls20` spent 2752 and
+lost nothing.
+
+### Proofread
+
+Clean. 204 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 7 levels and 2752
+actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **13 of 25** | **12.7252 / 13 = 97.89%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 4 | — |
