@@ -4331,3 +4331,56 @@ longer a "the easy ones went first" story — but two of the superseded eight
 (`lf52`, `sk48`) are the only environments in the project that have *ever* scored
 below 1.0 on a clean run, and until one of those is re-run under the current
 surface the comparison stays confounded.
+
+---
+
+## Rollout 17: `cn04-2fe56bfb` — **1.0000 (6/6)**, and a 300-action level cleared in 33
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 396 total across 2 plays (222 + 174) |
+| `raw` | 1.1397 (play 1) → **1.1500** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 40 min, one-shot, exit 0 |
+| cost | $11.78 over 92 turns |
+
+Against baselines `[29, 54, 85, 300, 208, 113]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 | 30 | 33 | 25 | **33** | 58 | 43 |
+| ratio | 1.03× | 0.61× | 0.29× | **0.11×** | 0.28× | 0.38× |
+
+**Level 4 carries a 300-action human baseline and fell in 33 — 0.11×.** That now
+displaces `ar25`'s 233-in-37 from yesterday as the largest absolute gap on record,
+and it is the third such case in ten runs. The pattern is no longer anecdotal:
+across the current generation the levels with the biggest human baselines are
+routinely the ones this solver clears fastest, and whatever makes a level
+expensive for a first-time human player is close to orthogonal to what makes it
+expensive here.
+
+`cn04` is also the third environment in this batch whose published human cost
+(789) is near the top of the set, cleared in half that. Only level 1 came in over
+baseline, at 1.03×, which the replay took to 0.48×.
+
+### Proofread
+
+Clean. 91 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 6 levels and 396
+actions.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **9 of 25** | **9.0000 / 9 = 100%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 8 | — |
+
+Nine for nine. The confound named in the last two entries is unchanged and still
+governs: `lf52` and `sk48` are the only environments that have ever scored below
+1.0 on a clean run, both sit in the superseded set, and until one is re-run under
+the current surface the 100% is not a harness effect.
