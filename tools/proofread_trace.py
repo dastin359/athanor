@@ -81,21 +81,72 @@ ABS_PATH = re.compile(r"(?<![\w=)\]])(/[\w.\-/@]{4,})")
 _TOP = {f"/{name}" for name in os.listdir("/")}
 
 
+# A relative path with enough `..` to climb out. `sys.path.insert(0, "..")` from
+# `notes/` is ordinary and lands back in the workspace, so a bare `..` proves
+# nothing; the question is whether it escapes from the *deepest* directory the
+# solver could plausibly have been standing in.
+REL_PATH = re.compile(r"(?<![\w./])((?:\.\./)+[\w.\-/@]*)")
+MAX_CWD_DEPTH = 2          # workspace root, plus `notes/` and one below it
+
+
+def recover_root(commands: list[str], game_id: str) -> pathlib.Path | None:
+    """Where this run actually ran, from the absolute paths it used itself.
+
+    A workspace path ends in the game id, and a run touches its own files
+    constantly -- `session.py`, `DOCTRINE.md`, `notes/`. The most frequently
+    referenced such prefix is the root. Returns ``None`` when the stream carries
+    no absolute self-reference, in which case the caller keeps what it was given.
+    """
+    # Greedy and anchored: a workspace is `<...>/<gid>/attempt_N/<gid>`, so the
+    # *last* occurrence of the id is the root and the first is its parent. A
+    # non-greedy match returns the parent, which then reads every file in the
+    # workspace as one directory outside it.
+    counts: dict[str, int] = {}
+    pattern = re.compile(r"(?<![\w.\-])(/[\w.\-/@]*/" + re.escape(game_id)
+                         + r")(?=/|\s|$|['\"])")
+    for command in commands:
+        for m in pattern.finditer(command):
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    if not counts:
+        return None
+    # Most-referenced wins; ties go to the deepest path, which is the workspace
+    # rather than any ancestor of it.
+    return pathlib.Path(max(counts, key=lambda k: (counts[k], len(k))))
+
+
 def strayed(command: str, workspace: pathlib.Path) -> list[str]:
-    """Absolute paths in a command that are outside this run's own workspace."""
-    root = str(workspace.resolve())
+    """Paths in a command that leave this run's own workspace.
+
+    **Absolute paths were the whole check, and a relative one walks straight
+    past.** `cat ../../../../best_or_last/card.json` reaches a real scorecard
+    holding two complete median arrays and was invisible here: no leading `/`,
+    no match. Found by the 2026-08-07 audit, after the absolute-path check had
+    already been added for the same directory.
+    """
+    root = pathlib.Path(str(workspace.resolve()))
     out = []
     for m in ABS_PATH.finditer(command):
         path = m.group(1).rstrip(".,;:'\"")
         if "/" + path.split("/")[1] not in _TOP:
             continue                      # not a filesystem path at all
-        if path.startswith(root) or path.startswith(SYSTEM_ROOTS):
+        if path.startswith(str(root)) or path.startswith(SYSTEM_ROOTS):
             continue
         if path.startswith("/root/") and "/scratchpad" not in path:
             continue                      # the agent's own home, not the harness
         if path.startswith("/tmp/") and "/scratchpad" not in path:
             continue                      # ordinary temp files
         out.append(path)
+
+    # Resolve relative paths from the deepest cwd the solver could have had. A
+    # path that escapes even from there escapes from anywhere it actually was,
+    # so this cannot fire on a legitimate `..` and can only under-report.
+    deepest = root.joinpath(*(["x"] * MAX_CWD_DEPTH))
+    for m in REL_PATH.finditer(command):
+        token = m.group(1).rstrip(".,;:'\"")
+        resolved = pathlib.Path(os.path.normpath(str(deepest / token)))
+        if root == resolved or root in resolved.parents:
+            continue                      # still inside, however it was written
+        out.append(f"{token} (escapes to {resolved})")
     return sorted(set(out))
 
 
@@ -215,6 +266,17 @@ def main() -> int:
         return 2
 
     cmds, results, think, say = blocks(stream)
+
+    # **The run's own root, recovered from the run.** In `--gz` mode `ws` is
+    # wherever the evidence was filed, not where the solver stood, so every
+    # self-reference read as "outside the workspace" and the documented way to
+    # re-audit the durable record declared all 30 banked runs void. Deriving the
+    # root from the commands instead makes the check independent of where the
+    # copy lives.
+    if args.gz:
+        recovered = recover_root(cmds, gid)
+        if recovered is not None:
+            ws = recovered
     inbound = "\n".join(results)
     outbound = "\n".join(think + say)
     print(f"=== {gid} — {len(cmds)} commands, {len(results)} tool results, "
