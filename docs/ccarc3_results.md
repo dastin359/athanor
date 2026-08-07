@@ -4141,3 +4141,71 @@ budget. Two are the replay decision quoted above.
 **13 clean rollouts, 12.4075 / 13 = 95.44%**, twelve wins. **Five under the
 repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33`, `sc25` — all five
 1.0000. Twelve environments outstanding.
+
+---
+
+## Rollout 14: `tu93-0768757b` — **1.0000 (9/9)**, replay worth **+0.1202**, against the solver's own advice
+
+| | |
+|---|---|
+| levels | **9 of 9** |
+| actions | 450 total across 2 plays (269 + 181) |
+| `raw` | **0.8798** (play 1) → **1.1259** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** — from **0.8798** without the replay |
+| deaths | 5 |
+| wall clock | 71 min, one-shot, exit 0 |
+| cost | $18.55 over 123 turns |
+
+Against baselines `[19, 16, 34, 42, 123, 80, 14, 23, 111]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| play 1 | 21 | 26 | 24 | 42 | 36 | 31 | 20 | 32 | 33 |
+| ratio | 1.11× | **1.62×** | 0.71× | 1.00× | 0.29× | 0.39× | **1.43×** | **1.39×** | 0.30× |
+| play 2 | 18 | 10 | 19 | 17 | 29 | 28 | 14 | 21 | 29 |
+| ratio | 0.95× | 0.62× | 0.56× | 0.40× | 0.24× | 0.35× | 1.00× | 0.91× | 0.26× |
+
+**Two consecutive rollouts where the replay carried the score.** After twelve
+runs in which it was worth nothing, `sc25` (+0.4156) and now `tu93` (+0.1202)
+both had `raw` below a `cap` of 1.0000 and were rescued by the second play. The
+claim I corrected on `sc25` is now doubly wrong, and the shape is clearer: a run
+that clears every level but *overruns several of them* is exactly the case blind
+replay exists for, and it took thirteen rollouts to produce one.
+
+`tu93` is also the environment §0a already cites as a case where blind replay paid
+in the 25-environment arm — **0.8286 → 1.0000** there, 0.8798 → 1.0000 here. The
+finding replicates on the same game, a day later, under a rebuilt harness, with a
+different solver process that could not read the earlier result.
+
+### It replayed against its own estimate
+
+This game displays a depleting bar the solver reads as a per-level action meter,
+so unlike previous runs it had *something* to estimate `raw` from. It used it, and
+the estimate said not to bother:
+
+> **The measured budgets suggest replaying wouldn't help since the raw score
+> exceeds the cap**, but the real baselines are unknown, **so the doctrine
+> recommends** [replaying anyway]
+
+Its own arithmetic said the replay was worthless. The doctrine's blind rule said
+replay regardless. **The doctrine was right and the estimate was wrong by 0.12.**
+
+That is the strongest evidence yet for §0a as written. The rule is not "replay
+when you calculate a gain" — it is "replay when you *cannot* calculate one",
+precisely because the in-game proxies a solver reaches for are not the human
+baselines and will mislead it. A solver that trusted its own meter would have
+banked 0.8798.
+
+### Proofread
+
+Clean. 122 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 9 levels and 450
+actions. All 16 flagged passages concern the in-game drain bar, not a harness
+budget.
+
+### Standing
+
+**14 clean rollouts, 13.4075 / 14 = 95.77%**, thirteen wins. **Six under the
+repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33`, `sc25`, `tu93` — all
+six 1.0000. Eleven environments outstanding.
