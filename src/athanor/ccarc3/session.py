@@ -90,9 +90,12 @@ class Ccarc3Config:
     spend `5 x baseline_total`. Anything lower is a constraint ARC does not have.
 
     The previous 2.0 was measurably distorting. Across 19 runs it bound in two —
-    `tn36`'s control at 631/634 and `su15` at 701/722 — and those are the two
-    worst scores on record; `su15` ran out on its ninth level and lost roughly
-    0.2 to the cap alone. It would not have moved any of the other seventeen by a
+    `tn36`'s control at 99.5% of its cap and `su15` at 97.1% — and both were
+    stopped by the ceiling rather than by the game; `su15` ran out on its ninth
+    level and lost roughly 0.2 to the cap alone. **Percentages, not the pair:**
+    a cap is the baseline total times `budget_multiple`, and that multiplier is
+    a default in this same class, so `used/cap` written out divides straight
+    back to the median. It would not have moved any of the other seventeen by a
     single action, whose median usage was 29%. So raising it costs money only on
     the runaway games that were being truncated, which is exactly where
     truncating was destroying score.
@@ -893,7 +896,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     #
     # `ft09` is why this exists. A container restart sent SIGTERM to the solver
     # mid-game; the parent survived, collected the trace as it stood -- 4 of 6
-    # levels, 52 actions of a 1040 budget -- and wrote a `result.json` with
+    # levels, about 5% of its budget spent -- and wrote a `result.json` with
     # `won: false`, `timed_out: false` and no error. Nothing in it says the run
     # was cut short, and every consumer reads it as an environment that beat us.
     # Worse, the arm's resume rule is `if prior and not prior.get("error"): skip`,
@@ -937,8 +940,8 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     # `sk48` is why this exists. `tools/rerun_losses.py` caps a pass at one hour
     # so the driver survives container replacement. That cap fired while the
     # solver was mid-climb -- it had just reached level 4 of 8 and was averaging
-    # 37 actions a level -- and banked `levels_reached: 4` with **232 of 5,350
-    # actions used, 4% of the budget**, `timed_out: true` and no error. Under the
+    # 37 actions a level -- and banked `levels_reached: 4` with **4% of the
+    # budget used**, `timed_out: true` and no error. Under the
     # resume rule `if prior and not prior.get("error"): skip`, that is the same
     # permanent false loss as `ft09` and `wa30`, and it would have scored the
     # re-run *below* the 5-of-8 it was sent to beat.

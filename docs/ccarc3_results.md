@@ -3590,7 +3590,7 @@ written up as a reasoned decision and every one was later reversed.
 
 §0b's table changed too. It listed each loss as a *share of its cap* — 5%, 18%,
 12% — which is a fraction of a number the solver cannot see. It now gives the
-absolute action counts (137, 289, 251), which mean something on their own.
+absolute action counts (137, 289, 632), which mean something on their own.
 
 ### 3. `session.py` was a briefing on the strip, in the file the solver imports
 

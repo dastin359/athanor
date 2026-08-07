@@ -255,3 +255,19 @@ def test_an_unfenced_doctrine_is_refused_rather_than_shipped(workspace, monkeypa
     doc.write_text(doc.read_text().replace("<!-- BASELINE-ONLY -->", ""))
     with pytest.raises(RuntimeError, match="BASELINE-ONLY"):
         ab.strip_baselines(workspace.root)
+
+
+def test_a_renumbered_doctrine_cannot_silently_ship_section_six(workspace):
+    """The one strip edit that asserted nothing, and it guards real medians.
+
+    §6's worked examples carry per-level human medians, written as prose in a
+    table rather than as a `baseline_actions` array — so the post-strip scan
+    cannot see them either. A bare literal match on the heading meant an
+    ordinary renumbering turned the removal into a no-op with every test still
+    green, and the stripped doctrine already jumps 5b to 7, which makes
+    renumbering the natural tidy-up.
+    """
+    doc = workspace.root / "DOCTRINE.md"
+    doc.write_text(doc.read_text().replace("## 6. ", "## 5c. ", 1))
+    with pytest.raises(RuntimeError, match="no '## 6\\. ' section"):
+        ab.strip_baselines(workspace.root)

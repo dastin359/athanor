@@ -298,22 +298,21 @@ def score_run(
     **Scores the best play, because that is what ARC scores.** This function used
     to score the play that *finished*, on the stated grounds that doing so "is
     what best-of-plays scoring selects". Those are not the same thing, and a live
-    card settles which one ARC uses. On a probe run of `lp85` — play 1 clearing
-    level 1 in 7 actions, play 2 deliberately fumbling it in 21 — the card came
-    back with::
+    card settles which one ARC uses. On a probe run — play 1 clearing level 1
+    cleanly, play 2 deliberately fumbling the same level — the card came back
+    with::
 
-        runs[0].score = 2.7778     (level_scores [115.0, ...])
-        runs[1].score = 1.8204     (level_scores [ 65.5, ...])
-        environments[0].score = 2.7777777777777777
+        runs[0].score = higher     (level_scores [ higher, ...])
+        runs[1].score = lower      (level_scores [ lower,  ...])
+        environments[0].score = the higher of the two
 
-    The environment took the **maximum**, not the last. Kept at
-    ``scratchpad/best_or_last/card.json``.
+    The environment took the **maximum**, not the last.
 
     The two conventions agree whenever a run's last play is also its best, which
     was true of all seventeen games scored before this changed — so no recorded
-    result moves. They came within one play of disagreeing on `ls20`, whose five
-    plays scored 0.8659, **1.1500**, 1.1270, (unfinished), **1.1500**: play 3 is a
-    *completed* play worse than its predecessor. Had the run ended there, this
+    result moves. They came within one play of disagreeing on one seven-level
+    game, whose middle play was *completed* and still scored below its
+    predecessor. Had the run ended there, this
     function would have reported 1.1270 against ARC's 1.1500. The trajectory is
     not monotone, so "last" is not a safe proxy for "best".
 

@@ -834,8 +834,13 @@ def test_the_doctrine_never_tells_a_solver_to_ration_actions(ws):
                    "stopping costs you nothing"):
         assert banned not in d, f"rationing guidance is back: {banned!r}"
     assert "not spending against an allowance" in d
-    assert "every point ever lost was lost by stopping" in d
-    assert "Not one point was ever lost to exploring too much" in d
+    # The universal that stood here was falsified within a day of being written:
+    # `sk48` cleared 8 of 8, replayed, and still lost 0.0462 to overrunning its
+    # last level. What survives is the regime statement -- the cap bound in all
+    # 25 arm environments -- plus the scoped claim about unbeaten levels, which
+    # is what actually argues against rationing.
+    assert "the completion cap was the binding term in every single environment" in d
+    assert "No run has ever lost a point by exploring a level it had not yet" in d
 
 
 def test_no_solver_facing_file_frames_actions_as_an_allowance(ws):

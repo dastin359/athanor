@@ -160,3 +160,111 @@ def test_no_published_median_sits_beside_baseline_vocabulary():
                         leaks.append(f"{path.name}: {value} ({game.game_id})")
     assert not leaks, ("published medians beside baseline vocabulary: "
                        + "; ".join(sorted(set(leaks))))
+
+
+# ---------------------------------------------------------------------------
+# The second audit, 2026-08-07. Three more criticals, all invisible to
+# everything above, because none of them is a median: they are *functions* of
+# one. A cap is `h_total * budget_multiple`; a level score is
+# `100*min(1.15,(h/a)^2)`. Both invert, both were sitting in docstrings, and
+# `help()` renders docstrings.
+#
+# The worst of them cleared every purpose-built guard in this repo. The
+# reachable-docs test walked `athanor.ccarc3:score_run`, whose docstring
+# contained `21 actions` beside `level_scores [65.5, ...]` -- and returned no
+# hits, because 65.5 is a score and 21 is an action count and neither is
+# "baseline"-shaped. Checking for the secret is not enough when the secret's
+# published transforms are lying next to it.
+# ---------------------------------------------------------------------------
+
+# Every multiplier this harness has shipped. A cap is the only number in the
+# system that is a published constant times the thing being withheld.
+BUDGET_MULTIPLES = (2.0, 4.0, 5.0)
+
+DECIMAL = re.compile(r"(?<![\w.])\d{1,3}\.\d{1,4}(?![\w.])")
+INTEGER = re.compile(r"(?<![\w.])\d{2,5}(?![\w.%])")
+THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
+
+
+def numeric(text: str) -> str:
+    """Join thousands separators so `12,416` is one number and not also `416`.
+
+    `416` is `ft09`'s median total doubled, and `12,416` is a row count in
+    `grids.py`. The first version of the cap check reported it and was wrong.
+    """
+    return THOUSANDS.sub("", text)
+
+
+@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
+                    reason="needs the API key to know what the real medians are")
+def test_no_action_cap_appears_in_importable_prose():
+    """`52 actions of a 1040 budget` is `ft09`'s median total, times five.
+
+    The strip removes `action_budget` from `meta.json` and `CCARC3_MAX_ACTIONS`
+    from the child's environment precisely because a cap inverts. Then three
+    docstrings handed one back: two as a `used/cap` pair, one outright.
+    """
+    from athanor.ccarc3 import list_games
+
+    leaks = []
+    for path in REACHABLE:
+        present = {int(n) for n in INTEGER.findall(numeric(prose(path)))}
+        for game in list_games():
+            total = sum(game.baseline_actions)
+            for mult in BUDGET_MULTIPLES:
+                cap = int(total * mult)
+                if cap in present:
+                    leaks.append(f"{path.name}: {cap} = {game.game_id} total x {mult}")
+    assert not leaks, "action caps invert to medians: " + "; ".join(sorted(set(leaks)))
+
+
+# A level score, however it is dressed. `S = 100*min(1.15,(h/a)^2)` and the
+# doctrine prints that formula in the solver's own workspace, so a score in
+# reachable prose is a median once the action count is known -- and the action
+# count is usually in the same sentence.
+LEVEL_SCORE_SHAPE = re.compile(
+    # A populated array, not a subscript: `level_scores [65.5, ...]` leaks and
+    # `level_scores[0]` is prose about the leak.
+    r"level_scores?\s*[\"']?\s*[:=]?\s*[\[(]\s*\d+(?!\s*\])"
+    r"|\blevel[ _]\d+\b[^.\n]{0,30}?\bscored?\b[^.\n]{0,20}?\d{1,3}\.\d",
+    re.IGNORECASE,
+)
+
+# **What this deliberately does not match.** A looser rule -- any decimal within
+# 40 characters of the word "score" -- fires on the rubric itself
+# (`100*min(1.15,(h/a)^2)`), on the `[0.0, 1.15]` range assertions, and on this
+# project's own environment scores (`0.2748` lost by `bp35`). None of those
+# inverts to a median: `E` is an aggregate and `1.15` is a constant. Only a
+# *level* score does, and only that shape is banned here.
+#
+# The gap this leaves is a level score written in prose that names neither
+# "level_scores" nor a level number. Nothing automatic covers that; the rule to
+# hold in review is simply that a worked example uses `higher` and `lower`.
+ALLOWED_SCORE_PHRASES = ()
+
+
+@pytest.mark.parametrize("path", REACHABLE, ids=lambda p: p.name)
+def test_no_level_score_appears_in_importable_prose(path):
+    """Ban the shape, because no value-based test can catch this one.
+
+    **The obvious check does not work and it is worth recording why.** Given a
+    score `s` and an action count `a`, the implied median is `a*sqrt(s/100)`.
+    With ~200 published medians spread over 1..400, almost every (s, a) pair in
+    ordinary prose lands within rounding distance of one: `1.1 beside 403` yields
+    42.3, and both 42 and 43 are real medians. A first attempt reported sixteen
+    such "leaks", every one a coincidence — the same density problem that made
+    the bare-value scan useless (see the module docstring).
+
+    So this bans the presentation instead of hunting the value. A level score has
+    no reason to appear in importable prose at all: the argument a worked example
+    is making survives with `higher`/`lower` in place of the numbers, which is
+    how `DOCTRINE.md` §0a was already written and how `score_run`'s docstring
+    should have been.
+    """
+    text = prose(path)
+    hits = [m.group(0) for m in LEVEL_SCORE_SHAPE.finditer(text)
+            if not any(a in m.group(0) for a in ALLOWED_SCORE_PHRASES)]
+    assert not hits, (
+        f"{path.name} prints level-score-shaped values: {hits}. Say `higher` and "
+        "`lower` — a score plus its action count is the median in disguise."
+    )

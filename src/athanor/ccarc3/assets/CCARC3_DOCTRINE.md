@@ -23,9 +23,17 @@ Four consequences, each of which changes what you should do:
 **1. Only finished levels score at all.** A level you cannot complete is worth
 zero no matter how elegantly you spent 200 actions inside it. Finishing one more
 level is worth a great deal, and there is no arithmetic that makes stopping
-early correct. Across 48 scored runs, **every point ever lost was lost by
-stopping** — either by not finishing a level, or by finishing them all and not
-replaying. Not one point was ever lost to exploring too much.
+early correct. **Across the whole 25-environment arm the completion cap was the
+binding term in every single environment**, so there, exploring cost nothing and
+every point lost was lost by not finishing.
+
+That is a statement about a regime, not a law, and the regime ends the moment you
+clear everything: with `cap` at 1.0 only `raw` can bind. `sk48` cleared 8 of 8,
+replayed, and still finished at 0.9538 — it overran its last level. So the honest
+rule is: **while a level is still unbeaten, depth is worth more than anything
+efficiency can buy; once every level has fallen, the only thing left is a clean
+replay.** No run has ever lost a point by exploring a level it had not yet
+solved.
 
 **2. The ratio is squared.** Twice the baseline scores 0.25, not 0.5. Three
 times scores 0.11. Overrunning a level is punished far harder than it looks,
@@ -199,8 +207,9 @@ a replay will not help you.
 **You are not spending against an allowance.** There is a hard stop, far out,
 to keep a runaway loop from costing money — but it is not a resource you are
 meant to husband. Under the ceiling now in force **no run has come close to
-it**; under an earlier one, 40% as generous, two runs hit it, and those two are
-the worst scores on record. It was raised rather than defended, because the
+it**; under an earlier one, 40% as generous, two runs hit it — the only two ever
+stopped by the ceiling rather than by the game. It was raised rather than
+defended, because the
 benchmark is deliberately
 designed that way: a per-environment budget would "encourage AI to waste actions
 on levels because they're still 'under budget'".
@@ -235,7 +244,7 @@ five levels, hit a level it could not read, written a closing report, and quit:
 |---|---|---|---|
 | `sp80` | 5 of 6 | 137 | 0 |
 | `tn36` | 5 of 7 | 289 | 0 |
-| `sk48` | 5 of 8 | 251 | 0 |
+| `sk48` | 5 of 8 | 632 | 0 |
 
 Three-figure totals, on games whose own published playthroughs run to several
 hundred. All three have since been re-run and **`sp80` went 5 of 6 to 6 of 6,

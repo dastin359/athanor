@@ -396,15 +396,20 @@ class ArcClient:
     the two levels that cost `tn36` the game rank first and second:
 
     ====================  =====  ==========  ========
-    level                 ratio  revisits    cleared?
+    level                 ratio  revisited   cleared?
     ====================  =====  ==========  ========
-    tn36 L5               5.62x  95/308 31%  **no**
-    tn36 L1               2.57x  30/184 16%  yes
-    su15 L7               0.93x   4/36  11%  yes
-    tn36 L3               1.52x   5/60   8%  yes
-    su15 L5               1.52x   1/46   2%  yes
-    every lp85 level      <0.9x    0/84   0%  yes
+    tn36 L5               5.62x        31%   **no**
+    tn36 L1               2.57x        16%   yes
+    su15 L7               0.93x        11%   yes
+    tn36 L3               1.52x         8%   yes
+    su15 L5               1.52x         2%   yes
+    every lp85 level      <0.9x         0%   yes
     ====================  =====  ==========  ========
+
+    (Fractions, not counts. The ratio column is actions over the level's median,
+    so printing the actions beside it divides straight back to the median -- five
+    of them, in a docstring inside ``inspect.getsource(ArcClient)``. The
+    percentages carry the entire argument; the numerators were the leak.)
 
     **The control is the 1.52x pair.** `su15` L5 and `tn36` L3 ran at exactly
     the same multiple of baseline and both cleared, at 2% and 8%. `tn36` L5 ran

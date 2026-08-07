@@ -77,6 +77,40 @@ array; `client.py` carried four more in prose explaining why each fix was made;
 `gate.py` quoted a total inside a comment about having removed that total.
 Purged in `9eae0bd`, with three tests that fail on reintroduction of any of them.
 
+## The second audit, 2026-08-07: four more, and none of them a median
+
+A seven-lens adversarial audit found what the first purge missed. All four are
+*functions* of a median rather than a median, which is why every value-based
+guard walked past them.
+
+* `scoring.score_run`'s docstring gave a worked example as `21 actions ->
+  level_scores [65.5, ...]`. `S = 100*min(1.15,(h/a)^2)` inverts that pair to
+  `h = 17` exactly — one real per-level median, rendered by `help()`, with the
+  formula supplied by the doctrine in the solver's own workspace. The same
+  docstring named the path to a stored card holding two complete
+  `level_baseline_actions` arrays. Now symbolic (`higher`/`lower`), and the
+  reasoning lives here rather than in the docstring — writing *why* a leak was
+  removed into the place it was removed from is how `gate.py` kept its number
+  for months.
+* `Ccarc3Config.budget_multiple` and two comments in `session.py` printed
+  `used/cap` pairs and one bare cap. A cap is the median total times
+  `budget_multiple`, whose default sits in the same file. Now percentages.
+* `ArcClient.level_revisits` tabulated a ratio column beside an action column;
+  `h = a/ratio` recovered five per-level medians. Now percentages only.
+
+**The guard that should have caught the first one walked straight past it.** The
+reachable-docs test rendered `athanor.ccarc3:score_run`, and all three of its
+regexes returned empty — because `65.5` is a score and `21` is an action count,
+and neither is baseline-shaped. Checking for the secret is not enough when the
+secret's published transforms are lying beside it.
+
+Two new tests cover the transforms: caps (`total x {2,4,5}`) and level-score
+presentation. A third was attempted and abandoned — checking decimals against
+every published median finds a match for almost anything, because ~200 medians
+over 1..400 make the space dense: `97.1` is `100*(67/68)^2` and `99.7` is
+`100*(368/369)^2`. That density is why the *shape* is banned instead of the
+value, and why review, not a regex, is the real defence here.
+
 ## What is enforced, and what is only asked
 
 Stated plainly because the layers above read stronger than they are.

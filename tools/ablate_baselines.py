@@ -280,17 +280,35 @@ def strip_baselines(root: pathlib.Path) -> None:
         text = text.replace("\n\n\n", "\n\n")
     doc.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
 
-    # §6 and §6a tell the solver to steer by a number it can no longer read.
+    # §6 and §6a tell the solver to steer by a number it can no longer read, and
+    # §6's worked examples contain real per-level medians.
+    #
+    # **This was the one doctrine edit that asserted nothing.** Every other one
+    # here raises when its anchor moves: the three `raw` rewrites raise "no
+    # longer contains the conditional", the fences raise "has no BASELINE-ONLY
+    # fences". This was a bare literal match on `## 6. `, so renumbering the
+    # doctrine -- an ordinary edit, and one made more likely by the fact that the
+    # stripped copy already jumps 5b to 7 -- silently turns it into a no-op and
+    # ships the medians. The post-strip scan does not cover it either: that looks
+    # for `baseline_actions` followed by a container, and §6 writes its numbers
+    # as prose in a table.
     lines = doc.read_text(encoding="utf-8").splitlines()
-    out, skipping = [], False
+    out, skipping, dropped = [], False, 0
     for line in lines:
         if re.match(r"^## 6\. ", line):
             skipping = True
-            continue
         if skipping and re.match(r"^## (?!6)", line):
             skipping = False
-        if not skipping:
+        if skipping:
+            dropped += 1
+        else:
             out.append(line)
+    if not dropped and not already_stripped:
+        raise RuntimeError(
+            "DOCTRINE.md has no '## 6. ' section to remove. If the doctrine was "
+            "renumbered, this strip just shipped the pacing section and its "
+            "per-level medians to a baseline-free solver."
+        )
     doc.write_text("\n".join(out) + "\n", encoding="utf-8")
 
     # **meta.json carries the whole GameInfo, including baseline_actions.**
