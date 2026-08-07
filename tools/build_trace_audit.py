@@ -673,42 +673,50 @@ def summarise(data: dict) -> dict:
 
 
 def fit(data: dict, runs: list, template: str) -> tuple[str, int, int | None]:
-    """Render the page. Nothing is trimmed any more, because nothing is embedded.
+    """Render, trimming tool payloads only as far as the size ceiling demands.
 
-    This used to walk caps of 8000 -> 500 chars, cutting tool payloads until the
-    page fell under the artifact ceiling; the last build trimmed **4,143** of
-    them to 1000 chars to fit 13.8 MB. That was only ever necessary because the
-    whole span store shipped inside the page to feed the span-tree UI. With the
-    visuals gone the page carries per-run rows and prose, and the spans stay
-    where they always belonged -- `evidence/ccarc3/trace_audit/spans.json.gz`,
-    full-fidelity and committed.
+    Returns the page plus how many payloads were trimmed and at what cap, so the
+    caller can report it. A page that silently dropped half its evidence would
+    still look like a complete audit.
 
-    So the published page is now strictly *less* complete than the evidence, and
-    that is the right way round. It was the other way before: the page was the
-    thing people read and it was the lossy copy.
-
-    Signature kept so callers need not change; the trim count is always 0.
+    The headline figures are derived here rather than written into the template.
+    The hand-written ones went stale the moment the page grew past the build they
+    were computed on, and nothing in the page said so.
     """
     stats = summarise(data)
-    # The page can no longer count spans itself, so hand it the totals.
-    prov = {"L": 0, "S": 0, "U": 0}
-    for entry in data.values():
-        for attempt in entry["attempts"]:
-            prov["L"] += attempt.get("lines") or 0
-            prov["S"] += len(attempt["spans"])
-            prov["U"] += attempt.get("unparseable") or 0
+    def render(cap: int | None) -> str:
+        payload = data
+        if cap is not None:
+            payload = json.loads(json.dumps(data))
+            for entry in payload.values():
+                for attempt in entry["attempts"]:
+                    for span in attempt["spans"]:
+                        for field in ("out", "input", "text"):
+                            body = span.get(field)
+                            if isinstance(body, str) and len(body) > cap:
+                                span[field] = body[:cap] + "…[trimmed]"
+        return (template
+                .replace("__DATA_JSON__", json.dumps(payload))
+                .replace("__RUNS_JSON__", json.dumps(runs))
+                .replace("__NGAMES__", str(stats["games"]))
+                .replace("__BASH_CALLS__", f"{stats['bash']:,}")
+                .replace("__BASH_MEDIAN__", f"{stats['median']:.2f}")
+                .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}"))
 
-    page = (template
-            .replace("__PROV_JSON__", json.dumps(prov))
-            .replace("__RUNS_JSON__", json.dumps(runs))
-            .replace("__NGAMES__", str(stats["games"]))
-            .replace("__NSPANS__", f"{prov['S']:,}")
-            .replace("__BASH_CALLS__", f"{stats['bash']:,}")
-            .replace("__BASH_MEDIAN__", f"{stats['median']:.2f}")
-            .replace("__LLM_PCT__", f"{stats['llm_pct']:.0f}"))
-    if len(page.encode()) > CEILING:
-        raise SystemExit("the page is over the artifact ceiling without any spans in it")
-    return page, 0, None
+    page = render(None)
+    if len(page.encode()) <= TARGET:
+        return page, 0, None
+
+    for cap in (8000, 4000, 2000, 1000, 500):
+        page = render(cap)
+        if len(page.encode()) <= TARGET:
+            trimmed = sum(
+                1 for e in data.values() for a in e["attempts"] for s in a["spans"]
+                for f in ("out", "input", "text")
+                if isinstance(s.get(f), str) and len(s[f]) > cap
+            )
+            return page, trimmed, cap
+    raise SystemExit("cannot fit the page under the artifact ceiling even at 500 chars")
 
 
 class _Ingest(argparse.Action):
