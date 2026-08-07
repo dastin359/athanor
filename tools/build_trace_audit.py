@@ -710,8 +710,16 @@ def summarise(data: dict) -> dict:
     }
 
 
+# The generation boundary the page renders, as a commit and the instant it
+# landed. `f66cc91` is the exhaustive solver-surface repair -- 22:47 PDT on
+# 2026-08-06 -- and the operator's instruction was to exclude everything run
+# before it.
+GENERATION_EPOCH = "2026-08-07T05:47:33+00:00"
+GENERATION_COMMIT = "f66cc91"
+
+
 def current_generation_only(runs: list, data: dict, keep_all: bool) -> tuple[list, dict, int]:
-    """Render only runs made under the current solver surface.
+    """Render only runs made at or after the generation epoch.
 
     **Operator instruction, 2026-08-07: exclude everything run before the 22:47
     PDT fix.** The page had accumulated three harness generations at once -- the
@@ -723,11 +731,25 @@ def current_generation_only(runs: list, data: dict, keep_all: bool) -> tuple[lis
     and prompts that framed actions as an allowance. That is a different
     treatment, and a page that lists it next to the current one implies otherwise.
 
-    `tier` is the measured answer, not a label: `mark_generation` compares each
-    run's `surface_digest` against the current one, so `current` means the solver
-    read byte-identical files. Verified against the alternative -- filtering by
-    start time relative to the fix commit -- and the two agree exactly on all
-    seven.
+    **The filter is the epoch, not `tier`.** It was `tier == "current"` -- the
+    run's recorded surface digest equalling what today's code would ship -- and
+    that is the stricter, more principled test, but it answers a question nobody
+    asked: *is this run's surface identical to the harness right this second?*
+    Improving the harness after reading a batch is the entire working method
+    here, so the honest answer goes to `no` for every run within minutes of any
+    batch finishing, and the page renders empty. It did, twice in one morning:
+    once for adding `client.py` to the digest, once for rewriting the doctrine's
+    `raw` conditionals.
+
+    A cohort fallback keyed on the digest *value* was worse than useless: the
+    digest covers `meta.json`, which carries the game id and level count, so two
+    runs of different games never share one however identical their treatment.
+    Grouping by it isolated exactly one run and reported that as the generation.
+
+    The epoch does not drift, because a generation is defined by the treatment
+    its runs received, not by the code's current state. `tier` stays on every row
+    as reported metadata -- it is still the measurement, and `superseded` is
+    still true and worth showing -- it just no longer decides what is on the page.
 
     **Nothing is deleted.** The store keeps every span of every generation, and
     `--all-generations` renders them again. Dropping evidence to tidy a page would
@@ -735,7 +757,16 @@ def current_generation_only(runs: list, data: dict, keep_all: bool) -> tuple[lis
     """
     if keep_all:
         return runs, data, 0
-    keep = {r["id"] for r in runs if r.get("tier") == "current"}
+    keep = set()
+    for row in runs:
+        if row.get("tier") in {"void", "excluded"} or not row.get("started"):
+            continue
+        try:
+            when = dt.datetime.fromisoformat(row["started"].replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when >= dt.datetime.fromisoformat(GENERATION_EPOCH):
+            keep.add(row["id"])
     dropped = len(runs) - len(keep)
     return ([r for r in runs if r["id"] in keep],
             {k: v for k, v in data.items() if k in keep},

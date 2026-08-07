@@ -82,7 +82,7 @@ class Ccarc3Config:
     budget_multiple: float = 5.0
     """Action cap as a multiple of the game's published baseline (§2.6).
 
-    A flat cap cannot work: real games span 171 to 1843 baseline actions, so any
+    A flat cap cannot work: real games differ in length by an order of magnitude, so any
     single number either truncates the long games or wastes the short ones.
 
     **5.0 because that is ARC's own ceiling.** ARC imposes no game-wide pool at
@@ -483,7 +483,7 @@ Routing costs more than verifying here — testing a belief is one action, but
 walking a bad route is many:
 
 ```python
-acts = [6]                             # YOUR actions — both default to (1,2,3,4)
+acts = [...]                           # from `available_actions` on the frame
 arc.shortest_path(step, start, goal, acts)  # fewest actions, over your step function
 arc.reachable(step, start, acts)            # reachable at all, or did I misread?
 ```

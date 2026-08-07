@@ -206,6 +206,7 @@ def strip_baselines(root: pathlib.Path) -> None:
     # Asserted rather than best-effort: if a doctrine edit breaks a match, this
     # raises instead of silently shipping the conditional again.
     doc_text = (root / "DOCTRINE.md").read_text(encoding="utf-8")
+    already_stripped = True
     for old, new_text in (
         ("**If you cannot compute `raw`, replay anyway.** Without the per-level baselines\n"
          "you cannot tell whether",
@@ -224,6 +225,7 @@ def strip_baselines(root: pathlib.Path) -> None:
     ):
         if new_text in doc_text:
             continue                      # already rewritten; the strip is idempotent
+        already_stripped = False
         if old not in doc_text:
             raise RuntimeError(
                 f"DOCTRINE.md no longer contains the conditional this rewrites:\n{old[:80]}..."
@@ -231,8 +233,54 @@ def strip_baselines(root: pathlib.Path) -> None:
         doc_text = doc_text.replace(old, new_text, 1)
     (root / "DOCTRINE.md").write_text(doc_text, encoding="utf-8")
 
-    # §6 and §6a tell the solver to steer by a number it can no longer read.
+    # **Fenced passages, for the arithmetic that is scattered rather than
+    # sectioned.** The three rewrites above are sentence surgery, and sentence
+    # surgery only reaches the sentences you thought of: they turned the `raw`
+    # conditionals into statements and left two whole passages standing that a
+    # baseline-free solver cannot use -- the "judge it by arithmetic" bullets and
+    # the binding-term table -- both of which lead with *a replay gains you
+    # nothing*. A solver that cannot evaluate the antecedent reads the
+    # conclusion, which is the failure `bp35` made and the fix was supposed to
+    # prevent.
+    #
+    # So the doctrine now fences those passages itself and this removes whatever
+    # is inside the markers. Rewording a fenced passage cannot reopen the leak,
+    # and adding a new one costs a pair of comment lines rather than a patch
+    # here. HTML comments are invisible in rendered Markdown, so the
+    # baseline-visible copy reads as continuous prose.
     doc = root / "DOCTRINE.md"
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    out, inside, fenced = [], False, 0
+    for line in lines:
+        if line.strip() == "<!-- BASELINE-ONLY -->":
+            inside = True
+            continue
+        if line.strip() == "<!-- /BASELINE-ONLY -->":
+            if not inside:
+                raise RuntimeError("DOCTRINE.md: closing BASELINE-ONLY with no opener")
+            inside = False
+            fenced += 1
+            continue
+        if not inside:
+            out.append(line)
+    if inside:
+        raise RuntimeError("DOCTRINE.md: unclosed BASELINE-ONLY fence")
+    if not fenced and not already_stripped:
+        # Not a no-op: a fence silently lost to an edit puts the "a replay gains
+        # you nothing" bullets back in front of a solver that cannot evaluate
+        # them. Raise rather than ship the workspace.
+        raise RuntimeError(
+            "DOCTRINE.md has no BASELINE-ONLY fences -- the doctrine lost them "
+            "in an edit, and the passages they guard are baseline-only"
+        )
+    # Two blank lines where a fenced block was is a paragraph break plus a gap;
+    # collapse so the seam is not visible as an unexplained hole.
+    text = "\n".join(out)
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    doc.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
+
+    # §6 and §6a tell the solver to steer by a number it can no longer read.
     lines = doc.read_text(encoding="utf-8").splitlines()
     out, skipping = [], False
     for line in lines:

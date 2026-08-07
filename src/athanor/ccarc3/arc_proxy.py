@@ -171,18 +171,24 @@ def set_budget(max_actions: int, *, used: int = 0) -> None:
 # too.** Closing the allowlist was not enough: `POST /api/scorecard/close` is a
 # call every solver legitimately makes, and its response body carries, per run,
 #
-#     "level_actions":          [21, 0, 0, ...]
-#     "level_baseline_actions": [17, 38, 31, 16, 41, 60, 26, 159]
-#     "level_scores":           [65.53, 0.0, ...]
+#     "level_actions":          [a0, a1, ...]
+#     "level_baseline_actions": [h0, h1, ...]
+#     "level_scores":           [s0, s1, ...]
 #
 # -- the human medians for every level of the game, handed over verbatim. That is
-# exactly what `CCARC3_HIDE_BASELINES` withholds. Measured on a real card kept at
-# scratchpad/best_or_last/card.json.
+# exactly what `CCARC3_HIDE_BASELINES` withholds.
 #
 # `level_scores` has to go with them: ARC's score is 100*min(1.15, (h/a)^2) and the
 # solver knows its own `a`, so a score inverts straight back to `h`. The aggregate
 # `score` fields go too -- a solver has no legitimate use for its own RHAE while
 # the run is in progress, and that is the number the arm is built to withhold.
+#
+# **Written symbolically because this file is on the solver's PYTHONPATH.** It
+# carried a real card's arrays as the worked example, which put one environment's
+# complete median list inside the module whose whole job is to withhold it --
+# reachable by `inspect.getsource(arc_proxy)` from a stripped workspace, which is
+# how it was found. Twice over: `level_actions[0]` beside `level_scores[0]` invert
+# to `h0` on their own. A sample that demonstrates a leak must not be one.
 #
 # Nothing in client.py reads any of these; `close()` is called for its side effect
 # and `snapshot_scorecard` reads `actions_by_level`, which is untouched.

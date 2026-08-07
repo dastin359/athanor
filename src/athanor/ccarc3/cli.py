@@ -169,7 +169,7 @@ def _compare(before: list[dict], after: list[dict], label: Path) -> None:
 def _summarise(results: list[dict]) -> None:
     """Report per game, and never a bare pooled rate.
 
-    Games differ enormously in length -- 171 to 1843 baseline actions -- so a
+    Games differ enormously in length -- by an order of magnitude -- so a
     pooled "levels solved" number mostly reports which games were in the batch.
     Levels reached against levels available is the comparable figure.
     """

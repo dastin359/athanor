@@ -809,14 +809,24 @@ def test_the_doctrine_never_tells_a_solver_to_ration_actions(ws):
     the game; keep one baseline in reserve"* — advice a solver cannot follow once
     the cap is withheld, and advice that points at the wrong objective anyway.
     ARC-AGI-3 scores `min(cap, raw)`; across 32 scored runs the completion term
-    was binding in 30, and **every point ever lost was lost by not finishing**.
-    Not one run came near its limit — the doctrine's own §0b table shows the
-    three arm losses stopping at 5%, 18% and 12% of theirs.
+    was binding in 30, and every point ever lost was lost by not finishing. Not
+    one run came near its limit — the doctrine's own §0b table shows the three
+    arm losses stopping at 5%, 18% and 12% of theirs.
 
     Rationing induces exactly the failure §0b is about. `lf52` stopped at 7 of 10
     having spent 13% of its actions and four of its six hours, with §0b in front
     of it. So the doctrine must not carry a rule that competes with §0b, and it
     must not hand the solver an allowance to husband.
+
+    **The sentence this used to pin has since gone false, and the fix is the
+    interesting part.** "Every point ever lost was lost by not finishing" held
+    for 32 runs and then stopped: `bp35` cleared 9 of 9 and lost 0.2748, `sk48`
+    cleared 8 of 8 and lost 0.0462. Both finished everything and lost the points
+    by not replaying. So the claim now reads *lost by stopping* — either not
+    finishing a level, or finishing them all and stopping at the winning frame —
+    which is still the anti-rationing argument, and is also true. What must never
+    come back is the second half: no run has ever lost a point by exploring too
+    much, and that is what makes rationing indefensible.
     """
     # Collapsed, so the assertions survive the doctrine being re-wrapped.
     d = re.sub(r"\s+", " ", (ws.root / "DOCTRINE.md").read_text())
@@ -824,7 +834,8 @@ def test_the_doctrine_never_tells_a_solver_to_ration_actions(ws):
                    "stopping costs you nothing"):
         assert banned not in d, f"rationing guidance is back: {banned!r}"
     assert "not spending against an allowance" in d
-    assert "every point ever lost was lost by not finishing" in d
+    assert "every point ever lost was lost by stopping" in d
+    assert "Not one point was ever lost to exploring too much" in d
 
 
 def test_no_solver_facing_file_frames_actions_as_an_allowance(ws):

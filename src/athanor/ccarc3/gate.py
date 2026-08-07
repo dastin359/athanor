@@ -22,12 +22,12 @@ hypothesis would be a reviewer, and this harness does not have one.
 # **This docstring is solver-visible, and it used to leak.** `__init__.py` does
 # `from .gate import GateRefusal, LevelGate`, which binds the submodule, so
 # `arc.gate.__doc__` and `pydoc athanor.ccarc3.gate` both print it -- and the
-# paragraph above once justified the gate by saying re-derivation is
-# "unaffordable" because "a published baseline runs to 1843 actions". That is a
-# real per-game baseline total, in the operator's own voice, reachable by
-# introspection from an object the workspace `session.py` hands the solver by
-# name. The argument survives without the number; the number does not survive
-# being printed.
+# paragraph above once justified the gate by quoting a real per-game baseline
+# total, in the operator's own voice, reachable by introspection from an object
+# the workspace `session.py` hands the solver by name. The argument survives
+# without the number; the number does not survive being printed -- and neither
+# does a note like this one that repeats it while explaining the removal, which
+# is how the figure was still here months later.
 
 from __future__ import annotations
 

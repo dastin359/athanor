@@ -294,10 +294,10 @@ class ArcClient:
 
     Per **level**, not per game. This harness originally capped only the game
     total, at 2.0x the summed baseline — which is roughly **40% of the official
-    allowance** and binds in the wrong place. `tn36` was stopped at 634 actions
-    having cleared 6 of 7 levels; the official rule would have allowed up to
-    1585, while separately cutting its one pathological level at 5x rather than
-    letting it run to 5.6x.
+    allowance** and binds in the wrong place. One run was stopped with 6 of its 7 levels
+    cleared and roughly 40% of the official allowance still unspent, while its one
+    pathological level was allowed to run to 5.6x -- the cap bit where it should
+    not have and failed to bite where it should.
 
     A per-level cap is also the better instrument: it ends the level that is
     going nowhere instead of letting it consume the budget the *next* level
@@ -387,8 +387,8 @@ class ArcClient:
     the board keeps coming back to where it has already been.
 
     **The distinction is the whole point, because the no-op signal missed the
-    only run this project has lost.** `tn36` spent 309 actions on a
-    55-baseline level and never cleared it, with **8** no-ops in the whole
+    only run this project has lost.** `tn36` spent 309 actions on a level worth a
+    small fraction of that and never cleared it, with **8** no-ops in the whole
     level -- invisible to ``level_dead``. A third of those actions landed on a
     board it had already stood on.
 
@@ -753,10 +753,11 @@ class ArcClient:
     # worth anything?*
     #
     # `su15` is the case that made this concrete. Its solver blew 268 actions on
-    # a 31-baseline level and 182 on an 8-baseline level, then cleared level 7
-    # and correctly chose to replay. Nothing in the harness could have told it
-    # that those two levels had already fixed its ceiling at 0.82 -- which is
-    # the fact that made the replay right, and the fact it had to guess.
+    # one level and 182 on another, each many times what the level was worth,
+    # then cleared level 7 and correctly chose to replay. Nothing in the harness
+    # could have told it that those two levels had already fixed its ceiling at
+    # 0.82 -- which is the fact that made the replay right, and the fact it had
+    # to guess.
 
     @property
     def completion_cap(self) -> float:
@@ -1018,10 +1019,8 @@ class ArcClient:
     def status(self) -> str:
         """A one-line, honest progress report.
 
-        Leads with the ratio of actions spent on this level against its published
-        baseline, because that number is the doctrine's control law and it was
-        previously computable but never shown. A failed run sat at 6.1x on one
-        level without anything saying so.
+        Reports level, state, action count, and whichever of the score terms
+        this run has the inputs to compute.
 
         **Facts on the first line, warnings on their own lines after it.**
         Interleaving them produced ``<- OVER BASELINE: re-explore rather than
@@ -1058,8 +1057,8 @@ class ArcClient:
                 # With the medians withheld only `cap` is computable, so this
                 # used to print `[cap 1.000 = 9/9 levels]` and stop -- half the
                 # formula, with no sign that the other half existed. On
-                # 2026-08-07 `bp35` cleared 9 of 9 in 990 actions against a
-                # 651-action baseline, read that line, and concluded: "All nine
+                # 2026-08-07 `bp35` cleared 9 of 9 in 990 actions -- around half
+                # again what the game was worth -- read that line, and concluded: "All nine
                 # levels are cleared with a perfect score, so the game is won. I
                 # should wrap this up." Its `raw` was 0.7252. It never replayed,
                 # and the replay was available at that exact frame and worth up
@@ -1079,11 +1078,11 @@ class ArcClient:
                 # that says the same thing an hour earlier.
                 if self.state == "WIN":
                     warnings.append(
-                        "WON — and `restart_for_replay()` is legal RIGHT NOW and "
-                        "illegal after any further action. Your score is "
-                        "min(cap, raw); cap is 1.000 and raw is unknown to you, "
-                        "so a clean replay can only raise it. Doctrine §0a: if "
-                        "you cannot compute raw, replay anyway."
+                        f"WON — and `restart_for_replay()` is legal RIGHT NOW and "
+                        f"illegal after any further action. Your score is "
+                        f"min(cap, raw); cap is {self.completion_cap:.3f} and raw "
+                        f"is unknown to you, so a clean replay can only raise it. "
+                        f"You cannot compute raw on this run — replay anyway."
                     )
             else:
                 facts.append(
@@ -1238,8 +1237,8 @@ class ArcClient:
         The first draft of this said "the threshold is zero, and that is
         measured". Four winning runs did change the board on literally every
         action -- 845/845, 351/351, 76/76, 69/69 -- so it looked settled. The
-        fifth win wasted 8 of 114 and cleared six levels in 121 actions against
-        a 171 baseline. **Waste is compatible with winning**, so this reports
+        fifth win wasted 8 of 114 and cleared six levels comfortably inside what
+        they were worth. **Waste is compatible with winning**, so this reports
         the count and lets the solver judge.
 
         An earlier version looked for an action whose every attempt was dead.

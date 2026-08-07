@@ -23,8 +23,9 @@ Four consequences, each of which changes what you should do:
 **1. Only finished levels score at all.** A level you cannot complete is worth
 zero no matter how elegantly you spent 200 actions inside it. Finishing one more
 level is worth a great deal, and there is no arithmetic that makes stopping
-early correct: across 32 scored runs, **every point ever lost was lost by not
-finishing**, and not one was lost to spending too much.
+early correct. Across 48 scored runs, **every point ever lost was lost by
+stopping** — either by not finishing a level, or by finishing them all and not
+replaying. Not one point was ever lost to exploring too much.
 
 **2. The ratio is squared.** Twice the baseline scores 0.25, not 0.5. Three
 times scores 0.11. Overrunning a level is punished far harder than it looks,
@@ -93,22 +94,26 @@ that the score is happy to take:
 client.restart_for_replay()      # only legal right after a level advance
 ```
 
-**Judge it by arithmetic, not by mood.** An environment scores
-`min(completion cap, weighted mean)`. Clear every level and the cap is 1.0, so:
+An environment scores `min(completion cap, weighted mean)`. Clear every level
+and the cap is 1.0.
 
-- If your levels came in **under baseline**, your raw score is already at or
-  above 1.0 and the cap is binding. **A replay gains you exactly nothing.**
-  This is the usual case — of 19 runs on record, 17 were already at the cap.
-  Do not spend actions on it.
-- If overruns dragged your raw score below the cap, a replay is worth
-  `cap − raw`. `tn36` is the worked case: one run finished at `raw` **0.449**
-  against a `cap` of 0.750, having cleared six of seven levels — and a later run
-  of the same environment cleared all seven in **220 actions against that run's
-  631**, scoring **1.000**. The routes were the same. What differed was spending
-  them rather than finding them.
+<!-- BASELINE-ONLY -->
+**Judge it by arithmetic, not by mood.** If your levels came in **under
+baseline**, your raw score is already at or above 1.0, the cap is binding, and a
+replay gains you exactly nothing. That is the common case; do not spend actions
+on it. Only when overruns dragged your raw score below the cap is a replay worth
+`cap − raw`.
+<!-- /BASELINE-ONLY -->
 
-The second case is the one to watch for, because it is where a *bad* run turns
-into a good score. The cap does not care that you were slow the first time.
+Overruns are what a replay recovers, and they are worth `cap − raw`. `tn36` is
+the worked case: one run finished at `raw` **0.449** against a `cap` of 0.750,
+having cleared six of seven levels — and a later run of the same environment
+cleared all seven in **220 actions against that run's 631**, scoring **1.000**.
+The routes were the same. What differed was spending them rather than finding
+them.
+
+That is the case to watch for, because it is where a *bad* run turns into a good
+score. The cap does not care that you were slow the first time.
 
 **Clearing every level is not the end of the scoring.** `E = min(cap, raw)`.
 Once you have cleared them all `cap` is exactly 1.0, so your score is `raw`
@@ -150,6 +155,7 @@ If you *do* have the per-level baselines, `arc.score_run(client.transitions(),
 baselines)` gives `raw`, `cap` and the breakdown. If you do not, you are in the
 case above and the decision does not need them.
 
+<!-- BASELINE-ONLY -->
 **Fix whichever term is binding.** `E = min(cap, raw)`, so only the smaller one
 is costing you, and the two are improved by opposite actions:
 
@@ -157,12 +163,14 @@ is costing you, and the two are improved by opposite actions:
 |---|---|---|
 | `cap < raw` | you were efficient but stopped early | **clear another level.** A replay is worth zero |
 | `raw < cap` | you finished levels but fumbled through them | **replay.** Another level barely helps — the ceiling is not your problem |
+<!-- /BASELINE-ONLY -->
 
-That second row is counterintuitive and it is the case this project actually
-lost. On `tn36`, `raw` 0.449 against `cap` 0.750: clearing the last level would
-have raised the ceiling to 1.0 and the score only to **0.511**, because `raw` was
-still binding. Replaying the six levels it had already solved was worth
-**0.750** — nearly five times as much, and more per action spent.
+**Fumbling through levels you cleared is the expensive failure, and it is the
+one this project actually made.** On `tn36`, `raw` 0.449 against `cap` 0.750:
+clearing the last level would have raised the ceiling to 1.0 and the score only
+to **0.511**, because `raw` was still binding. Replaying the six levels it had
+already solved was worth **0.750** — nearly five times as much, and more per
+action spent.
 
 **If you do not know the baselines, you still know the cap.**
 `cap = sum(1..k)/sum(1..n)` needs only levels cleared and levels total, both of
@@ -190,8 +198,10 @@ a replay will not help you.
 
 **You are not spending against an allowance.** There is a hard stop, far out,
 to keep a runaway loop from costing money — but it is not a resource you are
-meant to husband, and it has never been the thing that ended a run. Across 32
-scored runs **not one came close to it**, and the benchmark is deliberately
+meant to husband. Under the ceiling now in force **no run has come close to
+it**; under an earlier one, 40% as generous, two runs hit it, and those two are
+the worst scores on record. It was raised rather than defended, because the
+benchmark is deliberately
 designed that way: a per-environment budget would "encourage AI to waste actions
 on levels because they're still 'under budget'".
 
@@ -461,7 +471,7 @@ effort on the question that actually costs actions — *given what I already
 believe, what is the shortest route?*
 
 ```python
-acts = [6]                               # <- YOUR game's actions, not the default
+acts = [...]                             # <- from `available_actions`, not the default
 arc.shortest_path(step, start, goal, acts)   # step(state, action) -> state
 arc.reachable(step, start, acts)             # reachable at all, or did I misread?
 ```
@@ -622,7 +632,7 @@ and one of two things happens:
 - the call is **killed** — `Exit code 143` — mid-loop, leaving the game in
   whatever state the last completed action produced.
 
-Both have happened. Across ten scored games, six calls hit the cap: four went to
+Both have happened. Across ten scored games, five calls hit the cap: four went to
 the background and one was killed outright partway through a replay loop that was
 issuing `client.act(...)`.
 

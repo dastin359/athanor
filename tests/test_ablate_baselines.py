@@ -215,3 +215,43 @@ def test_the_strip_turns_the_raw_conditionals_into_statements(workspace):
     # for again.
     assert "an in-game meter is not the human median, and" in doc
     assert "neither is `cap`" in doc
+
+
+def test_the_strip_drops_the_fenced_baseline_only_passages(workspace):
+    """Sentence surgery only reaches the sentences you thought of.
+
+    The previous fix rewrote three `raw` conditionals into statements and left
+    two whole passages standing that a baseline-free solver cannot use: the
+    "judge it by arithmetic" bullets, whose first branch is *a replay gains you
+    exactly nothing... do not spend actions on it*, and the binding-term table,
+    whose first row is *a replay is worth zero*. Both require knowing `raw` to
+    evaluate, and a reader who cannot evaluate the antecedent takes the
+    conclusion — which is the `bp35` failure the rewrite existed to prevent,
+    still fully available two edits later.
+
+    So the doctrine fences those passages and the strip drops whatever is
+    between the markers. Rewording a fenced passage cannot reopen the hole.
+    """
+    ab.strip_baselines(workspace.root)
+    doc = (workspace.root / "DOCTRINE.md").read_text()
+
+    assert "BASELINE-ONLY" not in doc, "the markers themselves must not ship"
+    for gone in ("A replay gains you exactly nothing",
+                 "Do not spend actions on it",
+                 "| binding term |",
+                 "A replay is worth zero"):
+        assert gone not in doc, f"fenced passage survived the strip: {gone!r}"
+
+    # What the fences guard is arithmetic, not the conclusion. The unconditional
+    # rule and the evidence for it both stay.
+    assert "You cannot compute `raw` on this run" in doc
+    assert "the worked case" in doc
+    assert "\n\n\n" not in doc, "a removed fence left a visible hole"
+
+
+def test_an_unfenced_doctrine_is_refused_rather_than_shipped(workspace, monkeypatch):
+    """A fence lost to an edit puts the harmful branch back. Fail loudly."""
+    doc = workspace.root / "DOCTRINE.md"
+    doc.write_text(doc.read_text().replace("<!-- BASELINE-ONLY -->", ""))
+    with pytest.raises(RuntimeError, match="BASELINE-ONLY"):
+        ab.strip_baselines(workspace.root)

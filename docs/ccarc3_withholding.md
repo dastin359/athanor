@@ -11,7 +11,7 @@ instructive one.
 - **First**, the rationale lived in **docstrings**. `help(client)`,
   `pydoc.render_doc(ArcClient)` and `arc.gate.__doc__` all render docstrings, so
   an orienting solver got a complete briefing: `help(arc.GameInfo)` printed *"real
-  games span 171 to 1843 baseline actions"*, `baseline_here` announced that a
+  games differ in length by an order of magnitude"*, `baseline_here` announced that a
   median exists and named the private attribute holding it, and `arc_proxy`'s
   module docstring described the entire defence. Fixed in `f66cc91` by moving it
   all into `#` comments.
