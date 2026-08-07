@@ -63,3 +63,46 @@ def test_the_root_is_recovered_from_the_run_not_from_where_evidence_sits():
 def test_root_recovery_declines_rather_than_guessing():
     """No absolute self-reference means keep what the caller passed in."""
     assert pt.recover_root(["cat notes/plan.md", "ls"], "zz99-deadbeef") is None
+
+
+# ---------------------------------------------------------------------------
+# The inbound pass. Reach says what a command touched; inbound says what came
+# back, which is where a leak actually arrives.
+# ---------------------------------------------------------------------------
+
+LP85 = [17, 38, 31, 16, 41, 60, 26, 159]
+
+
+@pytest.mark.parametrize("label,text", [
+    ("one value per line", "\n".join(str(n) for n in LP85)),
+    ("parsed into a tuple", f"medians = ({', '.join(str(n) for n in LP85)})"),
+    ("labelled per level", ", ".join(f"level {i}: {n}" for i, n in enumerate(LP85))),
+    ("json without the key", str(LP85)),
+])
+def test_a_median_array_is_caught_however_it_is_formatted(label, text):
+    """Token and bracket matching both miss the obvious dodge.
+
+    The checks this replaces needed the literal string `baseline_actions` *and*
+    literal brackets with commas. A solver that parsed the JSON, or printed the
+    array one value per line, handed itself every median while all three passes
+    reported the run clean — exit 0, "nothing to read".
+    """
+    assert pt.array_arrived(text, LP85), f"median array evaded the scan: {label}"
+
+
+@pytest.mark.parametrize("text", [
+    "the board is 64x64 with 16 colours and 8 levels",
+    "17 and 38 appeared but nothing else did",
+    "actions used: 159, 26, 60 — descending, not the published order",
+])
+def test_ordinary_transcript_numbers_do_not_trip_the_scan(text):
+    """A scan over every integer in a 400KB transcript must not cry wolf.
+
+    Verified against the corpus too: 0 findings across all 30 preserved runs.
+    """
+    assert not pt.array_arrived(text, LP85)
+
+
+def test_a_short_array_is_not_distinctive_enough_to_assert_on():
+    """Three numbers collide with ordinary prose; the scan declines to guess."""
+    assert not pt.array_arrived("1 2 3", [1, 2, 3])

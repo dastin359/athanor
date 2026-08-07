@@ -235,6 +235,47 @@ def baselines(game_id: str) -> list[int]:
     return list(baselines_for(game_id) or [])
 
 
+def all_baselines() -> dict[str, list[int]]:
+    """Every environment's medians, for the value-based inbound scan."""
+    sys.path.insert(0, str(REPO / "src"))
+    try:
+        from athanor.ccarc3.client import list_games  # noqa: PLC0415
+        return {g.game_id: list(g.baseline_actions) for g in list_games()
+                if g.baseline_actions}
+    except Exception:                     # noqa: BLE001 -- no key, no proxy, offline
+        return {}
+
+
+def array_arrived(text: str, wanted: list[int]) -> bool:
+    """Did this sequence of medians come back, however it was formatted?
+
+    **Token and bracket matching both miss the obvious dodge.** The checks this
+    replaces needed the literal string `baseline_actions` *and* literal brackets
+    with commas, so a solver that parsed the JSON, or printed the array one value
+    per line, handed itself every median while all three passes reported the run
+    clean -- exit 0, "nothing to read". Found by the 2026-08-07 audit.
+
+    Values, in order, are what identify the array. Labels may sit between them
+    (`level 0: 17, level 1: 38`), so this allows gaps rather than demanding the
+    values be adjacent -- but bounds the window, because "these numbers appear
+    somewhere in 400KB of transcript" is not evidence of anything.
+    """
+    if len(wanted) < 4:                   # too short to be distinctive
+        return False
+    seen = [int(t) for t in re.findall(r"(?<![\w.])\d{1,4}(?![\w.])", text)]
+    if len(seen) < len(wanted):
+        return False
+    window = 3 * len(wanted)
+    for start in range(len(seen)):
+        i = 0
+        for value in seen[start:start + window]:
+            if value == wanted[i]:
+                i += 1
+                if i == len(wanted):
+                    return True
+    return False
+
+
 def context(blob: str, rx: re.Pattern, width: int = 200, limit: int = 40) -> list[str]:
     out, seen = [], set()
     for m in rx.finditer(blob):
@@ -305,6 +346,14 @@ def main() -> int:
 
     # 2. inbound
     base = baselines(gid)
+
+    # Value-based, so reformatting does not evade it. Runs before the pattern
+    # checks because it is the one that cannot be dodged by printing style.
+    for other, wanted in sorted(all_baselines().items()):
+        if array_arrived(inbound, wanted):
+            verdicts.append(f"INBOUND: {other}'s per-level medians arrived, "
+                            f"however they were formatted")
+            print(f"  ! medians for {other} present in a tool result", flush=True)
     checks: list[tuple[str, re.Pattern]] = []
     if base:
         arr = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in base) + r"\s*[\])]"
