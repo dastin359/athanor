@@ -96,6 +96,9 @@ class ProxyState:
         self._lock = threading.Lock()
         self.max_actions = 0        # 0 disables the cap
         self.actions_used = 0
+        # Which game this shim serves. Empty means "do not check", which is what
+        # the module-level default and the connectivity probe want.
+        self.game_id = ""
         self._opener: urllib.request.OpenerDirector | None = None
 
     def set_budget(self, max_actions: int, *, used: int = 0) -> None:
@@ -117,10 +120,12 @@ class ProxyState:
         """The refusal once the ceiling is reached, or ``None`` before then."""
         with self._lock:
             if self.max_actions and self.actions_used >= self.max_actions:
-                return (
-                    f"action budget exhausted after {self.actions_used} actions. "
-                    "The environment is over; nothing further can be scored."
-                )
+                # No figure. `actions_used` equals `max_actions` at the moment
+                # this fires, and the cap is the withheld total times
+                # `budget_multiple` -- so printing it hands back the number the
+                # ceiling was moved out of the child's environment to withhold.
+                return ("action budget exhausted. The environment is over; "
+                        "nothing further can be scored.")
         return None
 
     def charge(self) -> None:
@@ -261,6 +266,29 @@ class Handler(BaseHTTPRequestHandler):
             self._refuse(path)
             return
         charge = bool(_CMD.match(path))
+        n = int(self.headers.get("Content-Length") or 0)
+        payload = self.rfile.read(n) if n else None
+
+        # **A shim is dedicated to one game, and until 2026-08-07 it did not
+        # check.** `ProxyState` held only `(max_actions, actions_used)` and this
+        # never looked at which game a request named, so a shim armed for game B
+        # would forward game A's `/api/cmd/*` and charge B -- and with games in
+        # flight concurrently, every sibling's port is a loopback scan away. The
+        # cap moved out of the child's environment precisely so the solver could
+        # not raise it; billing it to a neighbour raises it just as effectively.
+        wanted = self.state.game_id
+        if wanted and payload:
+            try:
+                asked = (json.loads(payload) or {}).get("game_id")
+            except ValueError:
+                asked = None
+            if asked and asked != wanted:
+                sys.stderr.write(f"WRONG GAME {path}: shim serves {wanted}, "
+                                 f"request names {asked}\n")
+                sys.stderr.flush()
+                self._deny(403, f"this shim serves {wanted}, not {asked}")
+                return
+
         if charge:
             # 403 and not 429: `client._send` raises on 4xx without retrying, so
             # the solver gets one clear terminal error rather than three rounds
@@ -271,8 +299,6 @@ class Handler(BaseHTTPRequestHandler):
                 sys.stderr.flush()
                 self._deny(403, over)
                 return
-        n = int(self.headers.get("Content-Length") or 0)
-        payload = self.rfile.read(n) if n else None
         headers = {
             "X-API-Key": os.environ["ARC_API_KEY"],
             "Accept": "application/json",
@@ -360,10 +386,11 @@ class Proxy:
     `Address already in use` at exactly the wrong moment.
     """
 
-    def __init__(self, port: int = 0) -> None:
+    def __init__(self, port: int = 0, game_id: str = "") -> None:
         if not os.environ.get("ARC_API_KEY"):
             raise RuntimeError("arc_proxy: no ARC_API_KEY in env; refusing to start")
         self.state = ProxyState()
+        self.state.game_id = game_id
         self._server = _Server(("127.0.0.1", port), Handler)
         self._server.state = self.state
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)

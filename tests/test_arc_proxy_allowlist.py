@@ -120,3 +120,41 @@ def test_non_json_body_passes_through_unchanged():
     # has careful error handling and cannot contain the fields anyway.
     for raw in (b"", b"upstream exploded", b"{not json"):
         assert arc_proxy._filtered(raw) == raw
+
+
+def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget():
+    """The cap was per shim but not per game, so a sibling paid for your actions.
+
+    `ProxyState` held only `(max_actions, actions_used)` and `_forward` never
+    looked at which game a request named, so a shim armed for game B would
+    forward game A's `/api/cmd/*` and charge B. Games run concurrently and every
+    sibling's port is a loopback scan away, so this is a cap that a solver can
+    spend out of someone else's pocket — and the ceiling was moved out of the
+    child's environment in the first place so it could not be raised.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    from athanor.ccarc3 import arc_proxy
+
+    mine = arc_proxy.Proxy(game_id="aaaa-1111")
+    theirs = arc_proxy.Proxy(game_id="bbbb-2222")
+    theirs.set_budget(10)
+    try:
+        req = urllib.request.Request(
+            f"{theirs.url}/api/cmd/ACTION1",
+            data=_json.dumps({"game_id": "aaaa-1111"}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=8)
+            raise AssertionError("a sibling's shim forwarded another game's action")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403, f"expected a refusal, got {exc.code}"
+        assert theirs.actions_used == 0, "the sibling was billed for a foreign action"
+    finally:
+        for p in (mine, theirs):
+            try:
+                p.close()
+            except Exception:                      # noqa: BLE001
+                pass

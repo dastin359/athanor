@@ -271,3 +271,19 @@ def test_a_renumbered_doctrine_cannot_silently_ship_section_six(workspace):
     doc.write_text(doc.read_text().replace("## 6. ", "## 5c. ", 1))
     with pytest.raises(RuntimeError, match="no '## 6\\. ' section"):
         ab.strip_baselines(workspace.root)
+
+
+@pytest.mark.parametrize("name", ["notes/leak.csv", "rules", "probe.sh", "notes/.env"])
+def test_the_post_strip_scan_reads_every_file_not_six_suffixes(workspace, name):
+    """The comment said "any file the solver can open is in scope"; the code
+    listed `.py .md .json .txt .yaml .yml`.
+
+    So a workspace could carry a median in `notes/x.csv` or an extensionless
+    `rules` file and strip cleanly — the same "scoped to what the author thought
+    of" failure the whole-workspace scan was written to fix, one level down.
+    """
+    target = workspace.root / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('"baseline_actions": [22, 123, 73]\n')
+    with pytest.raises(RuntimeError, match="still reachable"):
+        ab.strip_baselines(workspace.root)

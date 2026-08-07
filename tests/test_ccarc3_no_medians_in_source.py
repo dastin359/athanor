@@ -268,3 +268,67 @@ def test_no_level_score_appears_in_importable_prose(path):
         f"{path.name} prints level-score-shaped values: {hits}. Say `higher` and "
         "`lower` — a score plus its action count is the median in disguise."
     )
+
+
+@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
+                    reason="needs the API key to know what the real medians are")
+def test_the_unstripped_doctrine_asset_carries_no_published_median():
+    """The master doctrine is reachable, and §6 held two games' medians.
+
+    `athanor.ccarc3.session.ASSETS` is a module-level attribute resolving to the
+    assets directory, so the *unstripped* `CCARC3_DOCTRINE.md` — §6 included — is
+    one `read_text()` away from any solver, whatever the strip did to the copy in
+    its workspace. §6's `client.pace()` example printed `{0: (17, 22, 0.77),
+    1: (59, 123, 0.48)}`, and 22 and 123 are `ls20`'s first two per-level medians;
+    the `status()` example beside it printed `190/55`, which is `tn36`'s.
+
+    The strip removing §6 is what made this invisible: the workspace copy is
+    clean, so every check that reads a *workspace* passes. This one reads the
+    asset.
+    """
+    from athanor.ccarc3 import list_games
+    from athanor.ccarc3 import session as sess
+
+    doc = pathlib.Path(sess.ASSETS, "CCARC3_DOCTRINE.md").read_text(encoding="utf-8")
+    published = {n for g in list_games() for n in g.baseline_actions
+                 if n >= 20 and n not in ALLOWED_VALUES}   # 25 = the arm size
+
+    leaks = []
+    for line in doc.splitlines():
+        if not re.search(r"baseline|pace\(|status\(|median", line, re.I):
+            continue
+        for token in re.findall(r"(?<![\w.])\d{2,4}(?![\w.%])", numeric(line)):
+            if int(token) in published:
+                leaks.append(f"{token}: {line.strip()[:80]}")
+    assert not leaks, ("published medians in the reachable master doctrine: "
+                       + "; ".join(leaks))
+
+
+@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
+                    reason="needs the API key to know what the real medians are")
+def test_no_published_array_appears_anywhere_in_importable_source():
+    """Every other check here reads `prose()`, which is comments and strings only.
+
+    That scoping is right for the value checks — `159` is a palette index in
+    `grids.py` as well as `lp85`'s last level, and matching bare integers against
+    code produces nothing but noise. But it leaves the most direct leak of all
+    completely invisible: `LP85_MEDIANS = [17, 38, 31, 16, 41, 60, 26, 159]` at
+    module level passes all of them, verified by inserting exactly that into
+    `grids.py` and watching 42 tests go green.
+
+    An array is not a value. The full published sequence, in order, is not a
+    coincidence at any length worth checking, so this one runs on the whole file.
+    """
+    from athanor.ccarc3 import list_games
+
+    leaks = []
+    for path in REACHABLE:
+        text = path.read_text(encoding="utf-8")
+        for game in list_games():
+            arr = list(game.baseline_actions)
+            if len(arr) < 4:
+                continue
+            pattern = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in arr) + r"\s*[\])]"
+            if re.search(pattern, text):
+                leaks.append(f"{path.name}: {game.game_id}'s array")
+    assert not leaks, "published median arrays in source: " + "; ".join(sorted(set(leaks)))

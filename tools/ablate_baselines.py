@@ -205,6 +205,34 @@ def strip_baselines(root: pathlib.Path) -> None:
     #
     # Asserted rather than best-effort: if a doctrine edit breaks a match, this
     # raises instead of silently shipping the conditional again.
+    # **meta.json first, because it is the file that actually leaked.** This
+    # used to run last, after four `raise`-capable assertions on DOCTRINE.md. Any
+    # wording drift left a workspace on disk with `session.py` blanked and
+    # `CLAUDE.md` rewritten -- so it looks stripped -- while `meta.json` still
+    # carried `baseline_actions`. Order the irreversible removals before the
+    # brittle checks.
+    # **meta.json carries the whole GameInfo, including baseline_actions.**
+    # `build_workspace` writes it and nothing here used to touch it, so twelve
+    # runs of this arm shipped the array in a file the solver reads during
+    # orientation. All twelve had it in context; `tu93` went further and called
+    # `arc.score_run(ts, bl)` with it. The arm measured nothing it claimed to.
+    meta = root / "meta.json"
+    if meta.exists():
+        blob = json.loads(meta.read_text(encoding="utf-8"))
+        blob.pop("baseline_actions", None)
+        # **And the budget, because it is the baseline total times five.**
+        # Removing the per-level array while leaving `action_budget` hands back
+        # exactly what was removed: the solver caught doing this said so in as
+        # many words -- that the levels totalled N, that its budget was 5N, and
+        # therefore what N was. (Quoted verbatim here until 2026-08-07, which
+        # reproduced that game's real total and cap inside the file whose job is
+        # to remove them.) A strip that leaves a trivially invertible function of
+        # the secret has not stripped anything. The cap still reaches the client
+        # through the environment, where nothing the solver reads by default will
+        # show it.
+        blob.pop("action_budget", None)
+        meta.write_text(json.dumps(blob, indent=2) + "\n", encoding="utf-8")
+
     doc_text = (root / "DOCTRINE.md").read_text(encoding="utf-8")
     already_stripped = True
     for old, new_text in (
@@ -322,26 +350,6 @@ def strip_baselines(root: pathlib.Path) -> None:
         )
     doc.write_text("\n".join(out) + "\n", encoding="utf-8")
 
-    # **meta.json carries the whole GameInfo, including baseline_actions.**
-    # `build_workspace` writes it and nothing here used to touch it, so twelve
-    # runs of this arm shipped the array in a file the solver reads during
-    # orientation. All twelve had it in context; `tu93` went further and called
-    # `arc.score_run(ts, bl)` with it. The arm measured nothing it claimed to.
-    meta = root / "meta.json"
-    if meta.exists():
-        blob = json.loads(meta.read_text(encoding="utf-8"))
-        blob.pop("baseline_actions", None)
-        # **And the budget, because it is the baseline total times five.**
-        # Removing the per-level array while leaving `action_budget` hands back
-        # exactly what was removed: the solver caught doing this said so in as
-        # many words -- "they total 518 across six levels, and I have a budget
-        # of 2590, which is 5 times the baseline". 2590/5 = 518. A strip that
-        # leaves a trivially invertible function of the secret has not stripped
-        # anything. The cap still reaches the client through the environment,
-        # where nothing the solver reads by default will show it.
-        blob.pop("action_budget", None)
-        meta.write_text(json.dumps(blob, indent=2) + "\n", encoding="utf-8")
-
     # **Scan the whole workspace, not the files this function edited.**
     # The old check looked at exactly `sp`, `cm` and `doc` -- the three it had
     # just rewritten -- so it could only ever confirm its own edits. A leak check
@@ -353,13 +361,28 @@ def strip_baselines(root: pathlib.Path) -> None:
     # `baseline_actions=(22,` and `"baseline_actions": [22,` both match, `=()`
     # does not.
     numbers = re.compile(r"""baseline_actions["'\s:=]*[(\[]\s*\d|baseline actions per level""")
+    # **Every text file, not an extension whitelist.** The comment above says
+    # "any file the solver can open is in scope" and the implementation then
+    # listed six suffixes, so a workspace could ship a median in `notes/x.csv`,
+    # `rules`, `.env`, `probe.sh` or anything else and pass. That is the same
+    # gap this check was written to close, one level down: scoped to what the
+    # author thought of rather than to what exists. Binary files are skipped by
+    # the decode, not by their name.
+    def _text(path: pathlib.Path) -> str:
+        try:
+            body = path.read_bytes()
+        except OSError:
+            return ""
+        if b"\x00" in body[:4096]:            # binary; nothing to read
+            return ""
+        return body.decode("utf-8", errors="ignore")
+
     leaked = sorted(
         p.relative_to(root).as_posix()
         for p in root.rglob("*")
         if p.is_file()
-        and p.suffix in {".py", ".md", ".json", ".txt", ".yaml", ".yml"}
         and p.name not in {"trace.jsonl", "stream.jsonl"}
-        and numbers.search(p.read_text(encoding="utf-8", errors="ignore"))
+        and numbers.search(_text(p))
     )
     if leaked:
         raise RuntimeError(f"baselines still reachable in {leaked}")
@@ -390,7 +413,7 @@ def proxy_for(game_id: str) -> "arc_proxy.Proxy":
     with _proxies_lock:
         proxy = _proxies.get(game_id)
         if proxy is None:
-            proxy = _proxies[game_id] = arc_proxy.Proxy()
+            proxy = _proxies[game_id] = arc_proxy.Proxy(game_id=game_id)
             print(f"arc_proxy[{game_id.split('-')[0]}]: {proxy.url}", flush=True)
         return proxy
 

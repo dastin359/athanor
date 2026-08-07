@@ -46,8 +46,8 @@ faster. Surplus speed is not score — spend it on certainty, and on depth.
 
 **4. Later levels are worth more, proportionally to their number.** On an
 eight-level game the last level carries 8/36 of the environment and the first
-carries 1/36. Being slow on level 1 costs little; being slow on level 7 costs
-eight times as much. **Depth beats polish.** Clearing five levels scrappily
+carries 1/36. Being slow on the first level costs little; being slow on the
+last one costs eight times as much. **Depth beats polish.** Clearing five levels scrappily
 beats clearing three immaculately, every time.
 
 Put together: get under the baseline, stop optimising once you are, and push as
@@ -263,8 +263,8 @@ ceiling with surplus speed thrown away. `sk48` going 5 of 8 to 8 of 8 is worth
 level is worth more than any amount of being faster.
 
 **"This level is impossible" is a hypothesis about you, not about the game.**
-`tn36` has three runs on record: one cleared 5 of 7, one cleared 6 of 7, and one
-cleared **7 of 7 in 220 actions**. Same harness, same environment. The level that
+`tn36` has five runs on record: one cleared 5 of 7 and the rest cleared all
+seven, the fastest in **220 actions**. Same harness, same environment. The level that
 stopped one run was routine for another. Treat "stuck" as evidence that your
 current model of the mechanic is wrong, not that the mechanic is unbeatable.
 
@@ -440,7 +440,7 @@ full reset moves the level *down*.
 
 This is not hypothetical: on a real run, "ACTION1 moves the cursor up" held 7/7
 on level 0 and showed 13 holds and 1 violation on level 1. The violation was the
-boundary. Excluded, the rule is 28/0 across both levels.
+boundary. Excluded, the rule is 20/0 across both levels.
 
 Never conclude a rule is dead because it failed on an earlier level. That is how
 true knowledge gets destroyed.
@@ -520,7 +520,7 @@ analysis had already flagged as the problem levels.
 You do not have to compute this. `client.status()` leads with it:
 
 ```
-g: level 3/6 state=NOT_FINISHED actions=291 [190/55 on this level = 3.5x]  <- OVER BASELINE
+g: level 3/6 state=NOT_FINISHED actions=291 [190/h on this level = 3.5x]  <- OVER BASELINE
 ```
 
 There is no reliable cutoff to look up: the sample has **nothing between 0.92×
@@ -531,7 +531,7 @@ executing and go re-explore.
 The sharper signal is relative, and `client.pace()` gives it to you free:
 
 ```python
-client.pace()      # {0: (17, 22, 0.77), 1: (59, 123, 0.48), ...}
+client.pace()      # {0: (spent, baseline, 0.77), 1: (spent, baseline, 0.48), ...}
                    # {level: (spent, baseline, ratio)}
 ```
 
@@ -590,8 +590,8 @@ the server sends `levels_completed`. Anything reading `score` gets 0 forever.
 
 The frame says what the game *accepts*. It does not say what has an *effect*,
 and on some games the gap is enormous: a run that never cleared a level spent
-**one action in five changing nothing at all** — 46 of its 157 clicks landed on
-dead ground — while every winning run in the same batch wasted none.
+**almost one action in three changing nothing at all** — 46 of its 157 clicks
+landed on dead ground — while every winning run in the same batch wasted none.
 
 Reading the gap is free, because it comes off the ledger rather than the game:
 

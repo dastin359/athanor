@@ -158,6 +158,11 @@ preserve_dir() {
     # entries whose source keeps moving, so they are the only ones that need
     # this. A record that tracks HEAD records nothing.
     for f in "${RUNTIME[@]}"; do
+        # Only beside a real run. `preserve_dir` is called on the game-level
+        # directory as well as on each attempt, and the game level holds no run
+        # artefacts -- so this produced 25 directories whose entire contents were
+        # a copy of HEAD's client.py and gate.py, recording nothing about any run.
+        [ -f "$src/result.json" ] || [ -f "$src/trace.jsonl" ] || return 0
         [ -f "$REPO/src/athanor/ccarc3/$f" ] || continue
         [ -f "$out/$f.gz" ] && continue
         gz_atomic "$REPO/src/athanor/ccarc3/$f" "$out/$f.gz"

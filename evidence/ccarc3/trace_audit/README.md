@@ -25,8 +25,8 @@ missing from the filesystem — they had only ever existed in the scratchpad.
 
 | file | contents |
 |---|---|
-| `spans.json.gz` | 25 games -> `{result, attempts[{file, spans[], lines, unparseable}]}` |
-| `runs.json.gz` | 25 scored-run summary rows (E, raw, cap, levels, actions, wall, cost, tier) |
+| `spans.json.gz` | 60 runs -> `{result, attempts[{file, spans[], lines, unparseable}]}` |
+| `runs.json.gz` | 60 run summary rows (E, raw, cap, levels, actions, wall, cost, tier) |
 
 Scanned for the ARC API key before commit: zero literal occurrences, zero
 key-shaped tokens, zero `ARC_API_KEY=` assignments.
