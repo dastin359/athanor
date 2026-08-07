@@ -4051,3 +4051,93 @@ actions. One probe, reading its own workspace.
 **12 clean rollouts, 11.4075 / 12 = 95.06%**, eleven wins. **Four under the
 repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33` — all four 1.0000.
 Thirteen environments outstanding.
+
+---
+
+## Rollout 13: `sc25-635fd71a` — **1.0000 (6/6)**, and the replay was worth **+0.4156**
+
+The most expensive run of the session, the hardest, and the one that finally
+proves the doctrine's blind-replay rule pays.
+
+| | |
+|---|---|
+| levels | **6 of 6** |
+| actions | 839 total across 2 plays (674 + 165) |
+| `raw` | **0.5844** (play 1) → **1.1357** (play 2) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** — from **0.5844** without the replay |
+| deaths | **5** |
+| wall clock | 89 min, one-shot, exit 0 |
+| cost | **$27.76** over 148 turns |
+
+Against baselines `[36, 6, 32, 83, 143, 50]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| play 1 | 113 | 6 | 25 | 68 | **355** | 107 |
+| ratio | **3.14×** | 1.00× | 0.78× | 0.82× | **2.48×** | **2.14×** |
+| play 2 | 14 | 6 | 14 | 32 | **61** | 39 |
+| ratio | 0.39× | 1.00× | 0.44× | 0.39× | **0.43×** | 0.78× |
+
+### This corrects something I have written three times
+
+The last three write-ups all said some version of *"efficiency has not been worth
+a single point in this project since the completion cap started binding."* That
+was true of the twelve runs it described and **it is false as a general claim**,
+and this run is the counterexample.
+
+`sc25` cleared all six levels on its first play, so `cap` was 1.0000 — and `raw`
+came in at **0.5844**, far below it. The binding term was efficiency, not
+completion, for the first time in the clean rollout series. Play 1 alone would
+have scored **0.5844**. The replay scored 1.1357 and the environment takes the
+best play, so the run banks **1.0000**.
+
+**The replay was worth +0.4156** — more than `sk48`'s +0.5833 completion gain is
+the only thing in this project that beats it, and that one came from clearing
+three more levels. This one came from walking a route it already knew.
+
+### The solver could not see any of that, and replayed anyway
+
+It has no baselines. What it had was §0a's rule — *if you cannot compute `raw`,
+replay anyway* — and an estimate:
+
+> Level 4 consumed around 355 actions while level 5 took roughly 107, and **if the
+> human baseline is somewhere near 60 actions, that ratio squared would be
+> devastatingly low** — raw would be far below 1.0, making a replay potentially
+> worth a significant score boost.
+
+It guessed the baseline's order of magnitude from its own action counts, reasoned
+that the squared ratio would be brutal, and replayed. The real level-5 baseline is
+143 and it had spent 355 — 2.48×, scoring 0.163 on a level carrying 5/21 of the
+environment. Its instinct was right and its arithmetic was conservative.
+
+Across the 25-environment arm, blind replay paid three times, was wasted seven
+times, and was worth about +0.35 `E` in total. **This single run is worth more
+than that entire arm's replay bet.**
+
+### Five deaths and 3.14× on level 1 — and none of it mattered
+
+839 actions against a 350-action baseline: 2.4× the entire game's human cost, five
+deaths, and three levels finished over baseline including the opening one at
+3.14×. Under the old doctrine — the one that told solvers to keep a baseline in
+reserve and not spend more than half their cap before understanding the game —
+this run reads as a disaster. It scored 1.0000.
+
+That is the reframe working exactly as intended: the run that ignored every
+efficiency instinct and kept going is the run that won, and the instrument that
+saved it was available only because it had cleared the final level and could
+restart from a level advance.
+
+### Proofread
+
+Clean. 147 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 6 levels. All 19
+flagged passages are the solver reasoning about the **in-game timer** — rows
+draining per action, which this game genuinely meters — not about a harness action
+budget. Two are the replay decision quoted above.
+
+### Standing
+
+**13 clean rollouts, 12.4075 / 13 = 95.44%**, twelve wins. **Five under the
+repaired solver surface** — `r11l`, `tr87`, `lp85`, `vc33`, `sc25` — all five
+1.0000. Twelve environments outstanding.
