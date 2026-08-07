@@ -548,11 +548,20 @@ def surface_digest(root: pathlib.Path) -> str:
     tried it: all twelve current runs flipped to `superseded` at once and the page
     rendered empty.
 
-    `preserve_evidence.sh` now copies `client.py` and `gate.py` beside each run,
-    so this becomes possible symmetrically for runs from 2026-08-07 onward. Until
-    there is a generation with that data on both sides, the boundary is tracked in
-    `docs/ccarc3_results.md` by hand rather than asserted by a digest that would
-    have to guess.
+    `preserve_evidence.sh` copies `client.py` and `gate.py` beside each run so
+    this can become symmetric -- **but not for anything preserved before
+    2026-08-07 14:00 PDT, and those copies must not be used.** The preserve loop
+    re-copied from the repo every five minutes over every run it had ever
+    preserved, so each copy recorded whatever the package looked like at the last
+    pass rather than what the run saw. Proof it is not a theoretical worry:
+    `bp35`, which read the pre-fix `[cap 1.000]` line, and `re86`, which ran after
+    that line was changed, have byte-identical preserved copies. The loop now
+    writes once and never overwrites, so runs preserved after the fix are real
+    records and earlier ones are not.
+
+    Until a generation has trustworthy copies on both sides, the boundary is
+    tracked in `docs/ccarc3_results.md` by hand rather than asserted by a digest
+    that would have to guess.
 
     Two runs with the same digest saw the same harness, whatever happened to the
     source in between.

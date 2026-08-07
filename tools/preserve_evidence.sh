@@ -120,8 +120,20 @@ preserve_dir() {
     done
     # Streams are the solver's reasoning, big and highly compressible. Kept
     # separately so a reader can fetch ledgers without them.
+    # **Written once and never overwritten.** This loop runs every five minutes
+    # over every run ever preserved, and it copies from the *repo*, not from the
+    # run -- so re-copying restamps a finished run with whatever the package
+    # looks like now. It did: on 2026-08-07 a client.py edit made 22 historical
+    # runs' preserved copies byte-identical to source written hours after they
+    # ended, including runs from that morning.
+    #
+    # That is the opposite of what these are for. Everything else here is
+    # written by the run and re-copying is idempotent; these two are the only
+    # entries whose source keeps moving, so they are the only ones that need
+    # this. A record that tracks HEAD records nothing.
     for f in "${RUNTIME[@]}"; do
         [ -f "$REPO/src/athanor/ccarc3/$f" ] || continue
+        [ -f "$out/$f.gz" ] && continue
         gz_atomic "$REPO/src/athanor/ccarc3/$f" "$out/$f.gz"
     done
     for f in "$src"/stream*.jsonl; do
