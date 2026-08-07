@@ -4271,3 +4271,63 @@ this is **seven games**, that four of them (`r11l`, `tr87`, `lp85`, `vc33`) are
 among the shorter environments in the set, and that the superseded eight include
 the two hardest — so the gap between 100% and 92.59% is not yet evidence of a
 harness effect and should not be quoted as one.
+
+---
+
+## Rollout 16: `ar25-0c556536` — **1.0000 (8/8)**, the cheapest win on record
+
+| | |
+|---|---|
+| levels | **8 of 8** |
+| actions | 521 total across 2 plays (268 + 253) |
+| `raw` | **1.1500** on **both** plays — the ceiling twice over |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | **0 / 0** |
+| wall clock | 34 min, one-shot, exit 0 |
+| cost | **$7.83** over 75 turns |
+
+Against baselines `[32, 50, 75, 37, 89, 159, 233, 73]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| actions | 26 | 14 | 41 | 22 | 28 | 53 | **37** | 47 |
+| ratio | 0.81× | 0.28× | 0.55× | 0.59× | 0.31× | 0.33× | **0.16×** | 0.64× |
+
+**The largest baseline in the whole 25-environment set is level 7 here — 233
+actions — and it fell in 37.** That is 0.16×, on the level carrying 7/36 of the
+environment. `lp85`'s 159-baseline level in 10 was the previous high-water mark
+for this inversion; this is a bigger baseline cleared at a comparable ratio.
+
+`ar25` is also the **cheapest win on record at $7.83**, on a game whose published
+human cost (748 actions) is the second-highest in the set. It took 75 turns,
+fewer than any other eight-level run, with no deaths and no wasted actions. The
+expensive runs in this series have been the ones that had to re-derive a mechanic
+they got wrong (`sc25` at $27.76, `s5i5` at $25.01); this one appears to have got
+its model right early and simply executed.
+
+Both plays hit `raw` 1.1500, so the replay was worth nothing again — nine replays
+under the repaired surface now, **two of which carried the score**.
+
+### Proofread
+
+Clean. 74 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 8 levels and 521
+actions. One probe, `cat session.py meta.json resume_state.json` — the fourth
+solver in eight to open `session.py` on turn one.
+
+### Standing, split by generation
+
+| | environments | score |
+|---|---|---|
+| **repaired surface** | **8 of 25** | **8.0000 / 8 = 100%** |
+| superseded surface | 8 | 7.4075 / 8 = 92.59% |
+| never run | 9 | — |
+
+Eight for eight at 1.0000. The caveat from the last entry still stands and is now
+worth restating with a number: the eight current runs have a mean published
+baseline total of 486 actions against the superseded eight's 421, so this is no
+longer a "the easy ones went first" story — but two of the superseded eight
+(`lf52`, `sk48`) are the only environments in the project that have *ever* scored
+below 1.0 on a clean run, and until one of those is re-run under the current
+surface the comparison stays confounded.
