@@ -37,6 +37,7 @@ import argparse
 import gzip
 import json
 import pathlib
+import os
 import re
 import sys
 
@@ -52,6 +53,56 @@ ESCAPES = (
     (re.compile(r"list_games|baselines_for"), "baseline accessor"),
     (re.compile(r"/home/user/athanor|\bgit\b|site-packages"), "outside the workspace"),
 )
+
+# **Keyword escapes miss whole directories, and one of them holds the key.**
+# The rule above catches `/home/user/athanor`, so the repo is covered. It does
+# not catch the scratchpad -- a different root entirely -- which contains
+# `arc3/.env` (the live `ARC_API_KEY`) and `best_or_last/card.json` (a real
+# scorecard with a complete `level_baseline_actions` array). Every run's
+# workspace also lives under the scratchpad, so the directory cannot simply be
+# banned; the test has to be *outside my own workspace*, which is a path
+# question and not a keyword question.
+#
+# Measured, not supposed: `cat <scratchpad>/best_or_last/card.json` passed the
+# reach pass, and its contents passed the inbound pass too, because the
+# per-level-array check is built from *this* game's medians and that card
+# belongs to another. For 24 of the 25 environments that read was invisible to
+# both passes.
+SYSTEM_ROOTS = ("/usr", "/bin", "/sbin", "/lib", "/etc", "/proc", "/sys", "/dev",
+                "/opt", "/var", "/snap", "/run")
+ABS_PATH = re.compile(r"(?<![\w=)\]])(/[\w.\-/@]{4,})")
+
+# **A path is only a path if its first segment is a real directory.** The first
+# version of this matched `/m.sum`, `//len`, `/drain` and `/step` -- division
+# operators and comment slashes inside the Python that solvers write into
+# heredocs -- and reported 13 of 30 clean runs as having left the workspace. A
+# leak check that cries wolf on two thirds of a clean corpus is worse than none,
+# because the next real finding arrives in a list nobody reads.
+_TOP = {f"/{name}" for name in os.listdir("/")}
+
+
+def strayed(command: str, workspace: pathlib.Path) -> list[str]:
+    """Absolute paths in a command that are outside this run's own workspace."""
+    root = str(workspace.resolve())
+    out = []
+    for m in ABS_PATH.finditer(command):
+        path = m.group(1).rstrip(".,;:'\"")
+        if "/" + path.split("/")[1] not in _TOP:
+            continue                      # not a filesystem path at all
+        if path.startswith(root) or path.startswith(SYSTEM_ROOTS):
+            continue
+        if path.startswith("/root/") and "/scratchpad" not in path:
+            continue                      # the agent's own home, not the harness
+        if path.startswith("/tmp/") and "/scratchpad" not in path:
+            continue                      # ordinary temp files
+        out.append(path)
+    return sorted(set(out))
+
+
+# A median array handed back by anything, for any game -- not just this one.
+FOREIGN_MEDIANS = re.compile(
+    r"level_baseline_actions|baseline_actions\s*[\"']?\s*[:=]\s*[\[(]\s*\d")
+
 
 # **Looking is not reaching, and this cost a run.** Reading your own environment
 # was in ESCAPES, so `wa30` -- 9/9 in 2,125 actions, corroborated by ARC's card --
@@ -174,6 +225,8 @@ def main() -> int:
     # 1. reach
     flat = lambda c: re.sub(r"\s+", " ", c)
     escaped = [(c, why) for c in cmds for rx, why in ESCAPES if rx.search(c)]
+    escaped += [(c, f"path outside the workspace: {', '.join(stray)}")
+                for c in cmds if (stray := strayed(c, ws))]
     if escaped:
         verdicts.append(f"REACH: {len(escaped)} command(s) left the workspace")
         for cmd, why in escaped[:12]:
@@ -197,6 +250,9 @@ def main() -> int:
         checks.append((f"budget {sum(base) * 5}", re.compile(rf"\b{sum(base) * 5}\b")))
     checks += [
         ("api/games or key", re.compile(r"/api/games|ARC_API_KEY|ARCPRIZE_API_KEY")),
+        # Any game's medians, not only this one's. The per-level check above is
+        # built from this game's array and is blind to the other 24.
+        ("a median array for any game", FOREIGN_MEDIANS),
         # `status()` prints the pace ratio only when baselines are visible.
         #
         # **Anchored to this game's id, because the doctrine quotes the format.**
