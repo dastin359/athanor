@@ -3938,3 +3938,61 @@ Two defects, both now understood and neither yet fixed:
 
 **10 clean rollouts, 9.4075 / 10 = 94.08%**, nine wins. Fifteen environments
 outstanding, of which `cd82` and `su15` need re-running after the kill.
+
+---
+
+## Rollout 11: `lp85-305b61c3` — **1.0000 (8/8)**, and the replay that finally moved `raw`
+
+| | |
+|---|---|
+| levels | **8 of 8** |
+| actions | 179 total across 2 plays (100 + 79) |
+| `raw` | 1.1486 (play 1) → **1.1500** (play 2, the ceiling) |
+| `cap` | 1.0000 |
+| **`E`** | **1.0000** |
+| deaths / wasted | 0 / 0 |
+| wall clock | 36 min, one-shot, exit 0 |
+| cost | $12.66 over 98 turns |
+
+Against baselines `[17, 38, 31, 16, 41, 60, 26, 159]`:
+
+| level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| play 1 | 7 | 11 | 16 | 15 | 11 | 22 | 8 | **10** |
+| ratio | 0.41× | 0.29× | 0.52× | **0.94×** | 0.27× | 0.37× | 0.31× | **0.06×** |
+| play 2 | 5 | 8 | 16 | 12 | 9 | 19 | 5 | **5** |
+| ratio | 0.29× | 0.21× | 0.52× | 0.75× | 0.22× | 0.32× | 0.19× | **0.03×** |
+
+**Level 8 carries a 159-action human baseline and fell in 10, then in 5.** That
+is 0.03× — the most extreme instance yet of the inversion this project keeps
+finding: the level humans find hardest, by a factor of four over any other level
+in the game, cost this solver less than any of them. The arm run of the same
+environment did it in 9. Whatever makes that level expensive for a human is not
+what makes a level expensive here.
+
+### The first replay on record that moved `raw` at all
+
+Ten rollouts in, every replay had been worth exactly zero: both plays already at
+the 1.1500 ceiling, cap binding at 1.0. This one started at `raw` **1.1486** —
+fractionally short — because level 4 came in at 0.94×, the only level all session
+to finish near its baseline rather than far under it. The replay took it to 0.75×
+and `raw` to the ceiling.
+
+**It still changed the score by nothing.** `E = min(cap, raw)` and `cap` was
+already 1.0000, so 1.1486 and 1.1500 are the same environment score. The replay
+was free and correct and moved a number that does not matter — which is exactly
+what §0a predicts, and a good illustration of why the doctrine tells solvers to
+replay on the *cap* argument rather than on measured efficiency they cannot see.
+
+### Proofread
+
+Clean. 97 commands, none left the workspace; no per-level array, no ceiling
+figure, no `api/games`, no pace line inbound; card corroborates 8 levels and 179
+actions. Its orientation included importing `session` and printing `client.status()`
+— **three for three** on solvers inspecting the harness surface on turn one.
+
+### Standing
+
+**11 clean rollouts, 10.4075 / 11 = 94.61%**, ten wins. Of these, **three ran
+under the repaired solver surface** (`r11l`, `tr87`, `lp85`) and all three scored
+1.0000. Fourteen environments outstanding.
