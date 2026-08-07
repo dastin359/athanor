@@ -436,12 +436,42 @@ def concurrency() -> int:
 _slots = threading.Condition()
 _running = 0
 _last_limit = 0
+_waiting: set[int] = set()
 
 
-def _take_slot(gid: str) -> None:
-    """Block until the live limit leaves room for this game."""
+def _take_slot(gid: str, rank: int) -> None:
+    """Block until the live limit leaves room, and until it is this game's turn.
+
+    **`rank` is what makes the queue order real, and without it the ordering was
+    decorative.** Every game gets a thread up front, so all of them arrive here
+    at once and park on one condition. `_free_slot` calls `notify_all`, and the
+    waiter that happens to be scheduled first takes the slot -- Python guarantees
+    no ordering across `Condition.wait`, and the 10-second timed wait below means
+    a thread can also wake with no notification at all.
+
+    Caught in production on 2026-08-07. The queue was `cd82, r11l, sc25, su15,
+    lp85, tr87, ...` ordered shortest-first; `cd82` and `r11l` took the two
+    opening slots, and when `r11l` finished the freed slot went to **`tr87`** --
+    past three games ahead of it. `sc25`, `su15` and `lp85` had no workspace at
+    all.
+
+    That is precisely the failure the ordering exists to prevent. Shortest-first
+    is there so a window that ends early has banked the achievable games instead
+    of being spent on a long one; a racy queue can spend the window on the long
+    game while the short ones sit unstarted, which is how a fixed order once
+    turned a three-game experiment into a one-game one in `rerun_losses.py`.
+
+    So a waiter may claim a free slot only when it is the lowest-ranked waiter.
+    Strict FIFO by queue position, and starvation-free: the minimum always
+    proceeds, so every rank becomes the minimum eventually.
+    """
     global _running, _last_limit
     with _slots:
+        # Idempotent: `_register_queue` normally seeded this before any thread
+        # started. Adding here too means a thread that somehow arrives outside a
+        # registered pass still queues rather than deadlocking on a `min()` of a
+        # set it is not in.
+        _waiting.add(rank)
         while True:
             limit = concurrency()
             if limit != _last_limit:
@@ -449,8 +479,20 @@ def _take_slot(gid: str) -> None:
                       f"{' (was ' + str(_last_limit) + ')' if _last_limit else ''}",
                       flush=True)
                 _last_limit = limit
-            if _running < limit:
+            if _running < limit and rank == min(_waiting):
+                _waiting.discard(rank)
                 _running += 1
+                # **Wake the others, because admitting one changes who the
+                # minimum is.** Rank ordering introduced a stall the unordered
+                # gate could not have: `_free_slot` notifies once, every waiter
+                # wakes, and all but the lowest find `rank != min(_waiting)` and
+                # go back to sleep. The lowest is then admitted -- and nobody
+                # tells the new lowest that it is now eligible, so if the limit
+                # has room for it, it waits out the full 10-second timeout for
+                # no reason. Caught by the live-retune test: raising the limit
+                # from 1 to 3 mid-flight left the third game asleep and peak
+                # concurrency at 1.
+                _slots.notify_all()
                 return
             # Timed wait, so a raised limit is picked up without anyone
             # signalling -- the file is edited by a human, not by this process.
@@ -464,12 +506,44 @@ def _free_slot() -> None:
         _slots.notify_all()
 
 
+def _register_queue(n: int) -> None:
+    """Declare every rank a waiter *before* any thread starts.
+
+    **Rank ordering is a priority, not an arrival order, and without this it
+    degrades to the latter.** `_take_slot` grants to the lowest-ranked waiter,
+    which orders games correctly once they are all queued -- that is the case
+    that misbehaved in production, when a slot freed and four games were already
+    waiting. It does nothing for the opening burst: the pool starts N threads
+    that arrive over some microseconds, and whichever arrives first is briefly
+    the only waiter and therefore the minimum, so it takes a slot however long
+    its game is.
+
+    A test that starts the threads backwards makes that visible immediately --
+    the last game in the queue took the first slot. In production the window is
+    small, but "small" is not a property to rely on when the whole point of the
+    ordering is to protect against a window that ends early.
+
+    Seeding the full set up front makes the first grant as ordered as every
+    later one. A rank whose thread has not started yet still holds its place;
+    the pool has a worker per game, so it will arrive.
+    """
+    with _slots:
+        _waiting.clear()
+        _waiting.update(range(n))
+        _slots.notify_all()
+
+
 def one_pass(games: list[str], infos: dict) -> None:
     # Every game gets a thread; `_take_slot` is what bounds how many are actually
     # playing. A fixed-size pool would freeze the limit for the whole pass, which
     # is the thing being avoided.
+    _register_queue(len(games))
     with concurrent.futures.ThreadPoolExecutor(max(1, len(games))) as pool:
-        futures = {pool.submit(_guarded, g, infos): g for g in games}
+        # `rank` is the game's position in the shortest-first queue, and
+        # `_take_slot` honours it. Submission order alone does not, and neither
+        # does thread start order -- hence the registration above.
+        futures = {pool.submit(_guarded, g, infos, i): g
+                   for i, g in enumerate(games)}
         for fut in concurrent.futures.as_completed(futures):
             # `_run_one` swallows its own failures; anything arriving here is a
             # driver bug, and losing it silently is how a queue quietly stops
@@ -481,8 +555,8 @@ def one_pass(games: list[str], infos: dict) -> None:
                 print(f"    {futures[fut]}: driver error {exc!r}", flush=True)
 
 
-def _guarded(gid: str, infos: dict) -> None:
-    _take_slot(gid)
+def _guarded(gid: str, infos: dict, rank: int) -> None:
+    _take_slot(gid, rank)
     try:
         _run_one(gid, infos)
     finally:
