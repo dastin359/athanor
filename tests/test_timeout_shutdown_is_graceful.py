@@ -18,6 +18,7 @@ fact the change creates.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import textwrap
@@ -39,16 +40,17 @@ def _run_under_timeout(tmp_path: Path, argv: list[str], timeout: float):
     out = tmp_path / "stream.jsonl"
     with out.open("w", encoding="utf-8") as fh:
         proc = subprocess.Popen(argv, cwd=str(tmp_path), stdout=fh,
-                                stderr=subprocess.STDOUT, text=True)
+                                stderr=subprocess.STDOUT, text=True,
+                                start_new_session=True)
         try:
             code = proc.wait(timeout=timeout)
             timed_out = False
         except subprocess.TimeoutExpired:
-            proc.terminate()
+            S._signal_group(proc, signal.SIGTERM)
             try:
                 code = proc.wait(timeout=S.TERM_GRACE_S)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                S._signal_group(proc, signal.SIGKILL)
                 code = proc.wait()
             timed_out = True
     return code, timed_out, out.read_text(encoding="utf-8")
@@ -118,7 +120,7 @@ def test_the_run_path_terminates_first_and_keeps_the_status():
     assert handlers, "run_game no longer handles TimeoutExpired"
 
     body = "\n".join(ast.unparse(h) for h in handlers)
-    assert body.index("proc.terminate()") < body.index("proc.kill()"), (
+    assert body.index("SIGTERM") < body.index("SIGKILL"), (
         "run_game must SIGTERM before it SIGKILLs"
     )
     assert "TERM_GRACE_S" in body, "the grace period is not the shared constant"
@@ -133,3 +135,51 @@ def test_the_run_path_terminates_first_and_keeps_the_status():
             f"`code` is assigned from {rendered!r}, not from the wait: a clean "
             "exit during the grace period would be filed as a kill"
         )
+
+
+def test_the_timeout_reaches_grandchildren(tmp_path):
+    """**A solver's game-driving children outlived the timeout.**
+
+    The workspace CLAUDE.md tells the solver to drive the game from `python -c`
+    subprocesses, and each POSTs actions of its own. Without a new session the
+    child sat in the driver's process group, so a signal to `proc` reached only
+    the `claude` process and left those spending the budget against a run the
+    driver had already declared timed out.
+    """
+    marker = tmp_path / "grandchild_alive"
+    argv = _child(f"""
+        import subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c",
+            "import time\\nwhile True:\\n    open({str(marker)!r}, 'a').write('x')\\n    time.sleep(0.05)"])
+        sys.stdout.write("spawned\\n"); sys.stdout.flush()
+        time.sleep(600)
+    """)
+    grace = S.TERM_GRACE_S
+    try:
+        S.TERM_GRACE_S = 2
+        _run_under_timeout(tmp_path, argv, timeout=1.5)
+    finally:
+        S.TERM_GRACE_S = grace
+
+    assert marker.exists(), "the grandchild never ran; the fixture proves nothing"
+    size = marker.stat().st_size
+    time.sleep(1.0)
+    assert marker.stat().st_size == size, (
+        "the grandchild is still writing after the timeout — it survived the "
+        "kill and is still spending the budget"
+    )
+
+
+def test_the_run_path_starts_its_own_session_and_signals_the_group():
+    """Pinned against the real function, since the behavioural test drives a copy."""
+    import inspect
+    src = inspect.getsource(S.run_game)
+    assert "start_new_session=True" in src, (
+        "the solver is not a process-group leader, so a kill cannot reach its "
+        "descendants"
+    )
+    assert "_signal_group(" in src, "the timeout arm signals only the direct child"
+    assert "proc.terminate()" not in src and "proc.kill()" not in src, (
+        "a direct-child signal survives beside the group signal, so the tree can "
+        "still be left running"
+    )

@@ -156,3 +156,65 @@ def test_a_win_killed_mid_replay_is_still_re_run(tmp_path, monkeypatch):
     out = S.collect_outcome(ws, exit_code=143, timed_out=False)
 
     assert "re-run this game" in out.get("error", "")
+
+
+def test_a_corrupt_rules_file_does_not_cost_the_result(tmp_path, monkeypatch):
+    """**Bookkeeping must never take the outcome down with it.**
+
+    `collect_outcome` parsed rules.json unguarded, three lines before it writes
+    result.json — so a file that is not valid JSON raised and the run was
+    recorded as nothing at all. A WON game, banked as no result.
+
+    Zero bytes is the realistic case and the sweep manufactures it: `RuleBook.save`
+    uses `write_text`, which truncates before it writes, and the supervisor stops
+    solvers with a signal at the quota ceiling by design. The solver also has
+    Write on its own workspace.
+    """
+    ws = _ws(tmp_path, levels=3, baselines=(30, 40, 50))
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {
+        "actions_used": 90, "levels_reached": 3, "won": True,
+        "levels_reached_final_playthrough": 3})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+    ws.rules_path.write_text("", encoding="utf-8")          # the 0-byte case
+
+    out = S.collect_outcome(ws, exit_code=0, timed_out=False)
+
+    assert out["won"] is True, "a won run was lost to a bookkeeping file"
+    assert (ws.root / "result.json").exists(), "result.json was never written"
+    assert "rules_error" in out, (
+        "the corruption is swallowed silently; it must be recorded"
+    )
+    assert out["mechanics_recorded"] == 0 and out["refutations_recorded"] == 0
+
+
+def test_a_truncated_rules_file_is_also_survivable(tmp_path, monkeypatch):
+    """Not just empty: a half-written file is what a signal mid-`write_text`
+    actually leaves behind."""
+    ws = _ws(tmp_path, levels=3, baselines=(30, 40, 50))
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {
+        "actions_used": 90, "levels_reached": 3, "won": True,
+        "levels_reached_final_playthrough": 3})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+    ws.rules_path.write_text('{"verified": [{"rule": "a', encoding="utf-8")
+
+    out = S.collect_outcome(ws, exit_code=0, timed_out=False)
+    assert out["won"] is True and (ws.root / "result.json").exists()
+    assert "rules_error" in out
+
+
+def test_a_valid_rules_file_is_still_counted(tmp_path, monkeypatch):
+    """The guard must not become a shrug that ignores the file entirely."""
+    ws = _ws(tmp_path, levels=3, baselines=(30, 40, 50))
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {
+        "actions_used": 90, "levels_reached": 3, "won": True,
+        "levels_reached_final_playthrough": 3})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+    ws.rules_path.write_text(
+        '{"verified": [1, 2, 3], "refuted": [4, 5]}', encoding="utf-8")
+
+    out = S.collect_outcome(ws, exit_code=0, timed_out=False)
+    assert out["mechanics_recorded"] == 3 and out["refutations_recorded"] == 2
+    assert "rules_error" not in out

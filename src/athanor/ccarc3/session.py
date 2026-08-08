@@ -670,6 +670,23 @@ def build_cli_args(workspace: Workspace) -> list[str]:
     return args
 
 
+def _signal_group(proc: "subprocess.Popen", sig: int) -> None:
+    """Signal the solver's whole process group, falling back to the child.
+
+    `start_new_session=True` makes the child a group leader, so one `killpg`
+    reaches every descendant it spawned. The fallback matters on the path where
+    the child has already exited: `getpgid` then raises ProcessLookupError, and
+    a timeout arm that died there would skip the wait below it.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.send_signal(sig)
+        except (ProcessLookupError, OSError):
+            pass
+
+
 #: Seconds a solver gets to shut down cleanly after SIGTERM before SIGKILL.
 TERM_GRACE_S = 30
 
@@ -696,6 +713,13 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
         stream.rename(ws.root / f"stream.{n}.jsonl")
 
     with stream.open("w", encoding="utf-8") as fh:
+        # **Its own session, so the timeout can reach the whole tree.** Without
+        # this the child sits in the driver's process group and a signal to
+        # `proc` reaches only the `claude` process. The solver drives the game
+        # from `python -c ...` grandchildren -- the workspace CLAUDE.md tells it
+        # to -- and each of those POSTs actions of its own. Killing the parent
+        # left them running: still spending the budget, still writing the ledger,
+        # against a run the driver had already declared timed out and moved past.
         proc = subprocess.Popen(
             args,
             cwd=ws.root,
@@ -703,6 +727,7 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
             stdout=fh,
             stderr=subprocess.STDOUT,
             text=True,
+            start_new_session=True,
         )
         try:
             code = proc.wait(timeout=config.wall_clock_timeout_s)
@@ -722,11 +747,11 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
             # hard-coding -1 would file that as a kill. `collect_outcome` acts on
             # `exit_code` only when `timed_out` is false, so carrying the real
             # value through is informative and changes no decision.
-            proc.terminate()
+            _signal_group(proc, signal.SIGTERM)
             try:
                 code = proc.wait(timeout=TERM_GRACE_S)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                _signal_group(proc, signal.SIGKILL)
                 code = proc.wait()
             timed_out = True
 
@@ -1196,10 +1221,26 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
                 f"timeout — it gave up with the allowance untouched, which is not "
                 f"a result; re-run this game"
             )
+    # **Bookkeeping must never cost the result.** This parsed rules.json
+    # unguarded, three lines before result.json is written, so a file that is not
+    # valid JSON took the whole outcome down with it -- a WON run recorded as no
+    # result at all. Zero bytes is the realistic case and the sweep manufactures
+    # it: `RuleBook.save` uses `write_text`, which truncates before it writes,
+    # and the supervisor stops solvers with a signal at the quota ceiling by
+    # design. The solver also has Write on its own workspace.
+    #
+    # Every other reader in this file already guards its parse. The two fields
+    # derived here are counts for the log; losing them is a line of missing
+    # bookkeeping, not a lost game.
+    book = {}
     if ws.rules_path.exists():
-        book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
-        outcome["mechanics_recorded"] = len(book.get("verified", []))
-        outcome["refutations_recorded"] = len(book.get("refuted", []))
+        try:
+            book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            outcome["rules_error"] = f"{type(exc).__name__}: {exc}"
+            book = {}
+    outcome["mechanics_recorded"] = len(book.get("verified", []))
+    outcome["refutations_recorded"] = len(book.get("refuted", []))
 
     snapshot_scorecard(ws)
     (ws.root / "result.json").write_text(json.dumps(outcome, indent=2) + "\n", encoding="utf-8")
