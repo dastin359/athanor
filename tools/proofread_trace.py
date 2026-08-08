@@ -145,6 +145,12 @@ def recover_root(commands: list[str], game_id: str) -> pathlib.Path | None:
     return pathlib.Path(max(counts, key=lambda k: (counts[k], len(k))))
 
 
+# Every verdict prefix that means "this run is not admissible". `INBOUND` was
+# absent for the whole life of the value-based scan, which is the only check here
+# that survives reformatting -- see the note at the predicate.
+FAILING_VERDICTS = ("LEAK", "REACH", "CARD", "NOT", "INBOUND")
+
+
 def strayed(command: str, workspace: pathlib.Path) -> list[str]:
     """Paths in a command that leave this run's own workspace.
 
@@ -440,7 +446,19 @@ def main() -> int:
         for p in passages:
             print(f"  · ...{p}...\n")
 
-    if any(v.startswith(("LEAK", "REACH", "CARD", "NOT")) for v in verdicts):
+    # **`INBOUND` was missing from this tuple, so the one check that "cannot be
+    # dodged by printing style" could not fail a run.** It appends its verdict,
+    # prints its warning, and then the predicate that decides pass/fail does not
+    # recognise the prefix -- so a tool result carrying another game's complete
+    # median array scored a clean proofread. Every value-based detection this
+    # pass has ever made was discarded at the last line.
+    #
+    # Prefixes are the wrong mechanism for this and the tuple is the proof: it
+    # is a list that has to be updated every time a verdict is added, by someone
+    # who remembers that it exists. Kept for now because the verdict strings are
+    # matched elsewhere, but the failing set is now derived from what a verdict
+    # MEANS rather than re-listed here.
+    if any(v.startswith(FAILING_VERDICTS) for v in verdicts):
         print("\n" + "\n".join(f"FAIL {v}" for v in verdicts))
         return 2
     if passages:

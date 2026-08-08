@@ -188,3 +188,41 @@ def test_ordinary_agent_home_noise_is_still_exempt(tmp_path):
                    "ls /root/.npm/_cacache",
                    "python -c 'import sys; print(sys.path)' > /root/out.txt"):
         assert not pt.strayed(benign, ws), benign
+
+
+def test_an_inbound_median_array_actually_fails_the_run():
+    """**The one check that survives reformatting could not fail a run.**
+
+    `FAILING_VERDICTS` decides pass/fail by prefix, and `INBOUND` — emitted by
+    the value-based foreign-median scan, the check the code itself calls "the one
+    that cannot be dodged by printing style" — was not in the tuple. It appended
+    its verdict, printed its warning, and the predicate did not recognise it, so
+    a tool result carrying another game's complete median array scored a clean
+    proofread. Every detection that pass ever made was discarded at the last line.
+    """
+    assert "INBOUND" in pt.FAILING_VERDICTS, (
+        "a verdict nothing acts on is a check that reports by not running"
+    )
+    for prefix in ("LEAK", "REACH", "CARD", "NOT", "INBOUND"):
+        assert any(v.startswith(prefix) for v in [prefix + ": x"]), prefix
+
+
+def test_the_doctrine_states_no_baseline_value():
+    """The DOCTRINE is the one file every solver is instructed to read, so a
+    number recoverable from it reaches every run.
+
+    Two survived until 2026-08-08: "games range from 171 to 1843 total" were the
+    exact minimum and maximum baseline totals across the 25 environments, and a
+    worked `status()` line read `[190/h on this level = 3.5x]` — a redaction that
+    removed the value and left both of its factors, pinning it to [53.5, 55.1]
+    against a true 55.
+    """
+    doctrine = (pathlib.Path(__file__).resolve().parent.parent
+                / "src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md").read_text()
+
+    assert "171" not in doctrine and "1843" not in doctrine, (
+        "the extremes of the baseline-total distribution are two real totals"
+    )
+    assert "190/h" not in doctrine, (
+        "a count beside its own ratio is the median in one division"
+    )

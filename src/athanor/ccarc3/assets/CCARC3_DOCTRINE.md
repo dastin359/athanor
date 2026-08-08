@@ -500,8 +500,8 @@ where there is none.
 ## 6. Pace against the published baseline.
 
 Every game publishes `baseline_actions` — one figure per level, what a
-playthrough costs when the rules are *already known*. Real games range from 171
-to 1843 total.
+playthrough costs when the rules are *already known*. Games vary by an order of
+magnitude in total length.
 
 **Here is what normal looks like, measured over 26 level-attempts across five
 games:**
@@ -520,7 +520,7 @@ analysis had already flagged as the problem levels.
 You do not have to compute this. `client.status()` leads with it:
 
 ```
-g: level 3/6 state=NOT_FINISHED actions=291 [190/h on this level = 3.5x]  <- OVER BASELINE
+g: level 3/6 state=NOT_FINISHED actions=291 [a/h on this level = a/h]  <- OVER BASELINE
 ```
 
 There is no reliable cutoff to look up: the sample has **nothing between 0.92×

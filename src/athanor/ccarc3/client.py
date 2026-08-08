@@ -1210,10 +1210,15 @@ class ArcClient:
                 # With the medians withheld only `cap` is computable, so this
                 # used to print `[cap 1.000 = 9/9 levels]` and stop -- half the
                 # formula, with no sign that the other half existed. On
-                # 2026-08-07 `bp35` cleared 9 of 9 in 990 actions -- around half
-                # again what the game was worth -- read that line, and concluded: "All nine
-                # levels are cleared with a perfect score, so the game is won. I
-                # should wrap this up." Its `raw` was 0.7252. It never replayed,
+                # 2026-08-07 `bp35` cleared 9 of 9 well over what the game was
+                # worth, read that line, and concluded: "All nine levels are
+                # cleared with a perfect score, so the game is won. I should wrap
+                # this up." Its `raw` was 0.7252.
+                #
+                # (The action count is gone from this comment on purpose. Paired
+                # with the ratio it also carried, it stated that game's baseline
+                # total to within 1.4% -- and unlike a file read, a solver
+                # reaching this through `inspect.getsource` trips no reach check.) It never replayed,
                 # and the replay was available at that exact frame and worth up
                 # to +0.2748.
                 #
