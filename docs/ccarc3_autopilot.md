@@ -264,12 +264,29 @@ won environments; their figures survive only in that file and in
 heartbeat. **Never point a sub-agent at `runs*/`**, and note that "do not edit
 any files" did *not* stop the one that replaced a directory.
 
-**`scratchpad/heartbeat.sh` is the monitor.** Its liveness check splits
-`/proc/<pid>/cmdline` on NUL and requires a whole argv element to match
-`.*/batch6\.py`. **Do not "simplify" it to `pgrep -f` or a substring `case`** —
-the watcher's own command line contains the script name, so it sees itself,
-concludes the batch is alive and never reports the end. That bug class has bitten
-three times here, once as a two-process deadlock.
+**`tools/heartbeat.sh` is the monitor, and `tools/heartbeat_watch.sh` watches
+IT.** Its liveness check splits `/proc/<pid>/cmdline` on NUL and requires a whole
+argv element to match the runner path (derived from `supervisor.sh`, not written
+twice). **Do not "simplify" it to `pgrep -f` or a substring `case`** — the
+watcher's own command line contains the script name, so it sees itself, concludes
+the batch is alive and never reports the end. That bug class has bitten three
+times here, once as a two-process deadlock.
+
+**Never run the heartbeat AS the Monitor's command.** That coupling makes the
+Monitor's timeout the heartbeat's lifetime, and on 2026-08-08 it did exactly
+that: the Monitor expired and took heartbeat.sh (pid 3196) down with it, with
+nothing reporting the loss — `daemon_check` lists supervisor.sh,
+preserve_evidence.sh and context_watch.py, so the one daemon that could not
+report its own death was the one that died. Arm the Monitor over
+`tools/heartbeat_watch.sh` instead: it relaunches the heartbeat detached
+(`setsid`, appending to `scratchpad/heartbeat.log`) and forwards only the lines
+worth waking for. A Monitor timeout then costs an event feed, not a daemon.
+
+**`persistent: true` does not mean "no timeout" — measured, twice.** Arming with
+`persistent: true` and `timeout_ms: 3600000` returned `timeout 1800000ms`: the
+harness silently clamps to 30 minutes. So expect the re-arm notification roughly
+every half hour and treat it as routine. It is only routine because of the
+decoupling above; before it, each clamp was a silent daemon loss.
 
 **Cost model, measured over 4 runs: a run costs turns x ~$0.10.** Spread
 $0.084-0.121/turn, tracking context size, which grows within a run. NOT driven
@@ -710,7 +727,7 @@ set -a && . scratchpad/arc3/.env && set +a
 setsid nohup .venv/bin/python scratchpad/batch6.py >> scratchpad/batch6.log 2>&1 < /dev/null &
 setsid nohup bash scratchpad/quota_guard.sh >> scratchpad/quota_guard.log 2>&1 < /dev/null &
 ```
-then re-arm the heartbeat (`Monitor` over `scratchpad/heartbeat.sh`).
+then re-arm the heartbeat — `Monitor` over **`tools/heartbeat_watch.sh`**, never over `heartbeat.sh` itself (see the decoupling note above); the watchdog relaunches only when no argv-exact `heartbeat.sh` is running, so re-arming against a live one spawns no duplicate.
 
 Historical note — the old rule, kept because the reasoning still applies below
 0.95: if `quota.sh` reports the seven-day window back to **`allowed`**, relaunch
@@ -722,7 +739,7 @@ setsid nohup .venv/bin/python scratchpad/batch6.py \
     >> scratchpad/batch6.log 2>&1 < /dev/null &
 ```
 
-then re-arm the heartbeat (`Monitor` over `scratchpad/heartbeat.sh`). It skips
+then re-arm the heartbeat — `Monitor` over **`tools/heartbeat_watch.sh`**, never over `heartbeat.sh` itself (see the decoupling note above); the watchdog relaunches only when no argv-exact `heartbeat.sh` is running, so re-arming against a live one spawns no duplicate. It skips
 the four finished games and starts at `vc33`. If still `allowed_warning`, do
 nothing and say so — the window was 0.89 with ~27h to reset as of 01:05.
 
