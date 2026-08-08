@@ -670,6 +670,10 @@ def build_cli_args(workspace: Workspace) -> list[str]:
     return args
 
 
+#: Seconds a solver gets to shut down cleanly after SIGTERM before SIGKILL.
+TERM_GRACE_S = 30
+
+
 def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, Any]:
     """Build a workspace and run one solver session against one game."""
     ws = build_workspace(config, info)
@@ -704,9 +708,27 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
             code = proc.wait(timeout=config.wall_clock_timeout_s)
             timed_out = False
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            code, timed_out = -1, True
+            # **SIGTERM first, and keep whatever exit status comes back.**
+            # SIGKILL gave the solver no chance to flush: its stdout is a FILE,
+            # not a tty, so the runtime block-buffers it and the tail of
+            # `stream.jsonl` -- the only source for `run_cost`'s turn and dollar
+            # figures -- died in userspace. The scored ledger is unaffected,
+            # since `trace.jsonl` is written per action by the client, so this
+            # buys accounting accuracy rather than score.
+            #
+            # The grace period also makes a clean exit possible for the first
+            # time, and that status is worth recording: a solver interrupted one
+            # write short of finishing can now exit 0 during the grace, and
+            # hard-coding -1 would file that as a kill. `collect_outcome` acts on
+            # `exit_code` only when `timed_out` is false, so carrying the real
+            # value through is informative and changes no decision.
+            proc.terminate()
+            try:
+                code = proc.wait(timeout=TERM_GRACE_S)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                code = proc.wait()
+            timed_out = True
 
     return collect_outcome(ws, exit_code=code, timed_out=timed_out)
 
