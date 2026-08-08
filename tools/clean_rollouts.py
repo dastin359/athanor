@@ -518,7 +518,18 @@ def concurrency() -> int:
     except ValueError:
         return 2
     # A typo in a one-line file should not launch fifty solvers.
-    return max(1, min(CONCURRENCY_MAX, n))
+    #
+    # **0 means hold, and that has to be honoured.** This clamp read
+    # `max(1, ...)`, so writing 0 -- the obvious way to say "start nothing", and
+    # the way this project has actually used the file during a launch freeze --
+    # quietly ran one game anyway. The heartbeat printed `conc=0` beside a
+    # running solver for days and the two were never read as contradictory. A
+    # brake that reads as engaged and is not is worse than no brake at all.
+    #
+    # A negative number is still a typo rather than a request, and it clamps to
+    # 0 rather than 1: of the two ways to misread a malformed brake, holding is
+    # the recoverable one.
+    return max(0, min(CONCURRENCY_MAX, n))
 
 
 _slots = threading.Condition()

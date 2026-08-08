@@ -204,3 +204,28 @@ def test_an_abort_stops_the_games_that_have_not_started(driver, monkeypatch):
     driver._aborted.clear()
 
     assert ran == [0], f"games ran after the abort: {ran}"
+
+
+def test_zero_concurrency_holds_instead_of_running_one(tmp_path, monkeypatch):
+    """**A brake that reads as engaged and is not is worse than no brake.**
+
+    The clamp was `max(1, ...)`, so writing 0 -- the obvious way to say "start
+    nothing", and the way this project used the file during a launch freeze --
+    ran one game anyway while the heartbeat printed `conc=0` beside it.
+    """
+    import pathlib as _p
+    import sys as _s
+    _s.path.insert(0, str(_p.Path(__file__).resolve().parent.parent / "tools"))
+    import clean_rollouts as cr
+
+    f = tmp_path / "concurrency"
+    monkeypatch.setattr(cr, "CONCURRENCY_FILE", f)
+
+    f.write_text("0")
+    assert cr.concurrency() == 0, "0 must hold, not launch one"
+    f.write_text("-3")
+    assert cr.concurrency() == 0, "a malformed brake holds rather than runs"
+    f.write_text("3")
+    assert cr.concurrency() == 3
+    f.write_text("50")
+    assert cr.concurrency() == cr.CONCURRENCY_MAX, "the upper clamp still applies"
