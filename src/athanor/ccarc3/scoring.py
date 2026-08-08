@@ -208,8 +208,18 @@ def actions_per_level(
     **starts a new play**: a new guid, a new ``actions`` row and a new
     ``actions_by_level`` row.
 
-    **``actions_by_level`` is cumulative, despite its name.** Measured on a live
-    run of `tu93`: it returned ``[[1, 18], [2, 45], [3, 64]]`` while
+    **The field is a list of PLAYS, each a list of ``[level, cumulative]``
+    pairs**, and both worked examples below used to omit that outer list -- one
+    showed a single play's pairs, the other dropped the level index entirely.
+    Either shape would raise or mis-parse in
+    :func:`server_actions_per_level`, which is the function that reads it.
+    Verified against a preserved two-play card::
+
+        [[[1, 27], [2, 80], …, [8, 623]],     # play 1
+         [[1, 14], [2, 46], …, [8, 488]]]     # play 2
+
+    **And it is cumulative, despite its name.** Measured on a live run of
+    `tu93`, whose single play returned ``[[1, 18], [2, 45], [3, 64]]`` while
     ``total_actions`` was **67**. Those entries sum to 127, which is the tell --
     they are ``[level, actions spent by the time that level fell]``, so the
     per-level ``a_l`` the rubric divides by is the **difference** between
@@ -221,8 +231,9 @@ def actions_per_level(
     the first probe, on `lp85`, looked like agreement and was not evidence.
 
     So for a one-level game with a human baseline of 7, won in 10 and then
-    replayed and won in 7: ``actions_by_level`` is ``[[10], [7]]`` and
-    ``total_actions`` is 17. Since ``Card.high_score = max(scores)`` scores the
+    replayed and won in 7: ``actions_by_level`` is ``[[[1, 10]], [[1, 7]]]`` --
+    two plays, each one ``[level, cumulative]`` pair -- and ``total_actions``
+    is 17. Since ``Card.high_score = max(scores)`` scores the
     *best* play, ``a_l`` is **7**. The 17 is the running total, not the denominator.
 
     This module briefly defaulted to summing, on the argument that
@@ -392,6 +403,18 @@ def disagreements_with_server(
     Empty means the two agree on every level the server has scored. Levels the
     server has not recorded yet — an in-flight run — are not compared, so this
     is safe to call on a live game.
+
+    **Both sides read the LAST play, which is deliberate and is not the play
+    that gets scored.** ``server_actions_per_level`` defaults to ``play=-1``,
+    and :func:`actions_per_level` restarts its accumulation at a full reset, so
+    a whole-trace read already yields the final play -- checked on a real
+    two-play card, where the two sides match element for element. The
+    comparison is like-for-like.
+
+    What it does not corroborate is the *scored* play: :func:`score_run` selects
+    the **best**, and on a run whose best is not its last this agrees about a
+    different playthrough than the one the score came from. Every result banked
+    so far has best == last, so nothing recorded turns on it.
     """
     theirs = server_actions_per_level(scorecard, game_id)
     ours = actions_per_level(transitions, n_levels)
