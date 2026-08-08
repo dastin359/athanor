@@ -23,9 +23,17 @@ SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 MARKER="$REPO/evidence/ccarc3/trace_audit/.last_refresh"
 
-# Directories that can hold finished games. rerun_losses is the live one; the
-# arm batches are listed because a resumed run can still write into them.
-ROOTS=("rerun_losses" "ablate_nobaseline")
+# Directories that can hold finished games, in the flat
+# <root>/<game_id>/result.json layout. The arm batch is listed because a resumed
+# run can still write into it.
+#
+# **`rerun_losses` used to be hard-coded here and that is a bug pattern, not a
+# list.** Ad-hoc re-run directories get created per investigation -- the bp35
+# resume of 2026-08-08 went into `rerun_bp35_fixed` -- and a hard-coded name
+# means the net goes blind to the only run in flight, reporting "nothing new" at
+# exactly the moment it exists to fire. Caught on 2026-08-08 with that run live.
+# Any `rerun_*` directory is now globbed instead, in BOTH layouts, below.
+ROOTS=("ablate_nobaseline")
 # clean_rollouts is handled separately: its finished runs are marked by a banked
 # clean_result.json at the game directory, while the run itself lives a further
 # two levels down at <game>/attempt_N/<game>/. A plain <root>/*/result.json glob
@@ -84,6 +92,32 @@ sys.exit(1 if d.get('error') else 0)
       echo "$root/$gid:$(canon_hash "$result")"
     done
   done
+  # Ad-hoc re-run directories, whatever they are called this week.
+  #
+  # Two layouts, because both occur: `rerun_losses` wrote
+  # <root>/<gid>/result.json, while a `run_game(out_dir=X)` resume writes the
+  # nested <root>/<gid>/attempt_N/<gid>/result.json. Matching only the flat one
+  # is how the bp35 resume would have finished unnoticed.
+  local rroot rname
+  for rroot in "$SP"/rerun_*/; do
+    [ -d "$rroot" ] || continue
+    rname="$(basename "$rroot")"
+    for result in "$rroot"*/result.json "$rroot"*/attempt_*/*/result.json; do
+      [ -e "$result" ] || continue
+      python3 -c "
+import json,sys
+try: d=json.load(open('$result'))
+except Exception: sys.exit(1)
+sys.exit(1 if d.get('error') else 0)
+" 2>/dev/null || continue
+      # The game id is the <gid> directory directly under the root, so the two
+      # layouts produce the SAME key and the existing marker stays valid --
+      # rewriting the key format would re-flag all 50 recorded results as new.
+      gid="$(echo "${result#$rroot}" | cut -d/ -f1)"
+      echo "$rname/$gid:$(canon_hash "$result")"
+    done
+  done
+
   # Banked clean rollouts.
   for result in "$SP/$CLEAN_ROOT"/*/clean_result.json; do
     [ -e "$result" ] || continue
@@ -114,8 +148,17 @@ while IFS= read -r stamp; do
   # A re-run is stored under its own id so it sits beside the arm run it
   # supersedes rather than overwriting it in the page.
   case "${key%%/*}" in
-    rerun_losses)
-      args="$args --ingest $SP/rerun_losses/$gid --as $gid@rerun" ;;
+    rerun_*)
+      # Flat layout first, then the nested one a `run_game` resume produces.
+      rroot="$SP/${key%%/*}"
+      if [ -f "$rroot/$gid/result.json" ]; then
+        args="$args --ingest $rroot/$gid --as $gid@rerun"
+      else
+        for a in "$rroot/$gid"/attempt_*/"$gid"; do
+          [ -f "$a/result.json" ] || continue
+          args="$args --ingest $a --as $gid@rerun"; break
+        done
+      fi ;;
     clean_rollouts)
       # Point at the attempt whose workspace holds the clean result.
       for a in "$SP/$CLEAN_ROOT/$gid"/attempt_*/"$gid"; do
