@@ -26,7 +26,14 @@ INFO = GameInfo("zz99-deadbeef", "Test", ("click",), (17, 38, 31))
 
 
 def _client(tmp_path, level: int, card: dict | Exception):
-    c = ArcClient("zz99-deadbeef", trace_path=tmp_path / "trace.jsonl", info=INFO)
+    # **The key is passed, not inherited.** Without it these six tests read
+    # `ARC_API_KEY` from the ambient environment and `ArcClient.__post_init__`
+    # raises before a single assertion runs -- so the whole file passed or
+    # errored depending on whether the shell that launched pytest happened to
+    # have sourced `.env`. A test whose verdict turns on an ambient secret is
+    # not testing what it says it is.
+    c = ArcClient("zz99-deadbeef", trace_path=tmp_path / "trace.jsonl", info=INFO,
+                  api_key="test-key-not-used-offline")
     c._resumed = True
     c.card_id = "card-1"
     c.level = level

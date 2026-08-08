@@ -43,6 +43,21 @@ SCRATCH = pathlib.Path(
 )
 
 
+def _scoring():
+    """`athanor.ccarc3.scoring`, imported on use.
+
+    This tool runs against a checked-out tree with no install step, so the
+    package is reached the same way `proofread_trace.py` reaches it: by path, at
+    the call site, so a missing `src/` breaks the one function that needs it
+    rather than the whole restore.
+    """
+    import sys  # noqa: PLC0415
+    if str(REPO / "src") not in sys.path:
+        sys.path.insert(0, str(REPO / "src"))
+    from athanor.ccarc3 import scoring  # noqa: PLC0415
+    return scoring
+
+
 def live_workspaces() -> set[str]:
     """Every workspace a running process is currently sitting in.
 
@@ -79,7 +94,10 @@ def card_corroborates(src: pathlib.Path, result: dict) -> str:
     but ourselves can confirm.
 
     Two sources that should agree, compared. It is the only failure mode that
-    has actually been caught here.
+    has actually been caught here. The comparison is `scoring.card_disagreement`
+    -- shared with `clean_rollouts.uncorroborated` and `proofread_trace`, because
+    when each kept its own copy all three read `max(levels_completed)` and all
+    three broke together the day the shared scorecard landed.
     """
     card_gz = src / "scorecard.json.gz"
     if not card_gz.exists():
@@ -88,13 +106,7 @@ def card_corroborates(src: pathlib.Path, result: dict) -> str:
         card = json.loads(gzip.open(card_gz).read())
     except (OSError, ValueError):
         return "scorecard unreadable"
-    entry = (card.get("cards") or {}).get(result.get("game_id")) or {}
-    done = entry.get("levels_completed") or []
-    best = max(done) if done else 0
-    reached = result.get("levels_reached") or 0
-    if best < reached:
-        return f"card shows {best} levels, result claims {reached}"
-    return ""
+    return _scoring().card_disagreement(card, result.get("game_id"), result)
 
 
 def baselines_in(src: pathlib.Path) -> str:

@@ -411,6 +411,46 @@ def server_actions_per_level(scorecard: dict, game_id: str, *, play: int = -1) -
     return out
 
 
+def card_disagreement(scorecard: dict, game_id: str, result: dict) -> str:
+    """Why ARC's own card contradicts a run's ``result.json``, or "" if it agrees.
+
+    **A run nobody but us can confirm is not a clean run.** The card is the
+    server's per-level count and the only source independent of our trace. When
+    a proxy bug started 404ing the reads, the first rollout of ``sb26`` finished
+    8/8 in 124 actions with a card frozen at level 3 -- and nothing else showed a
+    symptom, because actions carry a ``guid`` and are not card-scoped. The game
+    plays perfectly and the numbers you score from stop moving.
+
+    **Only this attempt's plays are in scope, which is why ``playthroughs`` is
+    read.** ``levels_completed`` holds one entry per play, and under a shared
+    scorecard the server keeps appending to the same ``cards[game_id]`` entry
+    across *attempts* of the same game. A plain ``max()`` over it therefore
+    carries the high-water mark of every discarded earlier attempt: a game whose
+    attempt_1 reached level 8 and was thrown away, and whose attempt_2 has a card
+    that stopped updating, still reads ``best=8 >= reached=8`` and banks as
+    corroborated -- the exact ``sb26`` failure, now invisible. The last
+    ``playthroughs`` entries are the plays this attempt produced; nothing earlier
+    belongs in the comparison.
+
+    A card holding *fewer* plays than the trace recorded is itself the failure
+    this is named for, so it is reported rather than passed over.
+
+    Action counts are deliberately not compared: our ledger and ARC's have always
+    differed by a few for reasons already documented. Levels are the check.
+    """
+    entry = (scorecard.get("cards") or {}).get(game_id) or {}
+    done = list(entry.get("levels_completed") or [])
+    plays = int(result.get("playthroughs") or 1)
+    if len(done) < plays:
+        return f"card holds {len(done)} play(s), result claims {plays}"
+    mine = done[-plays:]
+    best = max(mine) if mine else 0
+    reached = result.get("levels_reached") or 0
+    if best < reached:
+        return f"card {best} vs result {reached} levels"
+    return ""
+
+
 def disagreements_with_server(
     transitions: Sequence["object"],
     scorecard: dict,

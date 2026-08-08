@@ -122,7 +122,7 @@ def test_non_json_body_passes_through_unchanged():
         assert arc_proxy._filtered(raw) == raw
 
 
-def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget():
+def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget(monkeypatch):
     """The cap was per shim but not per game, so a sibling paid for your actions.
 
     `ProxyState` held only `(max_actions, actions_used)` and `_forward` never
@@ -137,6 +137,11 @@ def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget():
     import urllib.request
 
     from athanor.ccarc3 import arc_proxy
+
+    # The shim refuses to start without a key, and this test never reaches the
+    # network. Setting one keeps the verdict from depending on whether the shell
+    # that launched pytest had sourced `.env`.
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-used-offline")
 
     mine = arc_proxy.Proxy(game_id="aaaa-1111")
     theirs = arc_proxy.Proxy(game_id="bbbb-2222")

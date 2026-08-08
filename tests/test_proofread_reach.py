@@ -199,12 +199,21 @@ def test_an_inbound_median_array_actually_fails_the_run():
     its verdict, printed its warning, and the predicate did not recognise it, so
     a tool result carrying another game's complete median array scored a clean
     proofread. Every detection that pass ever made was discarded at the last line.
+
+    **And the loop that stood here was itself a check that reported by not
+    running.** It read
+
+        for prefix in (...): assert any(v.startswith(prefix) for v in [prefix + ": x"])
+
+    -- scanning a list built out of `prefix`, so `startswith` was unconditionally
+    true and `FAILING_VERDICTS` was never read. Deleting four of the five entries
+    left the suite green. The real coverage now lives in
+    `test_proofread_verdicts_actually_fail.py`, which drives `pt.main()` once per
+    verdict on a workspace that provokes it and asserts exit 2.
     """
     assert "INBOUND" in pt.FAILING_VERDICTS, (
         "a verdict nothing acts on is a check that reports by not running"
     )
-    for prefix in ("LEAK", "REACH", "CARD", "NOT", "INBOUND"):
-        assert any(v.startswith(prefix) for v in [prefix + ": x"]), prefix
 
 
 def test_the_doctrine_states_no_baseline_value():

@@ -100,6 +100,7 @@ from athanor.ccarc3 import Ccarc3Config  # noqa: E402
 from athanor.ccarc3.client import list_games  # noqa: E402
 from athanor.ccarc3 import shared_card as sc  # noqa: E402
 from athanor.ccarc3.session import run_game   # noqa: E402
+from athanor.ccarc3 import scoring           # noqa: E402
 
 # **Install the baseline strip, and refuse to run without it.**
 # The line above used to read "installs the baseline strip", which was false:
@@ -338,10 +339,12 @@ def uncorroborated(game_dir: pathlib.Path, data: dict) -> str:
     from stop moving.
 
     So the card is checked against the result before a run is banked, rather than
-    scored from later and hoped over. `levels_completed` is the comparison, not
-    the action count: our ledger and ARC's have always differed by a few actions
-    for reasons already documented, but a card that has seen fewer levels than we
-    claim to have cleared is a card that stopped listening.
+    scored from later and hoped over. The comparison itself lives in
+    `scoring.card_disagreement`, in one place because this guard has three copies
+    (here, `proofread_trace.py`, `restore_clean_rollouts.py`) and they drifted:
+    all three read `max(levels_completed)`, which under the sweep's shared card
+    silently began including the high-water mark of every discarded earlier
+    attempt of the same game.
     """
     card_file = game_dir / "scorecard.json"
     if not card_file.exists():
@@ -350,13 +353,7 @@ def uncorroborated(game_dir: pathlib.Path, data: dict) -> str:
         card = json.loads(card_file.read_text())
     except json.JSONDecodeError:
         return "scorecard unreadable"
-    entry = (card.get("cards") or {}).get(data.get("game_id")) or {}
-    done = entry.get("levels_completed") or []
-    best = max(done) if done else 0
-    reached = data.get("levels_reached") or 0
-    if best < reached:
-        return f"card {best} vs result {reached} levels"
-    return ""
+    return scoring.card_disagreement(card, data.get("game_id"), data)
 
 
 def attempts_so_far(game_dir: pathlib.Path) -> int:

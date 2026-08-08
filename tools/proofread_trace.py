@@ -270,6 +270,14 @@ def blocks(stream_text: str) -> tuple[list[str], list[str], list[str], list[str]
     return cmds, results, think, say
 
 
+def _scoring():
+    """`athanor.ccarc3.scoring`, imported on use, like `baselines` below."""
+    sys.path.insert(0, str(REPO / "src"))
+    from athanor.ccarc3 import scoring  # noqa: PLC0415
+
+    return scoring
+
+
 def baselines(game_id: str) -> list[int]:
     sys.path.insert(0, str(REPO / "src"))
     from athanor.ccarc3.client import baselines_for  # noqa: PLC0415
@@ -435,17 +443,21 @@ def main() -> int:
         else:
             print(f"  {name:14} absent")
 
-    # 3. corroboration
+    # 3. corroboration -- shared with clean_rollouts.uncorroborated and
+    # restore_clean_rollouts.card_corroborates, all three of which used to keep
+    # their own `max(levels_completed)` and so all three broke together when the
+    # shared scorecard began accumulating plays across attempts.
     card = json.loads(read(ws / "scorecard.json", args.gz) or "{}")
     entry = (card.get("cards") or {}).get(gid) or {}
     done = entry.get("levels_completed") or []
-    best, reached = (max(done) if done else 0), result.get("levels_reached") or 0
     if not card:
         verdicts.append("CARD: no scorecard preserved")
-    elif best < reached:
-        verdicts.append(f"CARD: shows {best} levels, result claims {reached}")
+    elif (why := _scoring().card_disagreement(card, gid, result)):
+        verdicts.append(f"CARD: {why}")
     else:
-        print(f"  card           OK — {best} levels, {entry.get('total_actions')} actions "
+        mine = done[-int(result.get("playthroughs") or 1):]
+        print(f"  card           OK — {max(mine) if mine else 0} levels this attempt "
+              f"({len(done)} play(s) on the card), {entry.get('total_actions')} actions "
               f"vs result {result.get('actions_used')}")
     if (result.get("attempts") or 1) != 1 or result.get("error"):
         verdicts.append(f"NOT ONE-SHOT: attempts={result.get('attempts')} "
