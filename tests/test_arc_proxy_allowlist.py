@@ -80,6 +80,51 @@ def _round_trip(payload):
     return json.loads(arc_proxy._filtered(json.dumps(payload).encode()))
 
 
+# **`CLOSE_BODY` names 4 of the 6 hidden fields, so 2 were pinned by nothing.**
+# Deleting `baseline_actions` from `HIDDEN_FIELDS` left the whole suite green; so
+# did deleting `scores`. `baseline_actions` is the exact key `/api/games` returns
+# for all 25 environments -- the one field name this module exists to remove --
+# and it was the one no fixture contained.
+#
+# Two tests are needed and neither substitutes for the other. Parametrising over
+# `HIDDEN_FIELDS` proves the filter reaches every entry at every depth, but it
+# *shrinks* when an entry is deleted, so on its own it is green for a frozenset
+# that has quietly lost a name. The roll-call below is what fails then.
+
+REQUIRED_HIDDEN = {
+    # field                   emitted by
+    "baseline_actions":       "GET /api/games, for all 25 environments",
+    "level_baseline_actions": "POST /api/scorecard/close, per run",
+    "level_scores":           "POST /api/scorecard/close, per run",
+    "score":                  "close, at card / environment / run depth",
+    "scores":                 "card-level aggregate",
+    "tags_scores":            "close, per tag",
+}
+
+
+def test_no_hidden_field_may_be_dropped_from_the_frozenset():
+    """The roll-call. Every name here is a field the API really sends, so
+    removing one from `HIDDEN_FIELDS` hands it to the solver."""
+    missing = sorted(set(REQUIRED_HIDDEN) - set(arc_proxy.HIDDEN_FIELDS))
+    assert not missing, (
+        "no longer withheld: "
+        + "; ".join(f"{f} ({REQUIRED_HIDDEN[f]})" for f in missing)
+    )
+
+
+@pytest.mark.parametrize("field", sorted(arc_proxy.HIDDEN_FIELDS))
+def test_every_hidden_field_is_stripped_at_every_depth(field):
+    """Depth coverage, for whatever the frozenset currently holds. ARC's score is
+    100*min(1.15, (h/a)^2) and the solver knows its own `a`, so any one of these
+    surviving at any depth inverts back to the human median."""
+    body = {field: [17, 38, 31], "keep": 1,
+            "environments": [{field: 1, "id": "lp85-305b61c3",
+                              "runs": [{field: [1, 2], "actions": 7}]}]}
+    out = _round_trip(body)
+    assert field not in json.dumps(out), f"{field} survived the filter"
+    assert out["keep"] == 1 and out["environments"][0]["runs"][0]["actions"] == 7
+
+
 def test_close_response_loses_every_baseline_field():
     out = _round_trip(CLOSE_BODY)
     flat = json.dumps(out)
@@ -88,8 +133,6 @@ def test_close_response_loses_every_baseline_field():
 
 
 def test_score_fields_are_stripped_at_every_depth():
-    # ARC's score is 100*min(1.15, (h/a)^2) and the solver knows its own `a`,
-    # so a surviving score inverts back to the human median.
     out = _round_trip(CLOSE_BODY)
     assert "score" not in out
     assert "score" not in out["environments"][0]
