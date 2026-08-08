@@ -18,20 +18,84 @@
 # 3 pids (including a transient shell of the monitor's own), this form matched 1.
 SP=/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad
 
-# **Baseline-free arm only.** batch6.py was retired on operator instruction --
-# "all runs after the 13th scored game must be baseline free", "no control arm
-# from now on" -- so nothing here should watch it. Reporting a control line after
-# it stopped was actively misleading: it kept printing the last batch6.log entry
-# alongside a stale trace from a different game.
+# **Watch whatever the supervisor actually launches, not a name from last week.**
+# This matched `ablate_baselines.py` long after `clean_rollouts.py` became the
+# runner, so `runner_alive` was permanently false -- and the loop below reads
+# false as "the arm ended", prints four lines of a log last written days ago, and
+# breaks on its FIRST poll. A heartbeat that exits immediately is not a heartbeat
+# that reports nothing wrong; it is a heartbeat that cannot report at all, and it
+# looked identical to a healthy one from the outside.
+#
+# The name comes from the supervisor rather than being written twice: the two
+# drifted apart once and the drift was invisible precisely because this file kept
+# answering.
+#
+# batch6 survives below only as the name of the argv-matching bug, which is worth
+# keeping because it is the bug, not the batch.
+RUNNER_NAME=$(grep -oE 'RUNNER="\$\{1:-\$REPO/tools/[a-z_]+\.py\}"' \
+                   /home/user/athanor/tools/supervisor.sh 2>/dev/null \
+              | grep -oE '[a-z_]+\.py' | head -1)
+RUNNER_NAME="${RUNNER_NAME:-clean_rollouts.py}"
+
 runner_alive() {
     local d
     for d in /proc/[0-9]*; do
         [ -r "$d/cmdline" ] || continue
-        if tr '\0' '\n' < "$d/cmdline" 2>/dev/null | grep -qx '.*/ablate_baselines\.py'; then
+        if tr '\0' '\n' < "$d/cmdline" 2>/dev/null \
+           | grep -qx ".*/${RUNNER_NAME//./\\.}"; then
             return 0
         fi
     done
     return 1
+}
+
+# **"No runner" is the steady state between games, not an ending.** The old loop
+# broke the moment `runner_alive` was false, which after the arm finished meant
+# on the first poll, every time. The supervisor starts a runner within ten
+# minutes whenever there is work and quota; absence for one poll says nothing.
+# Only absence sustained past that window, with work still pending, is a report.
+IDLE_POLLS=0
+IDLE_LIMIT=3            # 3 x 420s = 21 min, twice the supervisor's 10-min cycle
+ANNOUNCED_COMPLETE=0
+
+# **The daemons that have to outlive this script.** Detached work here is mortal
+# -- a container restart killed the supervisor once, 22 minutes before a quota
+# reset -- and nothing else notices. Checked argv-element-exact for the reason
+# given above: a substring match finds this script, which names all three.
+daemon_check() {
+    local d name argv
+    local -A seen=()
+    for d in /proc/[0-9]*; do
+        [ -r "$d/cmdline" ] || continue
+        argv=$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null)
+        for name in supervisor.sh preserve_evidence.sh context_watch.py; do
+            grep -qx ".*/${name//./\\.}" <<< "$argv" && seen[$name]=1
+        done
+    done
+    for name in supervisor.sh preserve_evidence.sh context_watch.py; do
+        [ -n "${seen[$name]}" ] || \
+            echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') DAEMON DOWN: $name"
+    done
+}
+
+# **Ask the driver where it works; do not rebuild the path.** Reconstructing it
+# as $REPO/$CCARC3_SWEEP_DIR looked right and pointed at a directory that does
+# not exist -- so `banked` read 0 against 25 games and "work pending" would have
+# been true forever, on a sweep that finished days ago. The driver resolves OUT
+# from the scratchpad, and it is the only thing that knows. Same defect as the
+# one this file is being fixed for: a value that agrees with the truth in the
+# environment you happen to test it in.
+work_pending() {
+    /home/user/athanor/.venv/bin/python - <<'EOF' 2>/dev/null
+import sys
+sys.path[:0] = ["/home/user/athanor/tools", "/home/user/athanor/src"]
+try:
+    import clean_rollouts as cr
+except Exception:
+    sys.exit(0)                      # cannot tell -> assume work, stay watching
+banked = len(list(cr.OUT.glob("*/clean_result.json")))
+sys.exit(0 if banked < len(cr.GAMES) else 1)
+EOF
 }
 
 while true; do
@@ -39,9 +103,33 @@ while true; do
         >/dev/null 2>&1 || true
 
     if ! runner_alive; then
-        echo "BASELINE-FREE ARM ENDED >>> $(tail -n 4 "$SP/ablate.log" 2>/dev/null | tr '\n' ' ')"
-        break
+        IDLE_POLLS=$((IDLE_POLLS + 1))
+        if ! work_pending; then
+            # **Say it once, then hold.** Breaking here was correct as a report
+            # and wrong as a heartbeat: this process is also what keeps the
+            # session and its VM alive, so exiting three seconds after arming
+            # left nothing running and produced a re-arm on every turn. An alarm
+            # that fires immediately and ends is one you learn to ignore.
+            #
+            # So the idle state is quiet, not absent: the daemons are still
+            # checked every poll, and anything that changes still wakes someone.
+            [ "$ANNOUNCED_COMPLETE" = "1" ] || {
+                echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SWEEP COMPLETE — every game banked; holding, will report daemon loss or new work"
+                ANNOUNCED_COMPLETE=1
+            }
+            daemon_check
+            sleep 420
+            continue
+        fi
+        ANNOUNCED_COMPLETE=0
+        if [ "$IDLE_POLLS" -ge "$IDLE_LIMIT" ]; then
+            echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') NO RUNNER for $((IDLE_POLLS * 7)) min with work pending — supervisor is not starting one"
+            IDLE_POLLS=0
+        fi
+        sleep 420
+        continue
     fi
+    IDLE_POLLS=0
 
     # Emit progress *and* the signals worth waking for. A filter that only ever
     # reports forward movement is silent through a stall, which reads identically

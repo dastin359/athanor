@@ -42,9 +42,20 @@ else
   echo "repo   $before -> $after (recovered from rollback)"
 fi
 
-# 2. The hourly instruction calls refresh_audit.sh by its old scratchpad path.
+# 2. Standing instructions call these by their old scratchpad paths.
+#
+# **Symlinks, not copies, and this is why.** `heartbeat.sh` was a copy here and
+# drifted five days behind the repo: the scratchpad version still watched
+# `ablate_baselines.py` after `clean_rollouts.py` became the runner, so
+# `runner_alive` was permanently false, the loop read that as "the arm ended",
+# and it broke on its first poll while looking exactly like a healthy heartbeat.
+# The scratchpad reverts to an image snapshot when the container is replaced --
+# CLAUDE.md records that as the reason a rule kept only there is a rule that
+# expires -- and the same is true of a script. A symlink cannot drift.
 mkdir -p "$SP"
-ln -sf "$REPO/tools/refresh_audit.sh" "$SP/refresh_audit.sh"
+for tool in refresh_audit.sh heartbeat.sh; do
+    ln -sfn "$REPO/tools/$tool" "$SP/$tool"
+done
 
 # 3+4. Fingerprint and banked results.
 #
