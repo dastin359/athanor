@@ -47,7 +47,18 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 # the ways out: the network, the repo, the key, and the endpoint that carries
 # every environment's medians.
 ESCAPES = (
-    (re.compile(r"\burllib\b|\brequests\b|\bcurl\b|\bwget\b|http\.client|socket\."), "network"),
+    # `socket\.` matched the *word* socket ending a sentence. On 2026-08-08 a
+    # `bp35` solver wrote "ACTION6 on a ball DELETES it back to a socket.
+    # Unlimited, reversible..." into a `gate.acknowledge()` note -- balls and
+    # sockets are that game's own mechanic -- and the driver discarded a 125
+    # minute run that had cleared 8 of 9 levels. A leak check that throws away
+    # good runs on a common English word is worse than the leak it guards.
+    #
+    # Anchored to the module's actual API surface now, plus the import itself.
+    (re.compile(r"\burllib\b|\brequests\b|\bcurl\b|\bwget\b|http\.client"
+                r"|\bimport\s+socket\b"
+                r"|\bsocket\.(socket|create_connection|getaddrinfo|AF_INET|SOCK_)"),
+     "network"),
     (re.compile(r"/api/games|scorecard/"), "ARC endpoint by hand"),
     (re.compile(r"ARC_API_KEY|ARCPRIZE_API_KEY|X-API-Key"), "API key"),
     (re.compile(r"list_games|baselines_for"), "baseline accessor"),

@@ -106,3 +106,42 @@ def test_ordinary_transcript_numbers_do_not_trip_the_scan(text):
 def test_a_short_array_is_not_distinctive_enough_to_assert_on():
     """Three numbers collide with ordinary prose; the scan declines to guess."""
     assert not pt.array_arrived("1 2 3", [1, 2, 3])
+
+
+# ---------------------------------------------------------------------------
+# ESCAPES had false-positive tests for `strayed()` and for the median scans, but
+# not for its own patterns — and that is the one that destroyed data.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("label,command", [
+    ("the word socket ending a sentence",
+     "gate.acknowledge('ACTION6 on a ball DELETES it back to a socket. "
+     "Unlimited, reversible, and the positions are fixed')"),
+    ("a socket in game prose", "notes: the socket at (12,30) accepts one ball"),
+    ("requested, not requests", "the level requested a second click"),
+    ("curled, not curl", "the path curled around the wall"),
+])
+def test_escapes_do_not_fire_on_ordinary_game_prose(label, command):
+    """A leak check that throws away good runs is worse than the leak it guards.
+
+    Measured 2026-08-08: `socket\\.` matched *"back to a socket. Unlimited"* in a
+    `bp35` solver's own note — balls and sockets are that game's mechanic — and
+    the driver discarded a 125-minute run that had cleared 8 of 9 levels. The
+    pattern is now anchored to `import socket` and the module's real API.
+    """
+    assert not [w for rx, w in pt.ESCAPES if rx.search(command)], (
+        f"false positive on {label}: {command[:80]}"
+    )
+
+
+@pytest.mark.parametrize("command", [
+    "import socket; s = socket.socket()",
+    "socket.create_connection(('three.arcprize.org', 443))",
+    "s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)",
+    "import urllib.request",
+    "curl -H 'X-API-Key: k' https://three.arcprize.org/api/games",
+    "python3 -c \"import requests; requests.get(u)\"",
+])
+def test_escapes_still_catch_every_real_network_reach(command):
+    """Anchoring must not cost coverage."""
+    assert [w for rx, w in pt.ESCAPES if rx.search(command)], f"missed: {command}"
