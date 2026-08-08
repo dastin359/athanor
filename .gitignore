@@ -37,3 +37,10 @@ replicate/
 # staged by that script's own `git add evidence`.
 evidence/**/*.tmp.*
 .coverage
+
+# Transient git worktrees created by the Workflow tool's `isolation: 'worktree'`
+# agents. Each is a checkout of this repository, so committing them would nest
+# the repo inside itself; they are removed when the workflow finishes. Only the
+# worktrees are ignored, not `.claude/` as a whole, so agent and skill
+# definitions added there later are still tracked.
+.claude/worktrees/
