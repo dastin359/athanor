@@ -5082,3 +5082,51 @@ not randomised — a solver chose to replay — so this is not evidence that rep
 in all 17 and was collected in 16, and that the one miss has the one mechanism
 §0a exists to prevent. The same day's repair rewrote the passages that had told
 `bp35` a replay might be worth nothing.
+
+## The clean-rollout total, split by whether the run saw the win-frame prompt
+
+Scored 2026-08-08 from each game's **banked attempt**, via `scoring.score_run`
+over the trace (best play, as ARC scores). Not from the preserved
+`scorecard.json`: matching the wrong `attempt_*` reads an abandoned run, and
+doing so scored `su15` at 0.0567 for a run that won 9 of 9.
+
+| set | n | mean E | at E=1 | single-play runs | below 1.0 |
+|---|---|---|---|---|---|
+| never saw the prompt | 20 | 0.9566 | 17/20 | 4 | bp35 0.7252, lf52 0.4537, sk48 0.9538 |
+| **saw it** | **5** | **1.0000** | **5/5** | **0** | none |
+
+The prompt is `fd18b89`, the `status()` line that fires at the winning frame:
+*"WON — and `restart_for_replay()` is legal RIGHT NOW and illegal after any
+further action … You cannot compute raw on this run — replay anyway."*
+
+**`bp35` is the run that motivated it and the last one that never saw it.** Its
+clean rollout finished at 08-07 13:50; the prompt landed at 13:56, six minutes
+later, and its stream contains zero occurrences of the warning. It won 9 of 9 in
+a single play at 1.52× the baseline total and stopped — `raw` 0.7252 against a
+cap of 1.0000, which a replay could only have raised.
+
+**Read this as encouraging, not settled.** n=5, not randomised, and the five are
+simply the games that ran last; other changes landed in the same window. What it
+does establish is that **every sub-1.0 game predates the prompt**, so the 98.38%
+over the publishable 17 is a *floor* for what the current harness does, not an
+estimate of it.
+
+### Two failure modes remain, and only one of them is addressed
+
+**Won but did not replay** — `bp35`. This is what the win-frame prompt exists
+for, and the mechanism is understood: the score is `min(cap, raw)`, a completed
+game has `cap = 1.0`, so anything below 1.0 is `raw`, and only a fresh play can
+raise `raw`. Replay is close to free: extra plays add to `total_actions` and
+nothing else, because ARC scores the best play, not the last or the sum.
+
+**Stopped early with budget in hand** — `lf52`, and it is the larger loss
+(0.4537 vs 0.7252). Its run ended `exit_code 0`, `error: null`,
+`timed_out: false` at **7 of 10 levels**, having spent 865 actions against a
+1,339 baseline total — **0.65×**, with the ceiling nowhere in sight. Nothing
+stopped it; it stopped. A win-frame prompt cannot reach this failure, because a
+run that stops at level 7 never reaches a win frame.
+
+That is the same shape as the `bp35` arm run that ended voluntarily at 8 of 9
+with 12% of its ceiling spent. **It is now the single largest recoverable loss
+in the set**, worth about 2.2 points of the benchmark total on its own, and
+unlike the replay gap it has no instrument pointed at it yet.
