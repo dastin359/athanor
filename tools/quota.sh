@@ -48,6 +48,34 @@ EXPECTED = ("five_hour", "seven_day")
 # skips the whole stop/start block, and it neither stops at the ceiling nor
 # restarts after a reset.
 #
+# **Only a real solver workspace counts.** On 2026-08-08 a mutation-testing agent
+# left fixture trees under the scratchpad -- `fx2/top-b/stream.jsonl` carrying a
+# hand-written `seven_day allowed util=0.13` -- and this scan, whose whole job is
+# to read that directory, took them as the truth. The reported seven-day window
+# went from 0.84 allowed_warning to 0.13 allowed, the supervisor relaunched three
+# times against a fabricated all-clear, and the only reason it cost nothing is
+# that there was no pending work. A submission sweep would have started on an
+# invented number.
+#
+# The discriminator: a real stream never sits alone. `build_workspace` writes
+# meta.json, session.py, rules.json and trace.jsonl beside it before the solver
+# starts, and result.json after. Measured across the 178 streams on this box:
+# zero sit alone, and 172 have a sibling result.json. A synthetic fixture that
+# writes only stream.jsonl has none of them.
+HARNESS_SIBLINGS = ("result.json", "trace.jsonl", "meta.json", "rules.json",
+                    "session.py")
+
+def _is_real_workspace(path):
+    d = os.path.dirname(path)
+    try:
+        names = set(os.listdir(d))
+    except OSError:
+        return False
+    return any(n in names for n in HARNESS_SIBLINGS)
+
+skipped = [p for p in streams if not _is_real_workspace(p)]
+streams = [p for p in streams if _is_real_workspace(p)]
+
 # Newest-first, so the common case still stops after a handful of files.
 latest = {}  # rateLimitType -> (mtime, seq, info)
 scanned = 0
@@ -83,6 +111,11 @@ for p in streams:
                 latest[t] = (mt, seq, i)
 
 latest = {t: (mt, i) for t, (mt, seq, i) in latest.items()}
+
+# Loud, not silent: debris in the live scan root is a fault in its own right.
+if skipped:
+    print(f"  note: ignored {len(skipped)} stream.jsonl with no harness files "
+          f"beside them (e.g. {os.path.dirname(skipped[0]).replace(S + '/', '')})")
 
 if not latest:
     print("status=unknown reason=no-reading-on-disk")

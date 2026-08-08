@@ -106,6 +106,13 @@ def write_stream(root: Path, name: str, events: list[str], *, age: float) -> Pat
     """
     path = root / name / "stream.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
+    # **A fixture has to look like a real workspace, or it is the bug.**
+    # quota.sh ignores a stream.jsonl with no harness files beside it, because
+    # agent debris shaped exactly like these fixtures was once read as the live
+    # quota reading. Writing the sibling keeps these tests exercising the real
+    # path instead of the ignored one — and `test_a_lone_stream_is_not_a_quota_
+    # reading` deliberately does NOT use this helper.
+    (path.parent / "result.json").write_text("{}", encoding="utf-8")
     noise = _noise()
     lines = noise[:1] + events + noise[1:]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -558,9 +565,54 @@ def test_a_stream_at_its_real_depth_is_found(tmp_path):
         _event("seven_day", "allowed_warning", 0.61, resets_at=soon) + "\n"
         + _event("five_hour", "allowed", 0.12, resets_at=soon) + "\n",
         encoding="utf-8")
+    (deep / "result.json").write_text("{}", encoding="utf-8")   # a real workspace
 
     out = run_quota(root).stdout
     assert "seven_day" in out and "0.61" in out, (
         f"a stream at its real depth was not scanned:\n{out}"
     )
     assert "MISSING" not in out and "no-reading-on-disk" not in out
+
+
+def test_a_lone_stream_is_not_a_quota_reading(tmp_path: Path):
+    """**Debris in the live scan root once became the reported quota.**
+
+    On 2026-08-08 a mutation-testing agent left fixture trees under the real
+    scratchpad — `fx2/top-b/stream.jsonl` holding a hand-written
+    `seven_day allowed util=0.13`. quota.sh, whose entire job is to read that
+    directory, took them as truth: the seven-day window went from 0.84
+    allowed_warning to 0.13 allowed, and the supervisor relaunched three times
+    against a fabricated all-clear. It cost nothing only because nothing was
+    pending; a submission sweep would have started on an invented number.
+
+    A real stream never sits alone — `build_workspace` writes meta.json,
+    session.py, rules.json and trace.jsonl beside it before the solver starts,
+    and result.json after. Zero of the 178 streams on the box sit alone. A
+    synthetic fixture that writes only stream.jsonl has none of them.
+    """
+    resets = time.time() + RESET_AHEAD
+    real = tmp_path / "clean_rollouts" / "g1" / "attempt_1" / "g1"
+    real.mkdir(parents=True)
+    (real / "stream.jsonl").write_text(
+        _event(SEVEN_DAY, "allowed_warning", 0.84, resets_at=resets) + "\n"
+        + _event(FIVE_HOUR, "allowed", 0.30, resets_at=resets) + "\n",
+        encoding="utf-8")
+    (real / "result.json").write_text("{}", encoding="utf-8")
+    old = time.time() - 7200
+    os.utime(real / "stream.jsonl", (old, old))
+
+    # Exactly the debris that fooled it, and NEWER than the real reading.
+    debris = tmp_path / "fx2" / "top-b"
+    debris.mkdir(parents=True)
+    (debris / "stream.jsonl").write_text(
+        _event(SEVEN_DAY, "allowed", 0.13, resets_at=resets) + "\n", encoding="utf-8")
+
+    out = run_quota(tmp_path).stdout
+    got = rows(out)
+    assert util_of(got[SEVEN_DAY]) == "0.84", (
+        f"a lone stream.jsonl was read as a quota reading:\n{out}"
+    )
+    assert status_line(out) == "status=allowed_warning", out
+    # And the debris is reported rather than silently dropped: pollution in the
+    # live scan root is a fault worth seeing.
+    assert "ignored 1 stream.jsonl" in out, out
