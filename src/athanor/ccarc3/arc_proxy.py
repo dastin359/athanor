@@ -230,7 +230,12 @@ def set_budget(max_actions: int, *, used: int = 0) -> None:
 # how it was found. Twice over: `level_actions[0]` beside `level_scores[0]` invert
 # to `h0` on their own. A sample that demonstrates a leak must not be one.
 #
-# Nothing in client.py reads any of these; `close()` is called for its side effect
+# `client.py` reads exactly one of these -- `score`, as the fallback when a frame
+# carries no `levels_completed` -- so that fallback is dead behind this shim,
+# because `_strip` runs on every forwarded body. Harmless while the server always
+# sends `levels_completed`, and silent if it ever stops, which is why the client
+# now refuses a frame carrying neither rather than inferring level 0.
+# Nothing else here is read; `close()` is called for its side effect
 # and `snapshot_scorecard` reads `actions_by_level`, which is untouched.
 HIDDEN_FIELDS = frozenset({
     "level_baseline_actions",

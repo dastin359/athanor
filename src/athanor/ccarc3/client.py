@@ -1079,6 +1079,23 @@ class ArcClient:
         self.guid = frame.get("guid") or self.guid
         self.state = str(frame.get("state", self.state))
         self.win_levels = int(frame.get("win_levels", self.win_levels) or 0)
+        # **A missing level field must not read as level 0.** The fallback chain
+        # ended in `0`, and eleven lines down `self.level < previous_level` is
+        # taken as a full reset -- so a frame without the field would silently
+        # wipe `level_costs` and report a replay that never happened.
+        #
+        # The fallback itself is already dead behind the shim: `score` is in
+        # `arc_proxy.HIDDEN_FIELDS` and `_strip` runs on every forwarded body, so
+        # a proxied run never sees it however the server answers. That is fine
+        # while `levels_completed` is always present, and silent the moment it
+        # is not.
+        if "levels_completed" not in frame and "score" not in frame:
+            raise RuntimeError(
+                f"{name} returned a frame with neither `levels_completed` nor "
+                f"`score`, so the level cannot be read. Continuing would record "
+                f"level 0 and score this as a full reset. Frame keys: "
+                f"{sorted(frame)}"
+            )
         self.level = int(frame.get("levels_completed", frame.get("score", 0)) or 0)
         self.available_actions = tuple(
             action_name(a) for a in (frame.get("available_actions") or ())

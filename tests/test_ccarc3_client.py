@@ -1454,3 +1454,33 @@ def test_level_costs_match_the_scorer_when_the_play_opens_with_a_reset(
         f"client says {c.level_costs}, scorer says {tuple(from_trace)} — "
         f"the workspace prints one and the banked result uses the other"
     )
+
+
+def test_a_frame_with_no_level_field_is_refused_not_read_as_zero(monkeypatch, tmp_path):
+    """**Reading 0 here is scored as a full reset eleven lines later.**
+
+    The fallback chain ended in `0`, so a frame missing both `levels_completed`
+    and `score` would set `self.level = 0`, trip `self.level < previous_level`,
+    increment `full_resets` and wipe `level_costs` — recording a replay that
+    never happened, on a run that was fine.
+
+    The fallback is already unreachable behind the shim: `score` is in
+    `arc_proxy.HIDDEN_FIELDS` and `_strip` runs on every forwarded body.
+    """
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20, 30), 3)
+    c.reset()
+    for _ in range(3):
+        c.act(1)
+
+    # `_frame` always supplies the key, which is the point -- the failure being
+    # guarded is the server dropping it, so strip it from the reply itself.
+    inner = client_mod._post
+    def _no_level_field(url, payload, key, **kw):          # noqa: N802 -- see below
+        reply = inner(url, payload, key, **kw)
+        reply.pop("levels_completed", None)
+        reply.pop("score", None)
+        return reply
+    monkeypatch.setattr(client_mod, "_post", _no_level_field)
+
+    with pytest.raises(RuntimeError, match="neither"):
+        c.act(1)
