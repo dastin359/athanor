@@ -16,7 +16,14 @@
 # ending in batch6.py fixes it: this script's own command line is one big `-c`
 # string, which can never equal such a path. Verified: the substring form matched
 # 3 pids (including a transient shell of the monitor's own), this form matched 1.
-SP=/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad
+# **The scratchpad path is overridable, because it is not stable.** It encodes a
+# session UUID, and the container is recycled every 10-50 minutes -- a new one
+# gets a new path, and every tool that hard-coded this string pointed at a
+# directory that no longer exists. `quota.sh` already took `CCARC3_SCRATCH`; the
+# other four did not, so a fixture run or a fresh container silently read the
+# wrong tree. Same defect class as the rest of this file: a value that agrees
+# with the truth only in the environment you happen to test it in.
+SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
 
 # **Watch whatever the supervisor actually launches, not a name from last week.**
 # This matched `ablate_baselines.py` long after `clean_rollouts.py` became the

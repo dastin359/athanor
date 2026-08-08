@@ -58,8 +58,12 @@ from athanor.ccarc3 import Ccarc3Config, arc_proxy, list_games, run_game
 from athanor.ccarc3.client import HIDE_BASELINES_ENV
 from athanor.ccarc3 import session as sess
 
+# Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the
+# container is recycled every 10-50 minutes, so a hard-coded copy points at a
+# directory that stops existing. See tools/clean_rollouts.py for the full note.
 SP = pathlib.Path(
-    "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    os.environ.get("CCARC3_SCRATCH")
+    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
 RUNS = SP / "ablate_nobaseline"
 BUDGET_MULTIPLE = 2.0

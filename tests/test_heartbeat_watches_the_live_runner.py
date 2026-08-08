@@ -261,16 +261,30 @@ def _sandbox(
 
     text = SRC
     text = _sub(text, str(TOOLS), str(tools), expect=4)
-    text = _sub(
-        text,
-        "SP=/tmp/claude-0/-home-user-athanor/"
-        "a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad",
-        f"SP={sp}",
-        expect=1,
-    )
+    # The scratchpad is NOT patched into the script any more -- it is handed in
+    # through `CCARC3_SCRATCH` by `_run`, so this exercises the real override
+    # rather than a rewritten copy of the line. Proven below, because a broken
+    # override would silently point the sandbox at the LIVE scratchpad, and a
+    # test that runs against the real tree is the exact defect this file warns
+    # about in its own docstring.
     text = _sub(text, "sleep 420", "sleep 0.2", expect=3)
     script = root / "heartbeat_under_test.sh"
     script.write_text(text, encoding="utf-8")
+
+    # Prove the sandbox owns the scratchpad before anything runs in it.
+    resolved = subprocess.run(
+        ["/bin/bash", "-c",
+         f'CCARC3_SCRATCH={sp}\n'
+         + subprocess.run(["grep", "-m1", "-E", "^SP=", str(script)],
+                          capture_output=True, text=True, check=True).stdout.strip()
+         + '\nprintf "%s" "$SP"'],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert resolved == str(sp), (
+        f"sandboxed heartbeat resolved SP to {resolved!r}, not the sandbox "
+        f"{str(sp)!r} -- CCARC3_SCRATCH is not being honoured and this test "
+        f"would have run against the live scratchpad"
+    )
     return Sandbox(root, script, sp, tools, out)
 
 
@@ -284,7 +298,7 @@ def _run(box: Sandbox, *, until_polls: int, timeout: float = 120.0):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        env=_ENV,
+        env={**_ENV, "CCARC3_SCRATCH": str(box.sp)},
         cwd=str(box.root),
         start_new_session=True,
     )

@@ -30,13 +30,18 @@ Deliberately NOT `fresh=True`. The point is accumulation across boxes.
 """
 import gzip
 import json
+import os
 import pathlib
 import shutil
 import sys
 import traceback
 
+# Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the
+# container is recycled every 10-50 minutes, so a hard-coded copy points at a
+# directory that stops existing. See tools/clean_rollouts.py for the full note.
 SP = pathlib.Path(
-    "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    os.environ.get("CCARC3_SCRATCH")
+    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
 REPO = pathlib.Path("/home/user/athanor")
 EVIDENCE = REPO / "evidence" / "ccarc3" / "rerun_losses"

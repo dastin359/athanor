@@ -54,8 +54,16 @@ import threading
 import time
 import traceback
 
+# **The scratchpad path is overridable, because it is not stable.** It encodes a
+# session UUID, and the container is recycled every 10-50 minutes -- a new one
+# gets a new path, and every tool that hard-coded this string pointed at a
+# directory that no longer exists. `quota.sh` already took `CCARC3_SCRATCH`; the
+# other four did not, so a fixture run or a fresh container silently read the
+# wrong tree. Same defect class as the rest of this file: a value that agrees
+# with the truth only in the environment you happen to test it in.
 SP = pathlib.Path(
-    "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    os.environ.get("CCARC3_SCRATCH")
+    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
 # **The submission sweep needs its own directory, and that is not cosmetic.**
 # `_run_one` skips any game that already has a `clean_result.json`, so pointing a
