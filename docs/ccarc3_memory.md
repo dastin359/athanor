@@ -1,40 +1,20 @@
 # START HERE — read the handoff in full before acting
 
-**`/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad/project_ccarc3_session_state_0808.md`** — ~25 KB, ~6.3k tokens. Open it
-NOW, in full, before acting on anything below. Its **section K (RETRACTIONS)**
-lists claims made confidently in that session and later disproved, including a
-**published score that was withdrawn**. Its **APPENDIX** carries the finding
-that our **world-model API went unused** — 1 of 43 runs called `arc.predict`,
-0 called `shortest_path` — though 14 of 43 wrote their OWN forward model, so the
-stronger "our solvers don't build world models" claim is RETRACTED in L — and **section P** the shared scorecard: built and
-verified live, with **two more retractions**, one of which killed section M's
-own plan (injecting `card_id` alone cannot work; a card is pinned to one
-backend by `AWSALBAPP-*` stickiness cookies) and one of which corrected a false
-claim that had been sitting in `client.py` (**a closed card DOES survive** — a
-404 means you asked the wrong instance). A fresh session that skips it inherits
-the confident wrong version and re-derives nothing, because nothing looks broken.
+**`docs/ccarc3_handoff_0808.md`** (in this repo, ~11 KB) — open it NOW, in full,
+before acting on anything else. Its **§A RETRACTIONS** lists eight claims made
+confidently on 2026-08-08 and later disproved, including a quota reading that
+would have launched a $652 run on fabricated numbers. A session that skips it
+inherits the confident wrong version and re-derives nothing, because nothing
+looks broken.
 
-**Next action, when quota allows** (7-day window was at util=0.83): the
-25-game sweep onto one card — `CCARC3_SWEEP_DIR=clean_rollouts_submission
-tools/clean_rollouts.py`. Nothing banked can be retro-fitted onto a shared
-card. See P.5 for the two risks worth knowing before spending ~$551.
+**Next action, when quota allows** (seven-day was 0.84, resets ~08-11 21:00 PDT):
+the 25-game sweep onto one card — `CCARC3_SWEEP_DIR=clean_rollouts_submission
+tools/clean_rollouts.py`. Nothing banked can be retro-fitted onto a shared card.
+See §C for the eight guards fixed on 08-08 that this run depends on.
 
-**ALL TIMES IN REPORTS ARE PACIFIC.** This was already recorded at line ~125
-and was still violated on 2026-08-08, because probe logs and `date` return UTC
-and get pasted through unconverted. The rule is not the fix — the fix is that
-anything which writes a timestamp writes it in Pacific. Never report a raw
-`date`/`%H:%M` from this box without converting.
-
-**START WITH THE REPO, NOT THIS FILE.** `docs/ccarc3_open_findings.md` lists 12
-unadjudicated proofread findings, several sweep-blocking, and it survives a
-container replacement — the scratchpad does not. Then §Q of the handoff for the
-night of 08-08→09: ~30 defects fixed, three live median leaks closed (no banked
-result moved), and five errors of mine worth knowing before trusting my summaries.
-
-**This file is a routing table, not the handoff.** A hook is a reason to open a
-file, never a substitute for having opened it.
-
-Base directory for unqualified paths below: `/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad`.
+**The standing agenda is `docs/ccarc3_autopilot.md`** (symlinked as
+`scratchpad/AUTOPILOT.md`). The ARC-AGI-2 items the wake-up prompt recites all
+finished days ago; do not launch them.
 
 ---
 
