@@ -65,17 +65,46 @@ def test_a_solver_that_spent_its_allowance_is_a_real_loss(tmp_path, monkeypatch)
 
 def test_the_retry_is_bounded(tmp_path, monkeypatch):
     """Unlike an interruption, quitting may be telling us the game is hard. At
-    ~$60 a run, 12 passes is $720 to hear the same answer three times."""
-    ws = _ws(tmp_path)
+    ~$60 a run, 12 passes is $720 to hear the same answer three times.
+
+    **Built on the real driver layout, because the first version of this test
+    could not fail.** It drove the bound through a monkeypatched
+    `outcome["attempts"]`, which counts `stream.*.jsonl` files inside ONE
+    workspace. The driver gives every retry a fresh `attempt_N/`, so that number
+    is 1 on every attempt and the bound never bit — the test asserted a
+    quantity nobody computed.
+    """
+    game = "lf52-x"
     monkeypatch.setattr(S, "ledger_facts", lambda p: {"actions_used": 865, "levels_reached": 7})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})     # always 1 in practice
     monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
 
-    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": S.GIVE_UP_ATTEMPTS - 1})
-    assert S.collect_outcome(ws, exit_code=0, timed_out=False).get("error")
+    def attempt(n, *, gave_up=True):
+        """One prior attempt_N/<game>/result.json, as the driver writes it."""
+        d = tmp_path / game / ("attempt_%d" % n) / game
+        d.mkdir(parents=True)
+        (d / "result.json").write_text(json.dumps(
+            {"error": "…it gave up with the allowance untouched…"} if gave_up else {}))
+        return d
 
-    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": S.GIVE_UP_ATTEMPTS})
+    for n in range(1, S.GIVE_UP_ATTEMPTS):
+        attempt(n)
+    live = tmp_path / game / ("attempt_%d" % S.GIVE_UP_ATTEMPTS) / game
+    live.mkdir(parents=True)
+    ws = _ws(tmp_path)
+    object.__setattr__(ws, "root", live) if False else None
+    ws.root = live
+    (live / "meta.json").write_text(json.dumps({"game_id": game, "levels": 10}))
+
+    assert S._prior_give_ups(ws) == S.GIVE_UP_ATTEMPTS - 1
+    assert S.collect_outcome(ws, exit_code=0, timed_out=False).get("error"), (
+        "one below the bound still retries"
+    )
+
+    attempt(S.GIVE_UP_ATTEMPTS + 1)
+    assert S._prior_give_ups(ws) == S.GIVE_UP_ATTEMPTS
     assert not S.collect_outcome(ws, exit_code=0, timed_out=False).get("error"), (
-        "after the bound the loss stands as real"
+        "at the bound the loss stands as real"
     )
 
 

@@ -919,6 +919,47 @@ def _action_budget(ws: Workspace) -> int:
     return 0
 
 
+def _prior_give_ups(ws: Workspace) -> int:
+    """How many earlier attempts at this game already quit with budget in hand.
+
+    **`outcome["attempts"]` looked like this number and is not.** It counts
+    ``stream.*.jsonl`` files inside ONE workspace -- solver relaunches into the
+    same directory. The driver gives every retry a fresh ``attempt_N/``
+    workspace, so it reads 1 on every attempt and a bound written against it
+    never bites: the give-up guard would have re-run a game for all twelve of the
+    driver's passes, which is the several-hundred-dollar outcome the bound was
+    added to prevent.
+
+    Written the same evening as the guard, in a comment describing this exact
+    shape -- a proxy that resembles the quantity closely enough to pass reading.
+
+    Counts the thing itself: sibling attempts whose own ``result.json`` records a
+    give-up. Returns 0 for any layout without them, which restores the previous
+    unbounded behaviour rather than blocking -- and outside the driver nothing
+    retries, so there is nothing to bound.
+    """
+    root = Path(ws.root)
+    # <out_dir>/<game>/attempt_N/<game>  ->  the attempts sit two levels up.
+    for base in (root.parent.parent, root.parent):
+        try:
+            siblings = sorted(base.glob("attempt_*/*/result.json"))
+        except OSError:
+            continue
+        if not siblings:
+            continue
+        n = 0
+        for r in siblings:
+            if r.parent == root:
+                continue                      # this run has not been written yet
+            try:
+                if "gave up" in (json.loads(r.read_text(encoding="utf-8")).get("error") or ""):
+                    n += 1
+            except (OSError, ValueError):
+                continue
+        return n
+    return 0
+
+
 def _card_facts(ws: Workspace) -> dict[str, Any]:
     """Which scorecard this run scored on.
 
@@ -1089,7 +1130,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     elif not exit_code and not timed_out and not outcome.get("won"):
         budget = _action_budget(ws)
         used = outcome.get("actions_used", 0) or 0
-        if budget and used < budget / 2 and outcome.get("attempts", 1) < GIVE_UP_ATTEMPTS:
+        if budget and used < budget / 2 and _prior_give_ups(ws) < GIVE_UP_ATTEMPTS:
             outcome["error"] = (
                 f"solver stopped at {outcome.get('levels_reached')} of "
                 f"{outcome.get('levels_total')} levels after {used} of {budget} "
