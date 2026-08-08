@@ -1,5 +1,11 @@
 #!/bin/bash
-# 7-minute heartbeat over batch6: snapshot results, emit progress, exit when it ends.
+# Heartbeat over the active runner: snapshot results, emit progress, exit when it
+# ends.
+#
+# **The header said "over batch6" long after batch6 was retired**, and the body
+# note twelve lines down says exactly that -- the file contradicted itself top to
+# bottom. batch6 survives here only as the name of the argv-matching bug below,
+# which is worth keeping because it is the bug, not the batch.
 #
 # **Liveness is checked per-argv-element, not by substring.** `pgrep -f batch6.py`
 # and `case "$cmdline" in *bin/python*batch6.py*)` both match this very script,

@@ -62,7 +62,15 @@ SP = pathlib.Path(
     "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
 RUNS = SP / "ablate_nobaseline"
-BUDGET_MULTIPLE = 2.0          # identical to batch 3, so the arms are comparable
+BUDGET_MULTIPLE = 2.0
+"""The arm's action-cap multiple, kept at batch 3's value so the two are paired.
+
+Batch 3 is retired, so "identical to batch 3" no longer tells a reader anything
+they can check. What still matters is that this is **not** the 5.0 that
+`clean_rollouts` uses: the cap is the baseline total times this number, so any
+tool that reasons about caps has to know both multiples exist. One did not --
+`proofread_trace` hardcoded 5 and so never checked this arm's cap for leakage.
+"""
 
 # **Every scored game**, per the operator: "rerun all scored games without
 # baseline info provided". Read from results.jsonl rather than hardcoded, so
@@ -507,11 +515,16 @@ def batch6_running() -> bool:
     return False
 
 
-# **Runs concurrently with batch 3 by default**, on the operator's instruction:
-# "you can launch the first non-baseline rollout once you confirm everything is
-# ready. No need to wait for the current s5i5 to finish." That doubles the quota
-# burn rate, which is why `quota_guard.sh` was extended to stop *both* runners at
-# 0.95 rather than only batch 3. Set ABL_WAIT=1 to serialise instead.
+# **Dead since batch 3 was retired, and kept only as a documented no-op.**
+# `batch6_running()` can no longer return true -- the control arm was stopped on
+# operator instruction ("no control arm from now on") -- so this wait never
+# blocks even with `ABL_WAIT=1`. It stays because the alternative is deleting the
+# record of why the two runners once shared a quota guard at 0.95; that guard's
+# threshold is still the one in `supervisor.sh`.
+#
+# Original rationale, for that record: the arm ran concurrently with batch 3 on
+# the operator's instruction, which doubled the burn rate and is why the guard
+# was extended to stop both runners rather than one.
 if os.environ.get("ABL_WAIT") == "1":
     waited = 0
     while batch6_running():
