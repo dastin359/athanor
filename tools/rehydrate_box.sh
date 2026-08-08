@@ -57,6 +57,17 @@ for tool in refresh_audit.sh heartbeat.sh; do
     ln -sfn "$REPO/tools/$tool" "$SP/$tool"
 done
 
+# **The standing agenda and the memory index live in the repo now.** Both were
+# scratchpad-only until 2026-08-08, and `rehydrate_bootstrap.sh` had already
+# written down why that is unsafe: there is no on-disk location that reliably
+# survives a replacement, and origin is the only store that has never lost
+# anything. AUTOPILOT.md came through one replacement by predating the snapshot
+# -- luck, not durability -- and it is the file every wake-up is told to read, so
+# losing it or letting it go stale is what makes an unattended session act on
+# work that finished days ago.
+ln -sfn "$REPO/docs/ccarc3_autopilot.md" "$SP/AUTOPILOT.md"
+ln -sfn "$REPO/docs/ccarc3_memory.md"    "$SP/MEMORY.md"
+
 # 3+4. Fingerprint and banked results.
 #
 # **Failures are reported, not swallowed.** These two restores are what stop a
