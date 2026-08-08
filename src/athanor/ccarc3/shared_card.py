@@ -35,6 +35,33 @@ Two consequences worth stating plainly:
   prevent that, so the local ledger stays the source of truth for scoring and
   the shared card is the artifact for submission -- not the other way round.
 
+**Idle survival, measured 2026-08-08.** A *game* left idle is reaped inside
+``(13.6, 18.2]`` minutes -- eight resumes bracket it, see
+:func:`athanor.ccarc3.session.snapshot_scorecard`. A *card* is not on that
+clock, which had to be measured rather than assumed because the sweep pauses
+between games:
+
+===============================================  ===================
+probe                                            result
+===============================================  ===================
+card polled every 5 min                          alive past +65 min
+card opened, one game, then **untouched**        alive at +28 min
+card untouched 32 min, then a **new game RESET**  **accepted**
+===============================================  ===================
+
+The middle row is the control for the first: polling could have kept its own
+card warm, in which case the first row measures nothing. It did not.
+
+The third row is the one the sweep actually needs. "Readable" is not "playable"
+-- they are different operations against different server state -- and the sweep
+does not read an idle card, it adds game N+1 to it. So the property is: **a
+shared card accepts a new game after a sweep-sized gap.**
+
+**Still unmeasured: a multi-hour gap.** 32 minutes covers solver startup and
+scoring between games. It does not cover a quota pause, which on the seven-day
+window can be days. Treat a long pause as a card at risk: snapshot before it and
+verify with a read after it.
+
 The stickiness cookies were observed with a ~7-day expiry and are re-issued on
 every response, so a sweep that keeps playing keeps its card reachable. The
 ``GAMESESSION`` cookie expires in ~1 day and, per the table above, does not
