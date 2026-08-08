@@ -168,7 +168,19 @@ package before `9eae0bd`, recovered from git rather than retyped. A scan for
 strings that were never there proves nothing, and this project has shipped five
 guards that reported success while doing nothing.
 
-So: the leaks were real and present for the whole arm, and **no banked run
-received one**. The 25-environment result stands. What that does not establish is
-that the design prevents it — it does not, per the section above — only that it
-did not happen.
+So: the *package* leaks were real and present for the whole arm, and **no banked
+run received one**. What that does not establish is that the design prevents it —
+it does not, per the section above — only that it did not happen.
+
+**Scope, because the unqualified version of that sentence was this document's
+last word and it was wrong.** It read "no banked run received one. The
+25-environment result stands." Both halves overreach. This section is about
+leaks in the *package*; the **workspace** leaked separately and earlier, and
+eight banked runs did read a real median out of `DOCTRINE.md` §0a — stated
+plainly forty lines above, in this same file. The pooled 25-environment figure
+is **withdrawn**, not standing; what survives is the 17-run repaired-surface
+cohort.
+
+A reader who reached the end and stopped got the opposite of the finding. Which
+is the shape this file spends its length documenting: a true statement about one
+layer, written where it reads as a verdict on all of them.

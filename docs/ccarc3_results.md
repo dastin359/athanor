@@ -2106,8 +2106,12 @@ action budget** — in eighteen games the binding constraint has never once been
 thing the budget measures. Fifteen games stopped because they won; three stopped
 because the solver concluded it was stuck, with 82–95% of its actions unspent.
 
-This is now the largest recoverable loss on the board. The three losses hold 1.333 of
-the 1.667 points missing from a perfect eighteen. Taking `sk48` alone from 5/8 to 8/8
+This is now the largest recoverable loss on the board. The three losses hold **all
+1.333** of the points missing from a perfect eighteen — sum `E` is 16.6667 over
+18 games, and (1−0.7143)+(1−0.5357)+(1−0.4167) = 1.3333 exactly. (This said
+"1.333 of the 1.667 points missing", a denominator that follows from nothing in
+the table and made the losses look like four fifths of the gap rather than all
+of it.) Taking `sk48` alone from 5/8 to 8/8
 is worth **+0.58** — more than every efficiency gain in the arm put together, since
 efficiency is already capped at 1.15 nearly everywhere and `E` is capped at 1.0.
 
@@ -2507,9 +2511,15 @@ of the human action count.
 
 **Completion is the only axis left.** The 1.333 points missing from a perfect 25
 sit entirely in three games that each cleared exactly five levels and stopped.
-None was killed, none timed out, all three exited 0 — with **5%, 18% and 12%** of
-their action budgets unspent. No run in this arm ever exhausted its budget. The
-binding constraint was never the thing the budget measures.
+None was killed, none timed out, all three exited 0 — having **used** 5%, 18%
+and 12% of their action budgets, so **82–95% went unspent**. No run in this arm
+ever exhausted its budget. The binding constraint was never the thing the budget
+measures.
+
+(This read "with 5%, 18% and 12% … unspent" until 2026-08-09, inverting the
+column its own source table labels *budget used* and stating the argument at
+about a seventh of its true strength. The correct figure was already written two
+lines below the table it was copied from.)
 
 ### Caveats, stated plainly
 

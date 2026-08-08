@@ -332,3 +332,23 @@ def test_no_published_array_appears_anywhere_in_importable_source():
             if re.search(pattern, text):
                 leaks.append(f"{path.name}: {game.game_id}'s array")
     assert not leaks, "published median arrays in source: " + "; ".join(sorted(set(leaks)))
+
+
+def test_the_withholding_note_does_not_end_by_reinstating_a_withdrawn_result():
+    """**Its last word used to be "The 25-environment result stands."**
+
+    That sentence closed a section about leaks in the *package*, where it was
+    true. Forty lines above, the same file records that the *workspace* leaked a
+    real median for four days and that eight banked runs read it — which is why
+    the pooled 25-environment figure is withdrawn. A reader who reached the end
+    and stopped got the opposite of the finding.
+    """
+    import pathlib as _p
+
+    doc = (_p.Path(__file__).resolve().parent.parent
+           / "docs/ccarc3_withholding.md").read_text()
+
+    assert "The 25-environment result stands" not in doc, (
+        "the pooled figure is withdrawn; only the 17-run cohort survives"
+    )
+    assert "withdrawn" in doc
