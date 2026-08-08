@@ -1,0 +1,582 @@
+"""Regression tests for tools/heartbeat.sh.
+
+Every defect covered here had the same shape: a guard that *reported by not
+running*.  The heartbeat watched a retired process name, so `runner_alive` was
+permanently false; it treated one false poll as "the arm ended" and broke out on
+its first iteration; `work_pending` rebuilt a path that did not exist, so work
+looked pending forever; the failure grep was unanchored, so `tail -1` printed a
+healthy proxy-port line every poll and buried the real tracebacks.  All of them
+looked identical to a healthy heartbeat from the outside.
+
+So the rule for this file: **never assert only on an exit code, and never assert
+only on silence.**  Every test either asserts the specific line the check emits,
+or -- where the correct behaviour *is* silence -- proves the loop completed the
+polls it was supposed to and was still running when the test stopped it.
+
+Two things are deliberate:
+
+* The script's paths are absolute (`SP=...`, `/home/user/athanor/tools`), so the
+  loop tests run a *patched copy* in a tmp sandbox.  Every substitution asserts
+  its own hit count, so the test breaks loudly if the real file drifts rather
+  than quietly testing something that is no longer there.
+* The source is read once, at import, through an absolute path.  Nothing here
+  cd's into a sandbox before reading the script under test.
+
+The environment handed to every subprocess is built from scratch (`_ENV`): no
+ARC_API_KEY, no network, nothing inherited from the launching shell that could
+decide a result.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import signal
+import subprocess
+import time
+from pathlib import Path
+
+import pytest
+
+#: tools/ lives beside the test suite in the checkout; the shared checkout is the
+#: fallback for worktrees that do not carry the (untracked) shell tools.
+_ROOTS = [Path(__file__).resolve().parents[1], Path("/home/user/athanor")]
+
+
+def _tool(name: str) -> Path:
+    for root in _ROOTS:
+        candidate = root / "tools" / name
+        if candidate.exists():
+            return candidate
+    raise AssertionError(f"cannot find tools/{name} under any of {_ROOTS}")
+
+
+HEARTBEAT = _tool("heartbeat.sh")
+SUPERVISOR = _tool("supervisor.sh")
+TOOLS = HEARTBEAT.parent
+
+#: Read once, absolutely, before any test touches a sandbox directory.
+SRC = HEARTBEAT.read_text(encoding="utf-8")
+
+#: Explicit environment.  ARC_API_KEY is absent on purpose: the heartbeat must
+#: not need it, and a test that reads it from the launching shell passes or
+#: fails for reasons unrelated to the code.
+_ENV = {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "HOME": os.environ.get("HOME", "/root"),
+    "LC_ALL": "C",
+    "CCARC3_SWEEP_DIR": "clean_rollouts",
+}
+
+
+# --------------------------------------------------------------------------
+# extraction helpers -- pull the real text out of the real file
+# --------------------------------------------------------------------------
+def _extract(pattern: str, what: str) -> str:
+    m = re.search(pattern, SRC, re.S | re.M)
+    assert m, f"could not find {what} in {HEARTBEAT}; this test needs updating"
+    return m.group(0)
+
+
+def _fail_pattern() -> str:
+    """The real grep pattern, taken from the file, so the test tracks it."""
+    m = re.search(r"^\s*fail=\$\(grep -E '([^']+)'", SRC, re.M)
+    assert m, "could not extract the fail= grep pattern from heartbeat.sh"
+    return m.group(1)
+
+
+# Extracted lazily, per test: a fix that is reverted should fail the test that
+# names it, not error out collection for the whole file.
+def _runner_name_block() -> str:
+    return _extract(
+        r"^RUNNER_NAME=\$\(grep.*?^RUNNER_NAME=\"\$\{RUNNER_NAME:-[^\n]*$",
+        "the RUNNER_NAME derivation",
+    )
+
+
+def _daemon_check_fn() -> str:
+    return _extract(r"^daemon_check\(\) \{.*?^\}$", "daemon_check()")
+
+
+def _work_pending_fn() -> str:
+    return _extract(r"^work_pending\(\) \{.*?^\}$", "work_pending()")
+
+DAEMON_LIST = "for name in supervisor.sh preserve_evidence.sh context_watch.py"
+
+
+def _sub(text: str, needle: str, repl: str, expect: int) -> str:
+    """Replace, and *prove* the replacement landed."""
+    hits = text.count(needle)
+    assert hits == expect, (
+        f"expected {expect} occurrence(s) of {needle!r} in heartbeat.sh, found "
+        f"{hits}: the script changed and this test is patching a stale shape"
+    )
+    return text.replace(needle, repl)
+
+
+# --------------------------------------------------------------------------
+# process helpers
+# --------------------------------------------------------------------------
+def _argv_elements(pid: str) -> list[str]:
+    try:
+        raw = Path("/proc", pid, "cmdline").read_bytes()
+    except OSError:
+        return []
+    return [a.decode("utf-8", "replace") for a in raw.split(b"\0") if a]
+
+
+def _running_by_argv(name: str) -> bool:
+    """Ground truth for the rule the script uses: a whole argv element that is a
+    path ending in `name`.  Deliberately not a substring search -- substring
+    matching is the bug the script's own comments are about, and it would find
+    this test process."""
+    for d in Path("/proc").iterdir():
+        if not d.name.isdigit():
+            continue
+        if any(a.endswith("/" + name) for a in _argv_elements(d.name)):
+            return True
+    return False
+
+
+@pytest.fixture
+def procs():
+    """Spawn throwaway processes whose argv carries an absolute path ending in a
+    chosen filename, and guarantee they die with the test."""
+    started: list[subprocess.Popen] = []
+
+    def spawn(path: Path) -> subprocess.Popen:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\nsleep 300\n", encoding="utf-8")
+        path.chmod(0o755)
+        p = subprocess.Popen(
+            [str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=_ENV,
+            start_new_session=True,
+        )
+        started.append(p)
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if _running_by_argv(path.name):
+                return p
+            time.sleep(0.02)
+        raise AssertionError(f"fake process {path} never appeared in /proc")
+
+    yield spawn
+
+    for p in started:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+# --------------------------------------------------------------------------
+# sandbox: a patched copy of the real script over fixture roots
+# --------------------------------------------------------------------------
+class Sandbox:
+    def __init__(self, root: Path, script: Path, sp: Path, tools: Path, out: Path):
+        self.root = root
+        self.script = script
+        self.sp = sp
+        self.tools = tools
+        self.out = out
+
+    @property
+    def polls(self) -> int:
+        f = self.sp / "polls.txt"
+        return len(f.read_text().splitlines()) if f.exists() else 0
+
+
+def _sandbox(
+    tmp_path: Path,
+    *,
+    runner_name: str = "zz_fake_runner.py",
+    games: int = 3,
+    banked: int = 1,
+    stop_after_polls: int = 3,
+) -> Sandbox:
+    """Build a runnable copy of heartbeat.sh over fixture roots.
+
+    `stop_after_polls` freezes the loop deterministically: the stub the script
+    runs at the top of every iteration records the poll and then blocks forever
+    once the target is reached.  So "the counter reads N" means exactly
+    "iterations 1..N-1 completed and iteration N did nothing" -- no
+    sleep-and-hope, and no test that silently observes fewer polls than it
+    claims.
+    """
+    root = tmp_path
+    tools = root / "tools"
+    sp = root / "sp"
+    # OUT lives where a "$REPO/$CCARC3_SWEEP_DIR" reconstruction would never
+    # land, and both directories such a reconstruction would build are created
+    # empty: a rebuilt path reads 0 banked and calls work pending forever.
+    out = root / "elsewhere" / "sweep_out"
+    for decoy in (root / "clean_rollouts", sp / "clean_rollouts"):
+        decoy.mkdir(parents=True, exist_ok=True)
+    tools.mkdir(parents=True, exist_ok=True)
+    sp.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
+
+    game_ids = [f"g{i:02d}-fake" for i in range(games)]
+    for gid in game_ids[:banked]:
+        (out / gid).mkdir(parents=True, exist_ok=True)
+        (out / gid / "clean_result.json").write_text("{}", encoding="utf-8")
+    # One trace, so the progress line's act count and age are real values.
+    trace = out / game_ids[0] / "attempt_1" / "ws" / "trace.jsonl"
+    trace.parent.mkdir(parents=True, exist_ok=True)
+    trace.write_text('{"a":1}\n{"a":2}\n', encoding="utf-8")
+
+    # The supervisor the heartbeat must take its runner name from.
+    (tools / "supervisor.sh").write_text(
+        '#!/bin/bash\nREPO=/nowhere\nRUNNER="${1:-$REPO/tools/%s}"\n' % runner_name,
+        encoding="utf-8",
+    )
+    # The driver work_pending is supposed to ask for OUT.
+    (tools / "clean_rollouts.py").write_text(
+        "import pathlib\n"
+        f"OUT = pathlib.Path({str(out)!r})\n"
+        f"GAMES = {game_ids!r}\n",
+        encoding="utf-8",
+    )
+
+    (sp / "snapshot_results.py").write_text(
+        "import time, pathlib\n"
+        f"p = pathlib.Path({str(sp / 'polls.txt')!r})\n"
+        "with p.open('a') as fh:\n"
+        "    fh.write('poll\\n')\n"
+        f"if len(p.read_text().splitlines()) >= {stop_after_polls}:\n"
+        "    time.sleep(3600)\n",
+        encoding="utf-8",
+    )
+    (sp / "quota.sh").write_text(
+        "#!/bin/bash\necho 'five_hour   12%'\necho 'seven_day   30%'\n",
+        encoding="utf-8",
+    )
+
+    text = SRC
+    text = _sub(text, str(TOOLS), str(tools), expect=4)
+    text = _sub(
+        text,
+        "SP=/tmp/claude-0/-home-user-athanor/"
+        "a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad",
+        f"SP={sp}",
+        expect=1,
+    )
+    text = _sub(text, "sleep 420", "sleep 0.2", expect=3)
+    script = root / "heartbeat_under_test.sh"
+    script.write_text(text, encoding="utf-8")
+    return Sandbox(root, script, sp, tools, out)
+
+
+def _run(box: Sandbox, *, until_polls: int, timeout: float = 120.0):
+    """Run the sandboxed heartbeat until it has completed `until_polls - 1`
+    iterations and is frozen at the top of iteration `until_polls`.
+
+    Returns (stdout, still_running, polls)."""
+    proc = subprocess.Popen(
+        ["/bin/bash", str(box.script)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=_ENV,
+        cwd=str(box.root),
+        start_new_session=True,
+    )
+    deadline = time.time() + timeout
+    try:
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break
+            if box.polls >= until_polls:
+                time.sleep(0.3)  # let the frozen iteration settle
+                break
+            time.sleep(0.05)
+        still_running = proc.poll() is None
+        if still_running:
+            os.killpg(proc.pid, signal.SIGKILL)
+        out = proc.communicate(timeout=30)[0]
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    return out, still_running, box.polls
+
+
+def _bash(script_text: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["/bin/bash", "-c", script_text],
+        capture_output=True,
+        text=True,
+        env=_ENV,
+        timeout=90,
+    )
+
+
+# ==========================================================================
+# (a) RUNNER_NAME is derived from supervisor.sh, not hardcoded
+# ==========================================================================
+def test_runner_name_is_read_out_of_supervisor_sh(tmp_path):
+    """The name comes from supervisor.sh and *moves* when supervisor.sh moves.
+    Asserting only "it equals clean_rollouts.py" would pass on a hardcoded
+    version too, so the fixture half below is the load-bearing half."""
+    m = re.search(
+        r'^RUNNER="\$\{1:-\$REPO/tools/([a-z_]+\.py)\}"',
+        SUPERVISOR.read_text(encoding="utf-8"),
+        re.M,
+    )
+    assert m, f"{SUPERVISOR} no longer declares RUNNER in the expected form"
+    real_runner = m.group(1)
+
+    block = _runner_name_block()
+    live = _bash(block + '\nprintf "%s" "$RUNNER_NAME"\n')
+    assert live.stdout == real_runner, (
+        f"heartbeat derived {live.stdout!r} but supervisor.sh launches "
+        f"{real_runner!r}"
+    )
+    assert live.stdout != "ablate_baselines.py", "still watching the retired arm"
+
+    # Point the same derivation at a different supervisor: the name must follow.
+    fake_tools = tmp_path / "tools"
+    fake_tools.mkdir()
+    (fake_tools / "supervisor.sh").write_text(
+        '#!/bin/bash\nRUNNER="${1:-$REPO/tools/zz_other_runner.py}"\n',
+        encoding="utf-8",
+    )
+    block = _sub(block, str(TOOLS), str(fake_tools), expect=1)
+    moved = _bash(block + '\nprintf "%s" "$RUNNER_NAME"\n')
+    assert moved.stdout == "zz_other_runner.py", (
+        "RUNNER_NAME did not follow supervisor.sh -- it is hardcoded, or the "
+        f"fallback is answering (got {moved.stdout!r})"
+    )
+    assert moved.stdout != real_runner, "fixture is degenerate; pick another name"
+
+
+def test_live_runner_is_seen_and_its_own_log_is_the_one_read(tmp_path, procs):
+    """End to end: with the supervisor's runner actually running, the heartbeat
+    emits a progress line built from *that* runner's log -- not the retired
+    arm's log sitting beside it, and not the idle path."""
+    box = _sandbox(tmp_path, banked=1, games=3, stop_after_polls=3)
+    procs(box.tools / "zz_fake_runner.py")
+
+    (box.sp / "zz_fake_runner.log").write_text(
+        "=== live-runner game g00-fake ===\nsome ordinary chatter\n",
+        encoding="utf-8",
+    )
+    # The retired arm's log, still on disk. Nothing may come from it.
+    (box.sp / "ablate.log").write_text(
+        "=== RETIRED-ARM wa30: already finished, skipping ===\n", encoding="utf-8"
+    )
+
+    out, still_running, polls = _run(box, until_polls=3)
+
+    assert polls == 3, f"loop did not reach three polls (got {polls}): {out!r}"
+    assert still_running, "heartbeat exited while its runner was alive"
+    assert "NO RUNNER" not in out, f"the live runner was not seen: {out!r}"
+    assert "=== live-runner game g00-fake ===" in out, (
+        f"progress line did not come from the live runner's log: {out!r}"
+    )
+    assert "RETIRED-ARM" not in out, f"read the retired arm's log: {out!r}"
+    assert "1/3 done" in out, f"progress counts missing: {out!r}"
+    assert "2 acts" in out, f"act count missing: {out!r}"
+    assert "five_hour" in out, f"quota block missing: {out!r}"
+
+
+# ==========================================================================
+# (b) "no runner" is not "the arm ended"
+# ==========================================================================
+def test_a_missing_runner_is_not_reported_before_the_idle_limit(tmp_path):
+    """Two idle polls with work pending must be silent *and* must not end the
+    heartbeat.  The old loop broke on the first one."""
+    box = _sandbox(tmp_path, banked=1, games=3, stop_after_polls=3)
+    out, still_running, polls = _run(box, until_polls=3)
+
+    # Proof the idle branch really ran twice, rather than the script exiting
+    # early and the silence assertions passing on an empty string.
+    assert polls == 3, f"loop did not complete two polls (got {polls}): {out!r}"
+    assert still_running, "heartbeat exited on a missing runner -- that is the bug"
+    assert "NO RUNNER" not in out, f"reported after only two idle polls: {out!r}"
+    assert "SWEEP COMPLETE" not in out, f"work was pending: {out!r}"
+
+
+def test_sustained_absence_with_work_pending_is_reported(tmp_path):
+    """IDLE_LIMIT consecutive idle polls with work pending -> exactly one
+    report, naming the window."""
+    box = _sandbox(tmp_path, banked=1, games=3, stop_after_polls=4)
+    out, still_running, polls = _run(box, until_polls=4)
+
+    assert polls == 4, f"loop did not complete three polls (got {polls}): {out!r}"
+    assert still_running, "heartbeat exited instead of continuing to watch"
+    assert out.count("NO RUNNER") == 1, (
+        f"expected exactly one NO RUNNER report after three idle polls: {out!r}"
+    )
+    assert "for 21 min with work pending" in out, (
+        f"the report did not name the sustained window: {out!r}"
+    )
+
+
+def test_sweep_complete_is_announced_once_and_then_held(tmp_path):
+    """All games banked: announce once, keep polling, do not exit.  Reaching
+    this branch at all is also the (c) regression -- work_pending can only be
+    false if it asked clean_rollouts for OUT."""
+    box = _sandbox(tmp_path, banked=3, games=3, stop_after_polls=5)
+    out, still_running, polls = _run(box, until_polls=5)
+
+    assert polls == 5, f"loop did not complete four polls (got {polls}): {out!r}"
+    assert still_running, "heartbeat exited on a complete sweep instead of holding"
+    assert out.count("SWEEP COMPLETE") == 1, (
+        f"expected exactly one SWEEP COMPLETE across four polls: {out!r}"
+    )
+    assert "NO RUNNER" not in out, (
+        f"a complete sweep is not a missing-runner report: {out!r}"
+    )
+
+
+# ==========================================================================
+# (c) work_pending asks clean_rollouts for OUT
+# ==========================================================================
+def test_work_pending_asks_the_driver_for_out(tmp_path):
+    """Both cases share an empty `$SP/clean_rollouts` decoy -- the directory a
+    rebuilt path points at.  A rebuild reads 0 banked in both and calls both
+    "work pending"; only asking `cr.OUT` tells them apart."""
+    results = {}
+    for label, banked in (("pending", 1), ("complete", 3)):
+        box = _sandbox(tmp_path / label, banked=banked, games=3)
+        assert not list((box.sp / "clean_rollouts").iterdir()), "decoy must be empty"
+        fn = _sub(_work_pending_fn(), str(TOOLS), str(box.tools), expect=1)
+        cp = _bash(fn + '\nwork_pending; echo "rc=$?"\n')
+        results[label] = cp.stdout.strip()
+
+    assert results["pending"] == "rc=0", (
+        f"1 of 3 banked should be work pending, got {results['pending']!r}"
+    )
+    assert results["complete"] == "rc=1", (
+        "3 of 3 banked should be no work pending -- work_pending is reading a "
+        f"rebuilt path instead of cr.OUT (got {results['complete']!r})"
+    )
+
+
+# ==========================================================================
+# (d) the fail= grep is anchored -- tested in both directions
+# ==========================================================================
+MUST_MATCH = [
+    "HTTP Error 429: Too Many Requests",
+    "429 Too Many Requests",
+    "status=429",
+    "Traceback (most recent call last):",
+    "PROOFREAD DID NOT RUN",
+    "aborting: scorecard closed",
+    "openai.RateLimitError: rate_limit exceeded",
+]
+
+MUST_NOT_MATCH = [
+    "arc_proxy: http://127.0.0.1:44297 (key withheld from the child)",
+    "scorecard 3fa85f64-5717-4562-b3fc-429c66afa429 opened",
+    "CLEAN in 20 min - 9/9, 429 actions",
+]
+
+
+def _greps(pattern: str, line: str) -> bool:
+    cp = subprocess.run(
+        ["grep", "-E", pattern],
+        input=line + "\n",
+        capture_output=True,
+        text=True,
+        env=_ENV,
+        timeout=30,
+    )
+    assert cp.returncode in (0, 1), cp.stderr
+    return cp.returncode == 0
+
+
+@pytest.mark.parametrize("line", MUST_MATCH)
+def test_failure_pattern_catches_real_failures(line):
+    assert _greps(_fail_pattern(), line), f"real failure went unreported: {line!r}"
+
+
+@pytest.mark.parametrize("line", MUST_NOT_MATCH)
+def test_failure_pattern_ignores_lookalikes(line):
+    pattern = _fail_pattern()
+    # The lookalikes must be genuine near-misses: an unanchored `429` fires on
+    # every one of them.  Without this, the negative test could pass on lines
+    # that were never a hazard in the first place.
+    assert _greps("429", line), f"fixture line is not a 429 lookalike: {line!r}"
+    assert not _greps(pattern, line), f"false alarm on a healthy line: {line!r}"
+
+
+def test_the_newest_lookalike_does_not_bury_the_real_failure(tmp_path, procs):
+    """`tail -1` takes the newest match.  With a healthy proxy line written
+    *after* a real 429, an unanchored pattern reports the proxy line and hides
+    the failure -- so this drives the whole script, not just the regex."""
+    box = _sandbox(tmp_path, banked=1, games=3, stop_after_polls=3)
+    procs(box.tools / "zz_fake_runner.py")
+    (box.sp / "zz_fake_runner.log").write_text(
+        "=== live-runner game g00-fake ===\n"
+        "urllib.error.HTTPError: HTTP Error 429: Too Many Requests\n"
+        "arc_proxy: http://127.0.0.1:44297 (key withheld from the child)\n",
+        encoding="utf-8",
+    )
+
+    out, still_running, polls = _run(box, until_polls=3)
+
+    assert polls == 3 and still_running, f"the loop did not run: {out!r}"
+    assert "LAST FAILURE: " in out, f"the real 429 was not reported at all: {out!r}"
+    assert "HTTP Error 429: Too Many Requests" in out, (
+        f"reported something other than the 429: {out!r}"
+    )
+    assert "44297" not in out, f"the healthy proxy line buried the failure: {out!r}"
+
+
+# ==========================================================================
+# (e) daemon_check -- positive and negative control
+# ==========================================================================
+def test_daemon_check_names_the_absent_and_stays_quiet_for_the_present(
+    tmp_path, procs
+):
+    """Controlled both-directions test: two daemon names, one running, one not,
+    so the result cannot depend on what happens to be running on the box."""
+    daemon_fn = _daemon_check_fn()
+    hits = daemon_fn.count(DAEMON_LIST)
+    assert hits == 2, f"daemon_check's name list changed shape ({hits} lists found)"
+    fn = daemon_fn.replace(
+        DAEMON_LIST, "for name in zz_present_daemon.sh zz_absent_daemon.sh"
+    )
+
+    procs(tmp_path / "zz_present_daemon.sh")
+    assert not _running_by_argv("zz_absent_daemon.sh"), "the absent fixture is running"
+
+    out = _bash(fn + "\ndaemon_check\n").stdout
+
+    assert "DAEMON DOWN: zz_absent_daemon.sh" in out, (
+        f"daemon_check did not name the absent daemon: {out!r}"
+    )
+    assert "zz_present_daemon.sh" not in out, (
+        f"daemon_check reported a daemon that is running: {out!r}"
+    )
+    assert out.count("DAEMON DOWN") == 1, f"unexpected extra reports: {out!r}"
+
+
+def test_daemon_check_agrees_with_the_real_process_table():
+    """The shipped name list, checked against ground truth computed here rather
+    than against whatever the box happens to be doing -- so this neither passes
+    by luck nor fails when a daemon legitimately restarts.  That daemon_check
+    can speak at all is established by the controlled test above."""
+    names = ["supervisor.sh", "preserve_evidence.sh", "context_watch.py"]
+    assert SRC.count(DAEMON_LIST) == 2, (
+        "daemon_check no longer watches exactly those three daemons"
+    )
+
+    out = _bash(_daemon_check_fn() + "\ndaemon_check\n").stdout
+    reported = {n for n in names if f"DAEMON DOWN: {n}" in out}
+    truly_absent = {n for n in names if not _running_by_argv(n)}
+
+    assert reported == truly_absent, (
+        f"daemon_check reported {sorted(reported)} but {sorted(truly_absent)} are "
+        f"actually absent; output was {out!r}"
+    )
