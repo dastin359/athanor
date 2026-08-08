@@ -5005,6 +5005,71 @@ of 60 runs, including ones independently verified clean.
 **None of the 17 is affected** — all of them started after the fix — so the
 98.38% stands unchanged and is the only figure that means what it says.
 
+---
+
+## The `bp35` rerun, 2026-08-08 — a negative result, and not the one it was for
+
+`bp35` is the only run in the 17-environment cohort below 1.0000: it cleared 9 of
+9, read `[cap 1.000 = 9/9 levels]` as a perfect score, and stopped one action
+before `restart_for_replay()` became illegal. **E = 0.7252.** The surface repair
+targets exactly that frame, so the environment was re-run under it, into its own
+tree, with the strip, budget multiple and wall clock of the clean-rollout driver
+and `fresh=True`. The only variable changed was the solver surface.
+
+| | prior `@clean` | this rerun |
+|---|---|---|
+| E | **0.7252** | **0.8000** |
+| raw / cap | 0.7252 / 1.000 | 0.8206 / 0.800 |
+| levels | 9 of 9 | **8 of 9** |
+| actions | 990 | 394 |
+| plays | 1 | 1 |
+| deaths | 0 | 6 |
+| wall clock | — | 125 min, $51.86 |
+
+**It was far more efficient and it still scored badly, for the opposite reason.**
+Per level, against the medians: L5 went 309 actions to **47** (3.55x to 0.54x)
+and L7 went 100 to **62**; six of its eight cleared levels finished at the 1.15
+ceiling. What it did not do was clear level 8 — so `cap` fell to 0.800 and became
+the binding term.
+
+**It never reached the win frame, so it tested nothing about the replay fix.**
+That was the entire point of the run, and the run did not get there.
+
+What it *is* evidence of is the other failure mode. The solver exited cleanly at
+8 of 9 with **394 of 3255 actions spent — 12% of its ceiling** — and roughly four
+hours of wall clock unused, having read a §0b that says in as many words *"There
+is no version of this where stopping is the move."* One voluntary stop is not a
+measurement, but it is a fresh instance of the failure that section exists to
+prevent, under the surface that was supposed to have strengthened it.
+
+**On the inferential value, stated before the number was known:** all 25
+environments have scored 1.0000 at some point, and `bp35` itself scored 1.0000
+under the *older, contaminated* harness with three plays. A single rerun could
+never have separated "the fix worked" from run-to-run variance. It is recorded as
+a demonstration, and **it is not part of the 17** — one play, and the driver
+discarded it (below), so nothing banked it.
+
+### It was discarded by a bug in the checker, not by anything wrong with the run
+
+`proofread_trace.py` returned exit 2 — `REACH: 1 command left the workspace` —
+and `clean_rollouts` correctly discarded on that verdict. The command was the
+solver's own `gate.acknowledge()` note:
+
+> ACTION6 on a ball DELETES it back to a **socket. Unlimited**, reversible, and
+> the ball/socket positions are fixed
+
+Balls and sockets are `bp35`'s mechanic. The `network` escape pattern was
+`socket\.`, which matches the English word ending a sentence. Re-proofread with
+the pattern anchored to `import socket` and the module's real API: clean on all
+three passes, 210 commands, card corroborates 8 levels.
+
+A leak check that throws away good runs is worse than the leak it guards, and
+this one destroyed 125 minutes and $51.86 over a word. `strayed()` and the median
+scans got false-positive tests when they were written, because both had already
+cried wolf during development; `ESCAPES` never had, so it never got them. **A
+pattern that has not yet produced a false positive is not a pattern that
+cannot.** Both directions are now pinned in `tests/test_proofread_reach.py`.
+
 **Under the repaired surface, 17 of 17 won every level and 16 of 17 scored
 exactly 1.0000.** The single exception is `bp35` at 0.7252 — and it is the only
 run in the cohort with **one play**. Every run that replayed scored 1.0000;
