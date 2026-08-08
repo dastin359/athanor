@@ -286,6 +286,14 @@ class ArcClient:
 
     game_id: str
     trace_path: str | Path = "trace.jsonl"
+    card_plays_at_open: int = -1
+    """Plays the shared card already held for this game when this attempt began.
+
+    -1 means unknown (no lent card, or the read failed). Under a shared card the
+    server keeps appending to one ``cards[game_id]`` entry across *attempts*, so
+    without this boundary a corroboration check cannot tell this attempt's rows
+    from a discarded predecessor's.
+    """
     last_touched: float = 0.0
     """Epoch seconds when the server last answered an action for this game.
 
@@ -523,6 +531,7 @@ class ArcClient:
                     "wasted_actions": self.wasted_actions,
                     "level_actions": self.level_actions,
                     "last_touched": self.last_touched,
+                    "card_plays_at_open": self.card_plays_at_open,
                     "level_costs": list(self.level_costs),
                     "last_advanced": self._last_advanced,
                     "level_tried": self.level_tried,
@@ -608,6 +617,7 @@ class ArcClient:
         # for -- a silently wrong number is worse than an absent one, so derive
         # it from the trace instead.
         self.last_touched = float(saved.get("last_touched") or 0.0)
+        self.card_plays_at_open = int(saved.get("card_plays_at_open", -1))
         if "level_actions" in saved:
             self.level_actions = int(saved["level_actions"])
         else:
@@ -682,6 +692,22 @@ class ArcClient:
             # A card the driver opened and lent us. Opening another one here is
             # exactly the bug that leaves a sweep with one card per game and
             # nothing to submit.
+            #
+            # **Record where this attempt's rows start.** The server appends to
+            # one `cards[game_id]` entry for every attempt of this game, so a
+            # later corroboration check reading the last N rows can be handed a
+            # DISCARDED attempt's rows instead -- and whether that passes depends
+            # only on how far the thrown-away run got. The boundary is knowable
+            # exactly once, here, and the read is a GET the proxy allows and the
+            # server does not bill. A failure leaves it unknown rather than
+            # wrong: `sweep_card` probes the card's liveness at driver start and
+            # `_assert_server_agrees` re-checks it on resume, so an unreadable
+            # card is caught elsewhere and need not break the attempt here.
+            try:
+                entry = (self.scorecard().get("cards") or {}).get(self.game_id) or {}
+                self.card_plays_at_open = len(entry.get("levels_completed") or [])
+            except Exception:                      # noqa: BLE001 -- see above
+                self.card_plays_at_open = -1
             self._save_state()
             return self
         card = _post(f"{self.root}/api/scorecard/open", {"tags": list(self.tags)},

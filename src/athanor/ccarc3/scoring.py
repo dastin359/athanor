@@ -441,9 +441,27 @@ def card_disagreement(scorecard: dict, game_id: str, result: dict) -> str:
     entry = (scorecard.get("cards") or {}).get(game_id) or {}
     done = list(entry.get("levels_completed") or [])
     plays = int(result.get("playthroughs") or 1)
-    if len(done) < plays:
-        return f"card holds {len(done)} play(s), result claims {plays}"
-    mine = done[-plays:]
+
+    # **Where this attempt's rows begin, when the attempt recorded it.** Taking
+    # the last `plays` rows is right on a per-game card and wrong on a shared
+    # one: the server appends every attempt of a game to the same entry, so
+    # prior attempts' rows always pad the list and `len(done) < plays` can never
+    # fire on a retried game. When the banked attempt contributed ZERO rows --
+    # the frozen-card case this whole function is for -- the slice silently
+    # returns a DISCARDED attempt's rows and corroborates the run with them.
+    # Whether that passes depends only on how far the thrown-away run got.
+    # `ArcClient.open` snapshots the boundary against the lent card.
+    before = result.get("card_plays_at_open")
+    before = int(before) if before is not None else -1
+    if before >= 0:
+        mine = done[before:]
+        if len(mine) < plays:
+            return (f"card holds {len(mine)} play(s) for this attempt "
+                    f"(rows {before}..{len(done)}), result claims {plays}")
+    else:
+        if len(done) < plays:
+            return f"card holds {len(done)} play(s), result claims {plays}"
+        mine = done[-plays:]
     best = max(mine) if mine else 0
     reached = result.get("levels_reached") or 0
     if best < reached:

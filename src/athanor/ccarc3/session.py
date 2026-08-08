@@ -1058,7 +1058,8 @@ def _card_facts(ws: Workspace) -> dict[str, Any]:
         )
     except (OSError, ValueError):
         return {}
-    facts = {"card_id": saved.get("card_id", "")}
+    facts = {"card_id": saved.get("card_id", ""),
+             "card_plays_at_open": int(saved.get("card_plays_at_open", -1))}
     if saved.get("foreign_card"):
         # This game is NOT on the shared card, whatever the driver intended.
         facts["foreign_card"] = saved["foreign_card"]

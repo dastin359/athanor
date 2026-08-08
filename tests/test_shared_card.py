@@ -191,7 +191,12 @@ def test_the_outcome_records_which_card_the_run_scored_on(tmp_path):
     trace = tmp_path / "t.jsonl"
     trace.with_suffix(".state.json").write_text(json.dumps({"card_id": "SHARED"}))
 
-    assert _card_facts(SimpleNamespace(trace_path=trace)) == {"card_id": "SHARED"}
+    # Exact, deliberately: an accidental extra key in the outcome is worth
+    # catching. `card_plays_at_open` is -1 when the state file predates it, which
+    # every legacy run does.
+    assert _card_facts(SimpleNamespace(trace_path=trace)) == {
+        "card_id": "SHARED", "card_plays_at_open": -1,
+    }
 
 
 def test_a_game_not_on_the_shared_card_says_so_in_its_outcome(tmp_path):
@@ -207,7 +212,7 @@ def test_a_game_not_on_the_shared_card_says_so_in_its_outcome(tmp_path):
     )
 
     assert _card_facts(SimpleNamespace(trace_path=trace)) == {
-        "card_id": "PLAYED_ON", "foreign_card": "SHARED",
+        "card_id": "PLAYED_ON", "foreign_card": "SHARED", "card_plays_at_open": -1,
     }
 
 

@@ -94,3 +94,85 @@ def test_the_three_copies_share_one_implementation():
         body = ast.unparse(tree.body[0].body[1:])   # drop the docstring; it
         assert "card_disagreement" in body           # quotes the broken reading
         assert "max(" not in body, "a local re-implementation is how this broke"
+
+
+# ==========================================================================
+# The half the shared card left open, found 2026-08-08.
+# ==========================================================================
+
+def test_a_frozen_card_on_a_RETRIED_game_is_caught(tmp_path):
+    """**`done[-plays:]` cannot fire on a retry, because the predecessor pads it.**
+
+    The server appends every attempt of a game to one `cards[game_id]` entry, so
+    `len(done) < plays` — the only safety net — is always satisfied by prior
+    attempts' rows. When the BANKED attempt contributes zero rows, which is the
+    frozen-card case this whole function exists for, the slice silently returns
+    the DISCARDED attempt's rows and corroborates the run with them. Whether that
+    passed depended only on how far the thrown-away run happened to get:
+    `[5, 8]` banked clean, `[5, 3]` was caught.
+
+    `ArcClient.open` snapshots the row count against the lent card, so the
+    attempt knows where its own rows begin.
+    """
+    card = {"cards": {GID: {"levels_completed": [5, 8]}}}   # attempt_1 got to 8
+    banked = {"game_id": GID, "levels_reached": 8, "playthroughs": 1,
+              "card_plays_at_open": 2}                      # ours start after row 2
+    why = scoring.card_disagreement(card, GID, banked)
+    assert "0 play(s) for this attempt" in why, (
+        f"a frozen card on a retried game banked as corroborated: {why!r}"
+    )
+
+
+def test_the_boundary_does_not_reject_a_healthy_retry(tmp_path):
+    """A retry whose own play IS on the card must still bank."""
+    card = {"cards": {GID: {"levels_completed": [5, 8, 9]}}}
+    banked = {"game_id": GID, "levels_reached": 9, "playthroughs": 1,
+              "card_plays_at_open": 2}
+    assert scoring.card_disagreement(card, GID, banked) == ""
+
+
+def test_an_unknown_boundary_falls_back_rather_than_refusing(tmp_path):
+    """Every run banked before this field existed has no boundary, and a check
+    that voids the corpus on deploy is a check that gets switched off. The
+    fallback is the old behaviour, which is weaker on a retry and correct on the
+    per-game cards those runs actually used."""
+    card = {"cards": {GID: {"levels_completed": [9, 9, 9]}}}
+    banked = {"game_id": GID, "levels_reached": 9, "playthroughs": 3}
+    assert scoring.card_disagreement(card, GID, banked) == ""
+
+
+def test_the_client_records_the_boundary_against_a_lent_card(tmp_path, monkeypatch):
+    """End to end: the number has to come off the real card at open time, since
+    that is the only moment it is knowable."""
+    from athanor.ccarc3.client import ArcClient, GameInfo
+
+    info = GameInfo(GID, "Test", ("click",), (10, 20, 30))
+    c = ArcClient(GID, trace_path=tmp_path / "trace.jsonl", info=info,
+                  api_key="test-key-not-used-offline", card_id="lent-card")
+    monkeypatch.setattr(
+        ArcClient, "scorecard",
+        lambda self: {"cards": {GID: {"levels_completed": [4, 7]}}})
+
+    c.open()
+    assert c.card_plays_at_open == 2, (
+        "the attempt did not record where its own rows begin"
+    )
+    saved = json.loads((tmp_path / "trace.state.json").read_text())
+    assert saved["card_plays_at_open"] == 2, "the boundary was not persisted"
+
+
+def test_an_unreadable_card_leaves_the_boundary_unknown_not_wrong(tmp_path, monkeypatch):
+    """A failed read must not break the attempt: `sweep_card` probes the card at
+    driver start and `_assert_server_agrees` re-checks it on resume, so an
+    unreachable card is caught where it can be acted on."""
+    from athanor.ccarc3.client import ArcClient, GameInfo
+
+    info = GameInfo(GID, "Test", ("click",), (10, 20, 30))
+    c = ArcClient(GID, trace_path=tmp_path / "trace.jsonl", info=info,
+                  api_key="test-key-not-used-offline", card_id="lent-card")
+    monkeypatch.setattr(
+        ArcClient, "scorecard",
+        lambda self: (_ for _ in ()).throw(RuntimeError("404 not found")))
+
+    c.open()                                   # must not raise
+    assert c.card_plays_at_open == -1
