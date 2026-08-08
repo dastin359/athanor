@@ -580,3 +580,92 @@ def test_daemon_check_agrees_with_the_real_process_table():
         f"daemon_check reported {sorted(reported)} but {sorted(truly_absent)} are "
         f"actually absent; output was {out!r}"
     )
+
+
+# ==========================================================================
+# Gaps found by mutation-testing THIS file, closed.
+#
+# The mutation pass that proved the tests above also found eight mutants they
+# could not see. Three of those are behaviours whose loss would cost something
+# real, and they are pinned here. A test that names a behaviour and stays green
+# when it is reverted is the exact defect this file exists to prevent, so the
+# survivors are closed rather than recorded and left.
+# ==========================================================================
+
+def _line(assign: str) -> str:
+    """One `name=$(...)` assignment, verbatim, from heartbeat.sh."""
+    return _extract(rf"^\s*{assign}=\$\(grep.*?\)$", f"{assign}= assignment")
+
+
+def test_work_pending_assumes_work_when_it_cannot_tell(tmp_path):
+    """**The fail-safe that decides whether a blind heartbeat shouts or shrugs.**
+
+    `work_pending` shells out to import `clean_rollouts` and read its OUT. When
+    that import fails there is no way to know whether the sweep is finished, and
+    the script answers "assume work, stay watching" — `sys.exit(0)`. Invert it to
+    `sys.exit(1)` and an unimportable driver makes the heartbeat announce SWEEP
+    COMPLETE and hold: reporting a finished sweep *because it could not tell*,
+    which is the failure mode the whole file was written against.
+
+    Every other test here builds a sandbox where the import succeeds, so this
+    branch was never executed and the mutation survived.
+    """
+    fn = _work_pending_fn()
+    broken = tmp_path / "no_driver"
+    broken.mkdir()
+    # A python that cannot import anything from the real tree: the sys.path
+    # entries the function inserts are replaced with an empty directory.
+    patched = fn.replace('"/home/user/athanor/tools", "/home/user/athanor/src"',
+                         f'"{broken}", "{broken}"')
+    assert patched != fn, "work_pending no longer names the paths it imports from"
+
+    r = subprocess.run(["bash", "-c", f"{patched}\nwork_pending && echo PENDING || echo COMPLETE"],
+                       capture_output=True, text=True, timeout=60,
+                       env={"PATH": os.environ["PATH"]})
+    assert "PENDING" in r.stdout, (
+        "an unimportable driver must read as 'work pending, keep watching'. "
+        f"Got: {r.stdout!r} {r.stderr[-200:]!r}"
+    )
+
+
+def test_the_failure_reported_is_the_newest_one(tmp_path):
+    """`tail -1`, not `head -1`.
+
+    The fixtures above each contain exactly one line the anchored pattern
+    matches, so the two are indistinguishable and `head -1` passed. With `head`
+    the heartbeat pins the first traceback of a run and never shows the current
+    failure — a status line frozen on old news, which is the same shape as the
+    stale-log bug this file was written for.
+    """
+    log = tmp_path / "runner.log"
+    log.write_text(
+        "Traceback (most recent call last):\n"
+        "  File \"old.py\", line 1\n"
+        "ok, carrying on\n"
+        "arc_proxy: http://127.0.0.1:44297 (key withheld)\n"
+        "aborting: the ARC endpoint is unreachable\n",
+        encoding="utf-8",
+    )
+    got = subprocess.run(
+        ["bash", "-c", f'LOG={log}\n{_line("fail")}\necho "$fail"'],
+        capture_output=True, text=True, timeout=60).stdout.strip()
+    assert got.startswith("aborting:"), (
+        f"expected the NEWEST failure, got {got!r} — `head -1` would report the "
+        "traceback and never advance"
+    )
+
+
+def test_the_progress_line_reported_is_the_newest_one(tmp_path):
+    """Same trap on `arm=`. A progress field pinned to the first game of the
+    sweep is precisely the symptom the retired-log bug produced."""
+    log = tmp_path / "runner.log"
+    log.write_text(
+        "=== aa11-first — starting\n"
+        "--- pass 1/12: 24 outstanding\n"
+        "=== zz99-latest — starting\n",
+        encoding="utf-8",
+    )
+    got = subprocess.run(
+        ["bash", "-c", f'LOG={log}\n{_line("arm")}\necho "$arm"'],
+        capture_output=True, text=True, timeout=60).stdout.strip()
+    assert "zz99-latest" in got, f"expected the newest progress line, got {got!r}"

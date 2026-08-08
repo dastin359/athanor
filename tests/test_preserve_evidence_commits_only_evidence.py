@@ -557,3 +557,60 @@ def test_the_drain_reports_its_own_count_not_n():
         "the drain reports no count at all; it used to borrow $n from the gate"
     )
     assert not any(N_REF.search(ln) for ln in drain_msgs)
+
+
+# ==========================================================================
+# Gap found by mutation-testing this file, closed.
+# ==========================================================================
+
+def test_the_key_refusal_unstages_only_evidence(sandbox):
+    """**A refusal must not destroy an index it does not own.**
+
+    When `key_is_clean` refuses, the script unstages what it staged so the next
+    cycle's `git add` cannot sweep the offending files into a passing commit.
+    That line is `git reset -q -- evidence`, and dropping the pathspec left every
+    test here green — while a bare `git reset` wipes the WHOLE index. This daemon
+    shares its repo with a session that stages files continuously and ticks every
+    300s, so the blast radius of that mutation is another process's staged work,
+    discarded by a guard that was only supposed to decline a commit.
+
+    Same shape as the defect this file was written for: the guard's scope and the
+    command's scope have to be the same set.
+    """
+    repo, _bare, env = sandbox
+    (repo / "evidence" / "new.gz").write_text("x", encoding="utf-8")
+    (repo / "unrelated.txt").write_text("someone else's work\n", encoding="utf-8")
+    git(repo, "add", "evidence", "unrelated.txt", env=env)
+    assert "unrelated.txt" in out(git(repo, "diff", "--cached", "--name-only", env=env))
+
+    # Exactly what the refusal branch runs.
+    git(repo, "reset", "-q", "--", "evidence", env=env)
+
+    staged = out(git(repo, "diff", "--cached", "--name-only", env=env)).split()
+    assert staged == ["unrelated.txt"], (
+        f"the refusal must unstage evidence and nothing else; index now {staged}"
+    )
+
+
+def test_the_script_keeps_the_pathspec_on_its_unstage(sandbox):
+    """The behaviour above only holds if the script still spells it that way.
+
+    Pinned separately because the sandbox test exercises git's semantics, not
+    the script's text, and the mutation that survived was in the text.
+    """
+    repo, _bare, env = sandbox
+    m = re.search(r"^\s*git reset\b[^\n]*$", SCRIPT, re.M)
+    assert m, "the key-refusal branch no longer unstages at all"
+    assert "-- evidence" in m.group(0), (
+        f"`git reset` lost its pathspec and would wipe the whole index: {m.group(0)!r}"
+    )
+
+    # And prove that is not a distinction without a difference.
+    (repo / "evidence" / "new.gz").write_text("x", encoding="utf-8")
+    (repo / "unrelated.txt").write_text("work\n", encoding="utf-8")
+    git(repo, "add", "evidence", "unrelated.txt", env=env)
+    git(repo, "reset", "-q", env=env)                      # the mutant's form
+    assert out(git(repo, "diff", "--cached", "--name-only", env=env)) == "", (
+        "a pathspec-less reset should empty the index — if it does not, this "
+        "test is not demonstrating the risk it claims"
+    )

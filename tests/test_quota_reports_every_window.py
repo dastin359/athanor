@@ -538,3 +538,29 @@ def test_unrelated_window_does_not_satisfy_an_expected_one(tmp_path: Path):
     assert (
         status_line(proc.stdout) == f"status=unknown reason=window-not-observed:{SEVEN_DAY}"
     ), proc.stdout
+
+
+def test_a_stream_at_its_real_depth_is_found(tmp_path):
+    """**Every fixture above sits at depth 1; no real stream does.**
+
+    `write_stream` builds `<root>/<name>/stream.jsonl`, which a non-recursive
+    `glob(f"{S}/*/stream.jsonl")` matches just as well as the recursive one — so
+    dropping `**` and `recursive=True` left all twelve tests green. Real solver
+    streams live at `<sweep>/<game>/attempt_N/<game>/stream.jsonl`, four levels
+    down, and under that mutation quota.sh would find none of them and report
+    `no-reading-on-disk` for a box that is spending quota right now.
+    """
+    root = tmp_path / "scratch"
+    deep = root / "clean_rollouts" / "ar25-0c556536" / "attempt_1" / "ar25-0c556536"
+    deep.mkdir(parents=True)
+    soon = time.time() + 7200
+    (deep / "stream.jsonl").write_text(
+        _event("seven_day", "allowed_warning", 0.61, resets_at=soon) + "\n"
+        + _event("five_hour", "allowed", 0.12, resets_at=soon) + "\n",
+        encoding="utf-8")
+
+    out = run_quota(root).stdout
+    assert "seven_day" in out and "0.61" in out, (
+        f"a stream at its real depth was not scanned:\n{out}"
+    )
+    assert "MISSING" not in out and "no-reading-on-disk" not in out
