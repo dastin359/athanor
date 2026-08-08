@@ -26,7 +26,6 @@ from .grids import (
     collapse,
     counts,
     diff,
-    flatten_frames,
     logical,
     monotone_rows,
     objects,
@@ -94,7 +93,6 @@ __all__ = [
     "PALETTE",
     "objects",
     "counts",
-    "flatten_frames",
     # client
     "ROOT_URL",
     "ArcClient",

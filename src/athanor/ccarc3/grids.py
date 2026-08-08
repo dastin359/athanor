@@ -8,6 +8,17 @@ and so every run's traces stay comparable with every other run's.
 
 Nothing here imports ``arc_agi_3``. Grids are plain nested lists or arrays, so
 this module is usable (and testable) without the SDK or an API key.
+
+**One grid per action is the wrong assumption.** ``FrameData.frame`` is a *list*
+of grids -- the engine renders every frame until the action completes -- so code
+that takes ``frame[0]`` or ``frame[-1]`` silently drops the intermediate states,
+which is where the mechanics are visible. ``as_grid`` handles one; map it over
+the sequence rather than picking from it.
+
+(This note used to be the docstring of a ``flatten_frames`` helper whose entire
+body was ``[as_grid(f) for f in frames]``. Removed 2026-08-09: no internal
+caller, and zero uses across 44 preserved solver runs. The warning was the part
+worth keeping.)
 """
 
 from __future__ import annotations
@@ -401,11 +412,3 @@ def counts(grid: Sequence[Sequence[int]] | np.ndarray) -> dict[int, int]:
     return dict(Counter(arr.ravel().tolist()))
 
 
-def flatten_frames(frames: Iterable[Sequence[Sequence[int]]]) -> list[np.ndarray]:
-    """Coerce the grid sequence a single ARC-AGI-3 action returns.
-
-    ``FrameData.frame`` is a *list* of grids -- the engine renders every frame
-    until the action completes -- so callers that assume one grid per action
-    quietly drop the intermediate states where the mechanics are visible.
-    """
-    return [as_grid(f) for f in frames]

@@ -473,10 +473,6 @@ class Proxy:
             pass
 
 
-def serve_in_background(port: int = 0) -> tuple[str, Proxy]:
-    """Back-compat: a single shim, for callers that only ever run one game."""
-    proxy = Proxy(port)
-    return proxy.url, proxy
 
 
 def main() -> int:

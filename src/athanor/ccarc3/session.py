@@ -576,7 +576,6 @@ def _initial_prompt(info: GameInfo, budget: int, *, resumed: bool = False) -> st
     )
 
 
-GAME_ID_RE = re.compile(r"[a-z0-9]{4}(?:-[0-9a-f]{8})?")
 
 
 def redact_self_reference(root: Path, game_id: str) -> int:
@@ -625,7 +624,7 @@ def redact_self_reference(root: Path, game_id: str) -> int:
     return changed
 
 
-def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = None) -> list[str]:
+def build_cli_args(workspace: Workspace) -> list[str]:
     config = workspace.config
     args = [
         _claude_binary(),
@@ -667,8 +666,6 @@ def build_cli_args(workspace: Workspace, *, system_prompt_file: Path | None = No
         args += ["--allowedTools", ",".join(config.allowed_tools)]
     if config.disallowed_tools:
         args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
-    if system_prompt_file and _supports_flag("--append-system-prompt-file"):
-        args += ["--append-system-prompt-file", str(system_prompt_file)]
     args += list(config.extra_cli_args)
     return args
 

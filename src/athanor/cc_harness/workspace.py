@@ -322,12 +322,6 @@ def load_workspace(root: Path | str) -> Workspace:
     )
 
 
-def relative_to_cwd(path: Path) -> str:
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except ValueError:
-        return str(path)
-
 
 #: How long the CLI waits for a solver's background tasks before killing them.
 #: The default is 600 s, which is shorter than the run's own wall clock and fails
