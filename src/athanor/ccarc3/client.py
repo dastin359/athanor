@@ -436,7 +436,10 @@ class ArcClient:
 
     **The control is the 1.52x pair.** `su15` L5 and `tn36` L3 ran at exactly
     the same multiple of baseline and both cleared, at 2% and 8%. `tn36` L5 ran
-    at 5.62x and 31% and never fell. Both `tn36` L5 and `su15` L5 tripped the
+    at 5.62x and 31% and cleared anyway, at a price that cost it the level after.
+    (This said "never fell" until 2026-08-08, ten lines below a table in this same
+    docstring reading "yes, barely" -- the two copies disagreed and the wrong one
+    was the prose.) Both `tn36` L5 and `su15` L5 tripped the
     same 1.0x pace warning, so the ratio alone does not separate them -- over
     pace while reaching *new* states is exploration, over pace while cycling is
     being stuck. `lp85`, the most efficient run on record, revisited nothing at

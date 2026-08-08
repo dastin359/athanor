@@ -270,9 +270,11 @@ ceiling with surplus speed thrown away. `sk48` going 5 of 8 to 8 of 8 is worth
 level is worth more than any amount of being faster.
 
 **"This level is impossible" is a hypothesis about you, not about the game.**
-`tn36` has five runs on record: one cleared 5 of 7 and the rest cleared all
-seven, the fastest in **220 actions**. Same harness, same environment. The level that
-stopped one run was routine for another. Treat "stuck" as evidence that your
+`tn36` has six runs on record. One cleared 5 of 7 and one cleared 6 of 7; the
+other four cleared all seven. Two of those four were run before a contamination
+was found and are set aside; of the two that stand, the faster took **220
+actions**. Same harness, same environment. The level that stopped one run was
+routine for another. Treat "stuck" as evidence that your
 current model of the mechanic is wrong, not that the mechanic is unbeatable.
 
 So, when you are stuck:
@@ -564,10 +566,13 @@ warning; what separated them was whether the board was going anywhere new.
 95/308 actions returned the board to a state already seen on this level
 ```
 
-That is the level the lost run never cleared. Of its 309 actions, **8** changed
-nothing — so the "changed nothing" tally stayed quiet — while a third of them
-put the board back somewhere it had already been. Every action worked. The board
-kept coming home.
+That is the level that cost the lost run its game. Of its 309 actions, **8**
+changed nothing — so the "changed nothing" tally stayed quiet — while a third of
+them put the board back somewhere it had already been. Every action worked. The
+board kept coming home.
+
+It did eventually fall. What it did not do was leave anything for the level after
+it, and that is the level the run never reached.
 
 Compare, at the same 1.52× of baseline: one level at 2% revisits, another at 8%,
 both cleared. The winning run with the best efficiency on record revisited
@@ -577,7 +582,7 @@ So when you are over pace, read the two numbers together:
 
 | over pace, few revisits | you are exploring. Cost is real, progress is real. |
 |---|---|
-| over pace, many revisits | your action set moves the board around a loop. More of the same will not break out. Change *what you are trying*, not how carefully you try it. |
+| over pace, many revisits | your action set moves the board around a loop. Grinding may still get you through — it did on the level above — but what it spends comes out of the levels after it, and those are the ones weighted highest. Go back to §5 and ask what you believe that is wrong. |
 
 This is a number, not a threshold — the sample is 22 level-attempts and longer
 levels collide more often by chance alone. Do not treat any particular

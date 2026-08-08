@@ -2445,7 +2445,10 @@ all three recorded WIN by ARC.
 
 Like `lf52`, this run had been banked as a loss: it died at 5 of 9 with `exit 1`
 in the proxy-move incident and was marked retryable by the crash guard. It came
-back a 9-of-9 sweep. The two recoveries together are worth **+1.0924**.
+back a 9-of-9 sweep. The two recoveries together are worth **at least +1.1758**
+(`lf52` ≥ 0.5091, `wa30` ≥ 0.6667). This read +1.0924 until 2026-08-08, using a
+`wa30` delta of 0.5833 that belongs to `re86`; see the arm caveat for the
+re-derivation.
 
 ---
 
@@ -2532,8 +2535,34 @@ lines below the table it was copied from.)
   any scored run's stream. The two runs that did reach for baselines (`tu93`,
   `bp35`) were discarded to `ablate_exposed/` and re-run clean.
 - Three results turned on harness fixes shipped mid-arm: best-of-plays scoring
-  (`re86`, +0.4167) and crash-as-interruption (`lf52` +0.5091, `wa30` +0.5833).
-  Without those three fixes the same runs would total **22.1667 → 88.67%**.
+  (`re86`) and crash-as-interruption (`lf52`, `wa30`). Recomputed 2026-08-08 from
+  each game's level counts, because the three figures previously given here mixed
+  counterfactual `E` values with the deltas and one of them belonged to a
+  different game:
+
+  | game | without the fix | its `E` then | delta |
+  |---|---|---|---|
+  | `re86` | scored on its **last** play, 5 of 8 — the card reads `levels_completed [8, 5]` | ≤ 0.4167 (`cap` 5/12) | ≥ 0.5833 |
+  | `lf52` | banked as the loss it died as | 0.4909 as recorded | ≥ 0.5091 |
+  | `wa30` | banked as the loss it died as, 5 of 9 | ≤ 0.3333 (`cap` 15/45) | ≥ 0.6667 |
+
+  Without those three fixes the same runs would total **at most 21.9076 →
+  87.63%**. Every term is an upper bound on the counterfactual, so the total is.
+
+  What was here before: `re86` `+0.4167`, which is its counterfactual `E` and not
+  its delta; `wa30` `+0.5833`, which is `re86`'s delta (1 − 5/12) copied one game
+  across and is impossible for `wa30` — at 5 of 9 its ceiling is 15/45 = 0.3333,
+  so no arithmetic makes the fix worth less than 0.6667; and a total of 22.1667
+  that does not follow from its own three deltas either (23.6667 − 1.5091 =
+  22.1576).
+
+  **`lf52`'s two figures still disagree and the run is not on disk to settle it.**
+  It is recorded as dying at "6 of 10" with `E=0.4909`, but `cap(6,10)` = 21/55 =
+  0.3818, so `E=0.4909` needs seven completed levels (`cap` 28/55 = 0.5091, with
+  `raw` binding below it — exactly the shape of the 7-of-10 clean rollout, `raw`
+  0.4537 against that same cap). Either the level count is a 0-indexed level
+  number written as a count, or the `E` is wrong and the delta is ≥ 0.6182. The
+  bound above holds under both readings, which is why it is written as a bound.
 
 ### Caveat on the three losses: `tn36` has a 7/7 run on record
 

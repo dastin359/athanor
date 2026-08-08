@@ -279,9 +279,16 @@ def effective_actions(
 
     ``available_actions`` tells you what the game accepts. It does not tell you
     what has an effect, and the two are not the same. A run that failed outright
-    spent **20% of its actions on no-ops** -- 46 of 157 clicks left the board
-    untouched -- while every winning run in the same batch wasted none. Nothing
-    in the harness surfaced that while it was happening.
+    spent **almost one action in three on no-ops** -- 46 of 157 clicks left the
+    board untouched, 20% across all 336 of its actions -- while every winning run
+    in the same batch wasted none. Nothing in the harness surfaced that while it
+    was happening.
+
+    (The percentage read 20% beside the 46-of-157 fraction until 2026-08-08, with
+    the fraction offered as its evidence. 46/157 is 29%; 20% is 67 dead of 336,
+    the whole-run rate, and the two denominators had been welded together. Both
+    numbers are true and both are now shown with the denominator they belong to
+    -- the doctrine's §7a always rendered this evidence correctly.)
 
     This is free: it reads the ledger rather than spending actions. Call it after
     a handful of moves, and stop paying for whatever reads ``0/n``.

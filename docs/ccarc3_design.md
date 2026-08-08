@@ -59,7 +59,7 @@ Replayed through `ArcClient._account_effect`'s own accounting:
 
 | level | ratio | revisits | cleared? |
 |---|---|---|---|
-| `tn36` L5 | 5.62× | 95/308 = 31% | **no** |
+| `tn36` L5 | 5.62× | 95/308 = 31% | **yes, barely** |
 | `tn36` L1 | 2.57× | 30/184 = 16% | yes |
 | `su15` L7 | 0.93× | 4/36 = 11% | yes |
 | `tn36` L3 | 1.52× | 5/60 = 8% | yes |
@@ -67,7 +67,12 @@ Replayed through `ArcClient._account_effect`'s own accounting:
 | `lp85`, all 8 levels | <0.9× | 0/84 = 0% | yes |
 
 It is **not** the no-op signal under another name: `tn36` L5 had 8 no-ops in 309
-actions, so `level_dead` stayed quiet through the whole failure. And it is **not**
+actions, so `level_dead` stayed quiet through the whole grind. (That row read
+**no** until 2026-08-08 and was wrong: `tn36` banked `raw` 0.449 against a `cap`
+of 0.750, and 0.750 = 21/28 is reachable at six cleared levels and no other
+number, so the one level it never cleared is L6 — which cost 29 actions at
+0.47×, not 309 at 5.62×. The per-level table in `ccarc3_results.md` shows
+exactly one zero score and it is not this level.) And it is **not**
 pace under another name: `su15` L5 and `tn36` L3 ran at the same 1.52× and both
 cleared, while `tn36` L5 ran at 5.62×; both `su15` L5 and `tn36` L5 tripped the
 same 1.0× pace warning.
@@ -85,7 +90,8 @@ retrospect: at 108 actions it stood at 19% revisits and 0 no-ops, between
 That is below the 30% falsifier named in advance, so it does not refute the
 claim outright — but it is the least supportive point in the set, and combined
 with `tn36` L1 clearing at 16% it means **revisits do not separate cleared from
-uncleared**. Only one level above 16% has ever failed.
+uncleared**. With the L5 row corrected, **no** level above 16% has ever failed —
+the demotion is stronger than it was written, not weaker.
 
 What 17% did predict correctly was *cost*: 3.23× baseline, the most expensive
 cleared level on record. So the honest reading is a **cost signal, not a failure
