@@ -330,6 +330,20 @@ class ArcClient:
     """
 
     card_id: str = ""
+    """The scorecard this game is scored on.
+
+    **Set it to share one card across many games; leave it empty for the usual
+    one-card-per-game.** A leaderboard submission takes exactly one
+    `scorecard_url`, so a 25-game sweep that mints 25 cards has nothing to
+    submit. When this is set at construction the client skips
+    `/api/scorecard/open` and plays onto the card it was handed.
+
+    Passing the id is necessary and **not sufficient**: the card is reachable
+    only from a session carrying its `AWSALBAPP-*` stickiness cookies, and in a
+    proxied run those live in the shim, not here. See
+    :mod:`athanor.ccarc3.shared_card`.
+    """
+
     guid: str = ""
     actions_used: int = 0
     level: int = 0
@@ -441,6 +455,22 @@ class ArcClient:
     actions of progress — while the refusal built to prevent that stood unarmed.
     """
     _resumed: bool = field(default=False, repr=False)
+    _owns_card: bool = field(default=False, repr=False)
+    """True only when this client opened the card itself.
+
+    A shared card outlives the game that happens to finish first, so closing one
+    we were merely lent would end the sweep for every game still playing.
+    """
+
+    foreign_card: str = field(default="", repr=False)
+    """Set when a resumed game is on a different card than the one injected.
+
+    A trace is bound to the card it was played on; it cannot be moved to another
+    one after the fact. Resuming wins -- the alternative is a resume that replays
+    from level 0 -- and this records that the game is NOT on the shared card, so
+    the driver can say so instead of counting it in a submission it is missing
+    from.
+    """
 
     @property
     def state_path(self) -> Path:
@@ -463,6 +493,8 @@ class ArcClient:
                 {
                     "game_id": self.game_id,
                     "card_id": self.card_id,
+                    "owns_card": self._owns_card,
+                    "foreign_card": self.foreign_card,
                     "guid": self.guid,
                     "actions_used": self.actions_used,
                     "level": self.level,
@@ -529,7 +561,20 @@ class ArcClient:
         if saved.get("game_id") != self.game_id:
             return False
 
-        self.card_id = saved.get("card_id", "")
+        # A card injected at construction must not silently displace the one
+        # this trace was actually played on -- and vice versa. Resume wins,
+        # because the alternative is replaying from level 0, but the divergence
+        # is recorded rather than swallowed.
+        injected, saved_card = self.card_id, saved.get("card_id", "")
+        if injected and saved_card and injected != saved_card:
+            self.foreign_card = injected
+        self.card_id = saved_card or injected
+        # **A state file written before this field existed always owned its
+        # card** -- injection did not exist yet, so every card in an old file was
+        # opened by the client that wrote it. Defaulting to False instead would
+        # quietly stop resumed pre-existing runs from closing their own cards.
+        self._owns_card = bool(saved.get("owns_card", not injected))
+        self.foreign_card = self.foreign_card or saved.get("foreign_card", "")
         self.guid = saved.get("guid", "")
         self.actions_used = int(saved.get("actions_used", 0))
         self.level = int(saved.get("level", 0))
@@ -613,9 +658,16 @@ class ArcClient:
         if self._resumed and self.card_id:
             self._assert_server_agrees()
             return self
+        if self.card_id:
+            # A card the driver opened and lent us. Opening another one here is
+            # exactly the bug that leaves a sweep with one card per game and
+            # nothing to submit.
+            self._save_state()
+            return self
         card = _post(f"{self.root}/api/scorecard/open", {"tags": list(self.tags)},
                      self._key, opener=self._opener)
         self.card_id = card["card_id"]
+        self._owns_card = True
         self._save_state()
         return self
 
@@ -691,6 +743,11 @@ class ArcClient:
         self._snapshot_scorecard()
         card_id, self.card_id = self.card_id, ""
         self.state_path.unlink(missing_ok=True)
+        if not self._owns_card:
+            # Someone else's card, still carrying games that have not finished.
+            # Snapshotting it was the useful half; closing it would end the
+            # sweep on whichever game happened to return first.
+            return {}
         try:
             return _post(f"{self.root}/api/scorecard/close", {"card_id": card_id},
                          self._key, opener=self._opener)
@@ -730,11 +787,22 @@ class ArcClient:
     def _snapshot_scorecard(self) -> None:
         """Persist the server's own scorecard beside the trace, before closing.
 
-        **The card does not survive the run.** Two `card_id`s taken from
-        finished runs both returned ``404 card_id not found`` while the same key
-        still listed all 25 games -- so everything the scorecard knows is gone
-        the moment the card is closed, and this is the only chance to keep it.
-        Every run this project has completed threw it away.
+        **RETRACTED 2026-08-08: "the card does not survive the run."** The
+        evidence was two `card_id`s from finished runs both answering ``404
+        card_id not found`` while the same key still listed all 25 games. The
+        reading was wrong. A card is state on **one backend instance**, reachable
+        only from a session carrying its `AWSALBAPP-*` stickiness cookies, and
+        those reads were made from fresh processes with fresh jars -- which land
+        on a backend at random. Re-read on 2026-08-08 from twelve independent
+        jars each, two of three finished cards came back with their full
+        contents (3/12 and 2/12 hits; the third was 0/12). A 404 here means "you
+        asked the wrong instance", not "it is gone", and one try cannot tell
+        those apart. Same mechanism the shim was built for: `1 of 8` reads
+        survive an unpinned hop, `8 of 8` survive a pinned one.
+
+        Snapshotting is still right -- a one-in-five read is not a way to score a
+        run, and the local copy costs nothing -- but the reason is reliability,
+        not permanence.
 
         What is thrown away is not incidental. ``actions_by_level`` is the
         *server's* per-level action count, which is exactly the quantity RHAE

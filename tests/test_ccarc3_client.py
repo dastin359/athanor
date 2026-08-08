@@ -385,6 +385,9 @@ def test_a_scorecard_that_cannot_be_read_does_not_block_the_close(monkeypatch, t
 
     c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
     c.card_id = "c1"
+    # Assigning `card_id` is how this suite says "has a card"; since shared cards
+    # landed it also has to say WHOSE. A card the client opened is one it closes.
+    c._owns_card = True
     c.close()
 
     assert "404" in c.scorecard_error

@@ -90,6 +90,14 @@ class ProxyState:
 
     A shared counter is a bug you would eventually see in the numbers. A shared
     session is one you would not.
+
+    **One exception, added 2026-08-08: a deliberately shared card.** A
+    leaderboard submission takes one `scorecard_url`, so the whole sweep has to
+    land on one card -- and a card is reachable only from a session carrying its
+    `AWSALBAPP-*` stickiness cookies. :meth:`adopt_session` seeds this shim's jar
+    with the driver's, so every game routes to the instance holding the shared
+    card. The counter stays per game either way; it is the pinning that is
+    shared, and only when the card is. See :mod:`athanor.ccarc3.shared_card`.
     """
 
     def __init__(self) -> None:
@@ -100,6 +108,10 @@ class ProxyState:
         # the module-level default and the connectivity probe want.
         self.game_id = ""
         self._opener: urllib.request.OpenerDirector | None = None
+        # Cookies to seed every session this shim builds, so it lands on the
+        # backend holding a shared card. Empty means "your own session", which
+        # is the per-game default.
+        self._adopted: tuple[dict[str, str], ...] = ()
 
     def set_budget(self, max_actions: int, *, used: int = 0) -> None:
         """Arm the cap for one game.
@@ -152,10 +164,33 @@ class ProxyState:
         """
         with self._lock:
             if self._opener is None:
+                jar = http.cookiejar.CookieJar()
+                for c in self._adopted:
+                    domain = c["domain"]
+                    jar.set_cookie(
+                        http.cookiejar.Cookie(
+                            0, c["name"], c["value"], None, False,
+                            domain, True, domain.startswith("."),
+                            c.get("path", "/"), True, False, None, True, None, None, {},
+                        )
+                    )
                 self._opener = urllib.request.build_opener(
-                    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+                    urllib.request.HTTPCookieProcessor(jar)
                 )
             return self._opener
+
+    def adopt_session(self, cookies: "tuple[dict[str, str], ...]") -> None:
+        """Route this shim to the backend holding a shared scorecard.
+
+        Called before the game starts. `set_budget` drops the session on purpose
+        -- a new game must not inherit the previous one's pinning -- so the
+        adopted cookies are kept separately and re-seeded into every session
+        this shim builds afterwards. Storing them only in the live jar would
+        make the order of these two calls silently load-bearing.
+        """
+        with self._lock:
+            self._adopted = tuple(cookies)
+            self._opener = None
 
     def reset_session(self) -> None:
         with self._lock:
@@ -400,6 +435,9 @@ class Proxy:
 
     def set_budget(self, max_actions: int, *, used: int = 0) -> None:
         self.state.set_budget(max_actions, used=used)
+
+    def adopt_session(self, cookies: "tuple[dict[str, str], ...]") -> None:
+        self.state.adopt_session(cookies)
 
     @property
     def actions_used(self) -> int:

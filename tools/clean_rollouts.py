@@ -71,6 +71,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import ablate_baselines as ab            # noqa: E402 -- strip installed below
 from athanor.ccarc3 import Ccarc3Config  # noqa: E402
 from athanor.ccarc3.client import list_games  # noqa: E402
+from athanor.ccarc3 import shared_card as sc  # noqa: E402
 from athanor.ccarc3.session import run_game   # noqa: E402
 
 # **Install the baseline strip, and refuse to run without it.**
@@ -353,9 +354,64 @@ def completed_attempts(game_dir: pathlib.Path, game_id: str) -> int:
                if (a / game_id / "result.json").exists())
 
 
+SHARED_CARD_FILE = SP / "shared_card.json"
+SHARED_CARD_HISTORY = SP / "shared_card_history.jsonl"
+
+
+def sweep_card():
+    """The one scorecard this sweep plays onto, across driver restarts.
+
+    **Why a file and not a fresh card per driver.** The supervisor restarts this
+    driver -- on a container replacement, on an abort, on a quota stop -- and a
+    card minted per process would put the 25 games on as many cards as the sweep
+    had restarts. That is the failure being fixed, arriving by a different door.
+
+    **Why the liveness probe.** A card is state on one backend instance reached
+    by its stickiness cookies (see :mod:`athanor.ccarc3.shared_card`), so it can
+    become unreachable while the API key keeps working. Reading any game off the
+    card tells the two apart cleanly: a live card answers 200 with an empty body
+    for a game it has never seen, and only an unreachable one 404s. Measured
+    2026-08-08 on a card opened for the purpose.
+
+    **Why succession is recorded rather than silent.** If the card is gone the
+    sweep cannot recover the games already on it, and continuing onto a new card
+    means the submission covers only what came after. Minting quietly would make
+    a partial artifact look whole -- so the old card is kept, the history file
+    grows a line, and the log says it loudly.
+    """
+    if os.environ.get("CCARC3_NO_SHARED_CARD"):
+        print("shared card DISABLED by env; one card per game", flush=True)
+        return None
+
+    if SHARED_CARD_FILE.exists():
+        card = sc.load(SHARED_CARD_FILE)
+        try:
+            sc.read_card(card, GAMES[0])
+            print(f"shared card {card.card_id} — still reachable", flush=True)
+            return card
+        except Exception as exc:                       # noqa: BLE001
+            print(f"*** shared card {card.card_id} is UNREACHABLE ({str(exc)[-70:]}). "
+                  f"Games already on it stay on it and are NOT in the new card. ***",
+                  flush=True)
+            dead = SHARED_CARD_FILE.with_suffix(f".{card.card_id[:8]}.dead.json")
+            SHARED_CARD_FILE.replace(dead)
+            with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
+                                     "reason": str(exc)[-160:]}) + "\n")
+
+    card = sc.open_card(tags=("ccarc3", "clean-rollouts"))
+    sc.save(card, SHARED_CARD_FILE)
+    with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"card_id": card.card_id, "opened": time.time()}) + "\n")
+    print(f"shared card {card.card_id} — opened, all games will score onto it",
+          flush=True)
+    return card
+
+
 def main() -> int:
     install_strip()
     OUT.mkdir(parents=True, exist_ok=True)
+    ab.use_shared_card(sweep_card())
     infos = {g.game_id: g for g in list_games()}
     print("CLEAN ONE-SHOT ROLLOUTS — fresh every time, interrupted attempts discarded",
           flush=True)

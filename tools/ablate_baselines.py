@@ -408,13 +408,41 @@ def _actions_already_spent(root: pathlib.Path) -> int:
 _proxies: dict[str, "arc_proxy.Proxy"] = {}
 _proxies_lock = threading.Lock()
 
+# The one card the whole sweep plays onto, or None for a card per game.
+#
+# **Applied here rather than at each call site, deliberately.** This module is
+# already the chokepoint every workspace passes through -- it is where the strip
+# runs, where the budget is armed and where the key is checked out of the child's
+# environment -- and a shared card has the same property those do: one game that
+# slips past it silently ruins the artifact for all 25. A driver that has to
+# remember to pass `card_id` on every construction will eventually forget on one.
+_shared_card = None
+
+
+def use_shared_card(card) -> None:
+    """Route every shim and every client at one scorecard.
+
+    Pass ``None`` to go back to a card per game. Takes effect for shims created
+    after this call; a game already running keeps the session it started with,
+    which is correct -- its trace is bound to the card it was played on.
+    """
+    global _shared_card
+    _shared_card = card
+
 
 def proxy_for(game_id: str) -> "arc_proxy.Proxy":
     with _proxies_lock:
         proxy = _proxies.get(game_id)
         if proxy is None:
             proxy = _proxies[game_id] = arc_proxy.Proxy(game_id=game_id)
-            print(f"arc_proxy[{game_id.split('-')[0]}]: {proxy.url}", flush=True)
+            if _shared_card is not None:
+                # Without this the shim opens its own session, the load balancer
+                # sends it to a backend that has never heard of the shared card,
+                # and the first RESET fails with `game <id> not found` -- a
+                # message that names the game and means the session.
+                proxy.adopt_session(_shared_card.cookies)
+            print(f"arc_proxy[{game_id.split('-')[0]}]: {proxy.url}"
+                  f"{' [shared card]' if _shared_card is not None else ''}", flush=True)
         return proxy
 
 
@@ -428,6 +456,8 @@ def release_proxy(game_id: str) -> None:
 
 def build_without_baselines(config, info=None, *, arc_root=None):
     proxy = proxy_for(config.game_id)
+    if _shared_card is not None and not config.card_id:
+        config.card_id = _shared_card.card_id
     ws = _original_build(config, info, arc_root=arc_root or proxy.url)
     strip_baselines(ws.root)
 

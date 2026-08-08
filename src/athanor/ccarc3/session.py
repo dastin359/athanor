@@ -139,6 +139,16 @@ class Ccarc3Config:
     :func:`snapshot_scorecard` for the bracket. Resume promptly either way.
     """
 
+    card_id: str = ""
+    """Play onto a scorecard the driver already opened, instead of a new one.
+
+    Empty keeps the historical behaviour: one card per game. Set, and the sweep
+    lands on one card -- which is what a leaderboard submission takes. The id
+    alone does not reach the card; the shim must also carry its stickiness
+    cookies (:meth:`arc_proxy.ProxyState.adopt_session`), and the two are set
+    together by the driver.
+    """
+
     extra_cli_args: tuple[str, ...] = ()
 
 
@@ -231,7 +241,7 @@ client = ArcClient(
     info=INFO,
     gate=gate,
     max_actions=0,
-{level_budget_line}    quiet_pace=True,
+{level_budget_line}{card_line}    quiet_pace=True,
     show_score=True,
 )
 client.open()
@@ -295,6 +305,13 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
             level_budget_line=(
                 f"    level_budget_multiple={config.level_budget_multiple!r},\n"
                 if config.level_budget_multiple else ""
+            ),
+            # Emitted only when a card is being shared, for the same reason as
+            # the line above: a keyword the solver can see is a question the
+            # solver can ask, and on the usual one-card-per-game run there is
+            # nothing here to explain.
+            card_line=(
+                f"    card_id={config.card_id!r},\n" if config.card_id else ""
             ),
         ),
         encoding="utf-8",
@@ -880,10 +897,34 @@ def _action_budget(ws: Workspace) -> int:
     return budget if isinstance(budget, int) and budget > 0 else 0
 
 
+def _card_facts(ws: Workspace) -> dict[str, Any]:
+    """Which scorecard this run scored on.
+
+    **A sweep's central claim should be checkable, not assumed.** "All 25 games
+    are on one card" is exactly the kind of statement that is true until one game
+    quietly is not -- a resume onto its old card, a driver restart that minted a
+    new one -- and a submission built on the assumption is wrong in a way nothing
+    else in the results would show. Recording the id per run turns it into
+    something a single pass over the outcomes can verify.
+    """
+    try:
+        saved = json.loads(
+            Path(ws.trace_path).with_suffix(".state.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return {}
+    facts = {"card_id": saved.get("card_id", "")}
+    if saved.get("foreign_card"):
+        # This game is NOT on the shared card, whatever the driver intended.
+        facts["foreign_card"] = saved["foreign_card"]
+    return facts
+
+
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
     """Read the run's result off disk — never from what the solver claims."""
     outcome = {
         "game_id": ws.info.game_id,
+        **_card_facts(ws),
         "levels_total": ws.info.levels,
         "baseline_total": ws.info.baseline_total,
         **ledger_facts(ws.trace_path),
