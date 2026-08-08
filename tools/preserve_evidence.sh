@@ -185,7 +185,18 @@ mkdir -p "$DEST"
 log "preserving evidence every ${TICK}s -> $DEST"
 
 while true; do
-    for base in clean_rollouts rerun_losses ablate_nobaseline; do
+    # **Three hardcoded names, and the submission sweep is not one of them.**
+    # `clean_rollouts.py` is *forced* into a different directory for a
+    # submission run -- all 25 games in `clean_rollouts` already hold a
+    # `clean_result.json`, so `_run_one` skips every one of them -- which means
+    # the ~$650 sweep this preserver exists to protect would have run in
+    # `clean_rollouts_submission` and had nothing preserved. The header says the
+    # disk is not durable and names five container rollbacks that lost twelve
+    # games; this box has been replaced twice more since.
+    #
+    # Globbed, so a directory created after this line was written is covered by
+    # it. That is the same fix `refresh_audit.sh` needed for the same reason.
+    for base in $(cd "$SP" 2>/dev/null && for d in clean_rollouts* rerun_* ablate_nobaseline; do [ -d "$d" ] && echo "$d"; done); do
         [ -d "$SP/$base" ] || continue
         for d in "$SP/$base"/*/; do
             [ -d "$d" ] || continue

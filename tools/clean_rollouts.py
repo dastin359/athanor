@@ -403,19 +403,52 @@ def sweep_card():
 
     if SHARED_CARD_FILE.exists():
         card = sc.load(SHARED_CARD_FILE)
-        try:
-            sc.read_card(card, GAMES[0])
-            print(f"shared card {card.card_id} — still reachable", flush=True)
-            return card
-        except Exception as exc:                       # noqa: BLE001
-            print(f"*** shared card {card.card_id} is UNREACHABLE ({str(exc)[-70:]}). "
-                  f"Games already on it stay on it and are NOT in the new card. ***",
-                  flush=True)
-            dead = SHARED_CARD_FILE.with_suffix(f".{card.card_id[:8]}.dead.json")
-            SHARED_CARD_FILE.replace(dead)
-            with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
-                                     "reason": str(exc)[-160:]}) + "\n")
+        # **Retry before declaring death.** This caught every exception and
+        # treated all of them as "the card is gone" -- so one refused connection
+        # or a proxy blip would retire a live card carrying finished games. A
+        # 404 is the card; anything else is the network until proven otherwise.
+        gone = None
+        for attempt in range(3):
+            try:
+                sc.read_card(card, GAMES[0])
+                print(f"shared card {card.card_id} — still reachable", flush=True)
+                return card
+            except Exception as exc:                   # noqa: BLE001
+                gone = exc
+                if "not found" not in str(exc) and "404" not in str(exc):
+                    time.sleep(2 ** attempt)           # transient: try again
+                    continue
+                break
+
+        # **Whether this matters depends entirely on whether the card had games.**
+        # An empty card reaped before the sweep starts costs nothing -- and that
+        # is the common case, because this opens the card at driver start while
+        # the first game may be an hour away. Five such remints were recorded on
+        # 2026-08-08 in 6.5 hours, every one of them harmless and every one of
+        # them logged as though it were a disaster.
+        #
+        # A card with games on it is the opposite: those games cannot be moved,
+        # so reminting silently produces a submission missing everything banked
+        # so far. That is a decision for an operator, not a default.
+        played = [g for g in GAMES if _card_of(workspace_of(OUT / g / "attempt_1", g)) == card.card_id]
+        with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
+                                 "games_lost": len(played),
+                                 "reason": str(gone)[-160:]}) + "\n")
+        dead = SHARED_CARD_FILE.with_suffix(f".{card.card_id[:8]}.dead.json")
+        SHARED_CARD_FILE.replace(dead)
+
+        if played:
+            raise SystemExit(
+                f"shared card {card.card_id} is gone and {len(played)} game(s) "
+                f"were scored on it ({', '.join(g.split('-')[0] for g in played)}). "
+                f"They cannot be moved to a new card, so continuing would build a "
+                f"submission that silently omits them. Re-run those games against "
+                f"a fresh card, or accept a partial artifact deliberately — this "
+                f"driver will not choose for you."
+            )
+        print(f"shared card {card.card_id} was reaped before any game reached it "
+              f"({str(gone)[-60:]}); nothing lost, opening another", flush=True)
 
     card = sc.open_card(tags=("ccarc3", "clean-rollouts"))
     sc.save(card, SHARED_CARD_FILE)
