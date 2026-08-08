@@ -184,3 +184,39 @@ cohort.
 A reader who reached the end and stopped got the opposite of the finding. Which
 is the shape this file spends its length documenting: a true statement about one
 layer, written where it reads as a verdict on all of them.
+
+## The split pair, and why no banked run could invert it
+
+Found 2026-08-09 by the proofreading sweep. Two halves of one median, in two
+modules that a solver binds with a single `import athanor.ccarc3 as arc`:
+
+* `client.py` carried "268 actions on one level and 182 on another";
+* `session.py` gave the same two levels as `8.65x` and `22.75x`, and — because
+  that text sat inside `SESSION_TEMPLATE` — it was **rendered into every
+  workspace**, where the solver is told to read it.
+
+268/8.65 = 31 and 182/22.75 = 8, two real per-level medians. Cross-pairing the
+numbers gives non-integers, so the pairing identifies itself. Each half alone is
+inert: a ratio inverts nothing without a count, and a count means nothing without
+its ratio. Which is exactly why a per-file check missed it — neither file was
+wrong on its own.
+
+**Nobody received both.** Scanned all 129 preserved solver streams across every
+cohort — clean rollouts, the baseline-free arm, the void and stale-card sets, and
+every ad-hoc re-run directory:
+
+| | streams |
+|---|---|
+| ratio half present (rendered into the workspace) | 59 |
+| count half present | **0** |
+| **both** | **0** |
+
+The count half lived only in `client.py`'s source, reachable by
+`inspect.getsource` or by reading the file — and no run did either. So the
+exposure was real, was live for the whole of the repaired-surface cohort, and
+was never exercised. **No banked result moves.**
+
+Stated with the same caveat as the section above it: this establishes that it
+did not happen, not that the design prevented it. It did not. The counts are now
+out of `client.py` and the rendered template is a fraction of its former length,
+so the pair no longer exists to be assembled.
