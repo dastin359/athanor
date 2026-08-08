@@ -1206,8 +1206,11 @@ def snapshot_scorecard(ws: Workspace) -> dict[str, Any]:
     02:41:25Z through 02:54:59Z, growing again by 03:00:07Z. So the card sat idle
     at least 13.6 minutes and possibly ~19. That is why it tightens the lower
     edge of the bracket and nothing else. The true deadline is above 13.6 minutes
-    and at or below 43.8; it is not a documented ARC policy, so treat the bracket
-    as the claim and resume promptly regardless.
+    and at or below **18.2**, per the row added on 2026-08-08; it is not a
+    documented ARC policy, so treat the bracket as the claim and resume promptly
+    regardless. (This sentence said 43.8 until the same day, because the table
+    and the headline above were updated and it was not -- a stale upper bound
+    thirty lines below the corrected one, in a paragraph about the bracket.)
 
     That is worse than losing the progress, because the ledger does not reset
     with the game. ``actions_used`` carries across attempts by design, so the

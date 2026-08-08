@@ -410,3 +410,64 @@ def test_two_games_do_not_share_an_arc_session(monkeypatch):
         assert not (SEEN_COOKIES[-1] or ""), "B inherited A's session"
     finally:
         a.shutdown(); b.shutdown(); stub.shutdown()
+
+
+def _post(port, path, body):
+    """A real POST with a real body, which `_request` cannot express."""
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    try:
+        payload = b"" if body is None else json.dumps(body).encode()
+        c.request("POST", path, body=payload,
+                  headers={"Content-Type": "application/json"})
+        r = c.getresponse()
+        return r.status, r.read()
+    finally:
+        c.close()
+
+
+def test_a_command_that_does_not_name_its_game_is_refused(monkeypatch):
+    """**The per-game guard failed open on everything but a wrong answer.**
+
+    It read `if wanted and payload:` around `if asked and asked != wanted:`, so a
+    `/api/cmd/*` request with no body — or a body naming no game — skipped the
+    check entirely and was billed to whichever shim received it. With games in
+    flight concurrently every sibling's port is a loopback scan away, and the cap
+    was moved out of the child's environment precisely so a solver could not
+    raise it. Billing a neighbour raises it just as effectively, and the solver
+    chose whether the check ran by choosing what to put in its own body.
+    """
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    stub, stub_port = _serve(_Stub)
+    monkeypatch.setattr(arc_proxy, "UPSTREAM", f"http://127.0.0.1:{stub_port}")
+    mine = arc_proxy.Proxy(game_id="aa11-deadbeef")
+    port = mine._server.server_address[1]
+    try:
+        mine.set_budget(50)
+
+        assert _post(port, "/api/cmd/ACTION1", {"game_id": "aa11-deadbeef"})[0] == 200, \
+            "a command naming its own game must still be carried"
+        spent = mine.actions_used
+
+        for body in (None, {}, {"guid": "abc"}, {"game_id": "bb22-cafe"}):
+            status, _ = _post(port, "/api/cmd/ACTION1", body)
+            assert status == 403, f"unattributed command was carried: {body!r}"
+
+        assert mine.actions_used == spent, (
+            "a refused command must not be billed to this shim either"
+        )
+    finally:
+        mine.shutdown(); stub.shutdown()
+
+
+def test_the_scorecard_endpoints_carry_no_game_id_and_are_left_alone(monkeypatch):
+    """Failing closed must not close on the traffic the shim exists to carry."""
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    stub, stub_port = _serve(_Stub)
+    monkeypatch.setattr(arc_proxy, "UPSTREAM", f"http://127.0.0.1:{stub_port}")
+    mine = arc_proxy.Proxy(game_id="aa11-deadbeef")
+    port = mine._server.server_address[1]
+    try:
+        assert _post(port, "/api/scorecard/open", {"tags": ["x"]})[0] == 200
+        assert _post(port, "/api/scorecard/close", {"card_id": "c1"})[0] == 200
+    finally:
+        mine.shutdown(); stub.shutdown()

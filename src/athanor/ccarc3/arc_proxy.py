@@ -316,17 +316,29 @@ class Handler(BaseHTTPRequestHandler):
         # flight concurrently, every sibling's port is a loopback scan away. The
         # cap moved out of the child's environment precisely so the solver could
         # not raise it; billing it to a neighbour raises it just as effectively.
+        # **It failed open, and only caught a volunteered wrong answer.** As
+        # first written this was `if wanted and payload:` guarding
+        # `if asked and asked != wanted:` -- so a `/api/cmd/*` request with no
+        # body, or with a body naming no game, skipped the check entirely and
+        # was billed to whichever shim received it. The whole point is that a
+        # solver cannot spend a neighbour's budget, and a solver choosing what to
+        # put in its own request body decides whether the check runs.
+        #
+        # Now it fails closed, for commands only: a shim dedicated to a game
+        # requires every action to name that game. Scorecard open/close carry no
+        # `game_id` and are left alone.
         wanted = self.state.game_id
-        if wanted and payload:
+        if wanted and charge:
             try:
-                asked = (json.loads(payload) or {}).get("game_id")
+                asked = (json.loads(payload) or {}).get("game_id") if payload else None
             except ValueError:
                 asked = None
-            if asked and asked != wanted:
+            if asked != wanted:
                 sys.stderr.write(f"WRONG GAME {path}: shim serves {wanted}, "
-                                 f"request names {asked}\n")
+                                 f"request names {asked!r}\n")
                 sys.stderr.flush()
-                self._deny(403, f"this shim serves {wanted}, not {asked}")
+                self._deny(403, f"this shim serves {wanted}, not {asked!r}; "
+                                f"every action must name its own game")
                 return
 
         if charge:

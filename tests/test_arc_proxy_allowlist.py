@@ -158,3 +158,4 @@ def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget():
                 p.close()
             except Exception:                      # noqa: BLE001
                 pass
+
