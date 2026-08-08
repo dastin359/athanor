@@ -66,9 +66,18 @@ SP = pathlib.Path(
 #
 #     CCARC3_SWEEP_DIR=clean_rollouts_submission tools/clean_rollouts.py
 #
-# The name must still contain `clean_rollouts`: `build_trace_audit` decides
-# whether a run is one of ours by looking for it in the working directory, so a
-# rename would silently drop the whole sweep out of the audit.
+# The name must still contain `clean_rollouts`, for a narrower reason than this
+# comment first claimed. It said `build_trace_audit` "decides whether a run is
+# one of ours by looking for it in the working directory, so a rename would
+# silently drop the whole sweep out of the audit" -- that is false. Ingestion is
+# by explicit path: `main()` reads exactly the directories passed as `--ingest`,
+# and neither `ingest()` nor `runs_row()` looks at the name.
+#
+# What does key on it is the **live-process scan** (`build_trace_audit.py:900`),
+# which finds running solvers by matching their cwd to report in-flight
+# progress. A differently-named sweep directory is invisible to that -- so the
+# audit page would show the sweep as idle while it ran, which is worth avoiding
+# and is not the same as losing the runs.
 _SWEEP_DIR = os.environ.get("CCARC3_SWEEP_DIR") or "clean_rollouts"
 if "clean_rollouts" not in _SWEEP_DIR:
     raise SystemExit(

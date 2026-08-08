@@ -107,11 +107,21 @@ ge() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}'; }
 
 stop_politely() {
     echo "$(date -u +%H:%M) util=$1 >= $LIMIT — stopping after the in-flight game"
+    # **Ask whether a solver is running, not whether every directory on disk was
+    # tidied.** This counted any workspace with a `trace.jsonl` and no
+    # `result.json` as "in flight" — over every attempt that has ever existed,
+    # not the games actually running. One abandoned attempt pins that to 1
+    # permanently: the loop then burns its full ~2h on every quota stop and kills
+    # mid-game regardless, which is the exact outcome the politeness exists to
+    # prevent. Zero such directories exist today, so it works and would break the
+    # first time a container is replaced mid-write — on this box, hourly.
+    #
+    # A live solver has its cwd inside the work tree. That is the thing itself.
     for _ in $(seq 1 240); do          # up to ~2h
         pending=0
-        for dir in "$SP"/"$WORK"/*/ "$SP"/"$WORK"/*/attempt_*/*/; do
-            [ -f "$dir/trace.jsonl" ] || continue
-            [ -f "$dir/result.json" ] || pending=1
+        for pid in $(pids_of '.*/claude'); do
+            c=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+            case "$c" in "$SP"/"$WORK"/*) pending=1;; esac
         done
         [ "$pending" -eq 0 ] && break
         sleep 30
