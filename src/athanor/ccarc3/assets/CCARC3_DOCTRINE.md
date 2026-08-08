@@ -176,9 +176,16 @@ is costing you, and the two are improved by opposite actions:
 **Fumbling through levels you cleared is the expensive failure, and it is the
 one this project actually made.** On `tn36`, `raw` 0.449 against `cap` 0.750:
 clearing the last level would have raised the ceiling to 1.0 and the score only
-to **0.511**, because `raw` was still binding. Replaying the six levels it had
-already solved was worth **0.750** — nearly five times as much, and more per
-action spent.
+to **0.511** — *if that level had cost twice its own reference count, which is
+about what the run was averaging*. Replaying the six levels it had already
+solved was worth **0.750**: a gain of 0.301 against 0.062, nearly five times as
+much, and more per action spent.
+
+The assumption matters and used to be left out, which made the figure
+unreproducible. Clear that last level *efficiently* and the score reaches 0.699
+instead, and replaying wins by 1.2× rather than 5×. It still wins — that is the
+point, and it holds across the range — but a number you cannot re-derive is one
+you cannot check.
 
 **If you do not know the baselines, you still know the cap.**
 `cap = sum(1..k)/sum(1..n)` needs only levels cleared and levels total, both of

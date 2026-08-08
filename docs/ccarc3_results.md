@@ -3402,11 +3402,23 @@ of the five interrupted runs scored 1.0000. Applying the rule therefore discards
 five perfect scores and keeps all three failures, taking the headline *down* from
 94.67% to **93.33%**. So the three figures this project can honestly quote are:
 
+> **SUPERSEDED — do not quote these.** Every figure in this table pools the
+> eight runs later found to have read a real human median out of `DOCTRINE.md`
+> §0a. All three were withdrawn on 2026-08-08; see *Standing — 17 environments
+> baseline-free, and a withdrawn figure* near the end of this file, where the
+> surviving number is **16.7252 / 17 = 98.38%**. Left in place because the
+> reasoning about *which* denominator is honest still holds and is reused there
+> — it is the inputs that are contaminated, not the argument.
+>
+> Flagged here because the correction lives about 1,600 lines below, and a
+> reader who stops at "the three figures this project can honestly quote" takes
+> away three numbers that were honest when written and are not quotable now.
+
 | claim | figure |
 |---|---|
-| never-interrupted single attempts | **18.6667 / 20 = 93.33%** |
-| all 25 first attempts, resumes included | 23.6667 / 25 = 94.67% |
-| best scorecard per environment, re-runs included | 25.0000 / 25 = 100.00% |
+| never-interrupted single attempts | ~~18.6667 / 20 = 93.33%~~ |
+| all 25 first attempts, resumes included | ~~23.6667 / 25 = 94.67%~~ |
+| best scorecard per environment, re-runs included | ~~25.0000 / 25 = 100.00%~~ |
 
 **An in-run replay does not break cleanliness.** 17 of the 20 have
 `playthroughs >= 2` — they used `restart_for_replay()` mid-run. That also re-walks
