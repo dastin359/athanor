@@ -30,7 +30,7 @@ anything below.
 | Score is best-of across plays, actions are summed. Dying costs no score. | [SDK] read from source; the whole doctrine turns on it |
 | RESET as the first action after a level advance discards the entire game | [LIVE] observed, and it cost a won game (§9.9) |
 | A solver that understands a level finishes it under the published baseline | [LIVE] 24 of 25 cleared levels at ≤0.92×, median 0.52× |
-| Solvers do not use the rule engine, the forward model, or the planner | [LIVE] **seven consecutive runs, zero calls**, all advertised (§9.8a) |
+| Solvers do not use the rule engine, the forward model, or the planner | [LIVE] **43 runs: 1 call to `arc.predict`, 0 to `shortest_path`** — but 14 wrote their OWN forward model, so this is non-adoption, not absence (§9.8a) |
 | A guard's arming state must persist, or it silently stands down | [LIVE] one occurrence, one lost game, mechanism fully traced |
 
 **Corroborated externally** — by ARC's own technical report, not by this project.
@@ -1047,6 +1047,27 @@ in both `CLAUDE.md` and `DOCTRINE.md`:
 | `predict()` | the forward model |
 | `shortest_path()`, `reachable()` | the planner |
 | `monotone_rows()`, `logical()`, `collapse()`, `block_size()` | |
+
+**Re-measured 2026-08-08 at n=43, and the conclusion drawn from it was wrong.**
+The counts above hold and got stronger with scale — across 43 ccarc3 game runs,
+solver-typed commands only, `arc.predict` was called by **1**, `shortest_path`
+by **0**, `verify`/`survey` by **0**. On that basis this project briefly claimed
+*"our solvers do not build world models, and scored 98.38% without one."*
+**That claim is withdrawn.** The same 43 runs contain a hand-written `def step`
+forward model in **14** and hand-written `deque`/`heapq` search in **27**.
+
+So the finding is about *adoption*, not cognition: solvers build the forward
+model and the search anyway, in their own code, and never reach for ours. The
+error was treating "did not call `arc.predict`" as "has no forward model", which
+holds only if this API is the only way to have one — a proxy checked exclusively
+where it agrees with the thing it stands for, which is the failure mode §9.8
+exists to name.
+
+Two consequences. The abstractions are not merely unused, they are
+**re-implemented**, which is the stronger case for cutting them: a solver that
+writes its own `step` in ten lines is telling you the offered one did not fit.
+And any external claim of the form "N% without a world model" is unsupported and
+must not be published.
 
 **Six of those seven runs won.** §5 — the longest and most-argued section of this
 design note, the three-valued predicate core the `rules` module opens by calling
