@@ -1025,19 +1025,30 @@ def snapshot_scorecard(ws: Workspace) -> dict[str, Any]:
     which is what a resume reads to continue the same game; a run that timed out
     and will be resumed would be broken by it.
 
-    **The card is reaped server-side once the game sits idle.** Seven interrupted
+    **The card is reaped server-side once the game sits idle.** Eight interrupted
     runs have been resumed and they split cleanly on the gap between the kill and
-    the relaunch, with the boundary bracketed to **(13.6, 43.8] minutes**:
+    the relaunch, with the boundary bracketed to **(13.6, 18.2] minutes**:
 
     ===========  =========  ===============================================
     ``ft09``       9.1 min  card live, resumed at level 4, went on to finish
     ``sb26``      11.9 min  card live, resumed at level 5, finished
     ``lf52``      12.2 min  card live, resumed at level 6, **won 10 of 10**
     ``sk48``     ≥13.6 min  card live across a *container replacement*
+    ``bp35``      18.2 min  404 — fresh card, replayed from level 0
     ``bp35``      43.8 min  404 — fresh card, replayed from level 0
     ``ka59``      59.9 min  404 — fresh card, replayed from level 0
     ``tu93``     191.1 min  404 — discarded a restored level 7
     ===========  =========  ===============================================
+
+    The 18.2-minute row is the 2026-08-08 resume, and it cost 344 actions: the
+    guard refused, the solver correctly diagnosed a dead card, reconstructed the
+    route for levels 0-8 out of the inherited trace and replayed it, arriving
+    back at level 8 with the ledger reading 739. That card was re-read from
+    **fifteen** independent jars afterwards and answered 404 every time, so it
+    was genuinely reaped rather than merely unreachable -- worth stating because
+    a wrong-backend 404 looks identical from one attempt (see
+    :meth:`ArcClient._snapshot_scorecard`), and the replacement card, read the
+    same way, came back 3 times in 15.
 
     Over the boundary the scorecard 404s and every ``/api/cmd`` answers
     ``game not found``, so the solver must open a fresh card and start again.
