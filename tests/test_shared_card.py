@@ -5,6 +5,8 @@ completion, every game scores, and the artifact at the end is unsubmittable or
 incomplete. Nothing goes red at the time, which is why these are pinned.
 """
 import json
+import pathlib
+import sys
 
 import pytest
 
@@ -200,3 +202,66 @@ def test_a_run_with_no_state_file_does_not_break_the_outcome(tmp_path):
     from athanor.ccarc3.session import _card_facts
 
     assert _card_facts(SimpleNamespace(trace_path=tmp_path / "missing.jsonl")) == {}
+
+
+# --- the driver's card lifecycle -------------------------------------------
+# Imported the way the rest of the suite reaches `tools/`.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
+
+
+def test_a_restarted_driver_reuses_its_card(monkeypatch, tmp_path):
+    """The supervisor restarts this driver on every container replacement. A card
+    minted per process puts the 25 games on as many cards as the sweep had
+    restarts -- the bug being fixed, arriving by a different door."""
+    import clean_rollouts as cr
+
+    monkeypatch.setattr(cr, "SHARED_CARD_FILE", tmp_path / "card.json")
+    monkeypatch.setattr(cr, "SHARED_CARD_HISTORY", tmp_path / "history.jsonl")
+    opens = []
+    monkeypatch.setattr(cr.sc, "open_card",
+                        lambda **k: opens.append(1) or sc.SharedCard("C1", COOKIES))
+    monkeypatch.setattr(cr.sc, "read_card", lambda *a, **k: {"cards": {}})
+
+    first, second = cr.sweep_card(), cr.sweep_card()
+
+    assert (first.card_id, second.card_id) == ("C1", "C1")
+    assert len(opens) == 1, "a restart must not mint a second card"
+
+
+def test_an_unreachable_card_is_replaced_loudly_and_not_silently(monkeypatch, tmp_path):
+    """Continuing onto a new card means the submission covers only what came
+    after. Minting quietly would make a partial artifact look whole."""
+    import clean_rollouts as cr
+
+    monkeypatch.setattr(cr, "SHARED_CARD_FILE", tmp_path / "card.json")
+    monkeypatch.setattr(cr, "SHARED_CARD_HISTORY", tmp_path / "history.jsonl")
+    sc.save(sc.SharedCard("DEAD", COOKIES), tmp_path / "card.json")
+    monkeypatch.setattr(cr.sc, "open_card", lambda **k: sc.SharedCard("FRESH", COOKIES))
+    def gone(*a, **k):
+        raise RuntimeError("404: card_id not found")
+    monkeypatch.setattr(cr.sc, "read_card", gone)
+
+    card = cr.sweep_card()
+
+    assert card.card_id == "FRESH"
+    history = (tmp_path / "history.jsonl").read_text()
+    assert "DEAD" in history and "FRESH" in history, "succession must be recorded"
+    assert list(tmp_path.glob("card.DEAD.dead.json")), "the retired card is kept"
+
+
+def test_every_shim_gets_the_shared_session_without_the_caller_asking(monkeypatch):
+    """Applied at the chokepoint, because one game that slips past it silently
+    ruins the artifact for all 25."""
+    import ablate_baselines as ab
+
+    monkeypatch.setenv("ARC_API_KEY", "k")
+    monkeypatch.setattr(ab, "_proxies", {})
+    ab.use_shared_card(sc.SharedCard("C1", COOKIES))
+    try:
+        shim = ab.proxy_for("zz99-deadbeef")
+        jar = [h for h in shim.state.upstream().handlers
+               if hasattr(h, "cookiejar")][0].cookiejar
+        assert {c.name for c in jar} == {"GAMESESSION", "AWSALBAPP-0"}
+    finally:
+        ab.use_shared_card(None)
+        ab.release_proxy("zz99-deadbeef")

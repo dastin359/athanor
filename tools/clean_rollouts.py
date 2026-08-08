@@ -57,7 +57,25 @@ import traceback
 SP = pathlib.Path(
     "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
-OUT = SP / "clean_rollouts"
+# **The submission sweep needs its own directory, and that is not cosmetic.**
+# `_run_one` skips any game that already has a `clean_result.json`, so pointing a
+# shared-card sweep at a directory holding 17 banked results would skip 17 games
+# and put nothing of them on the card -- a sweep that runs to completion and
+# produces an artifact missing two thirds of the benchmark, with no error
+# anywhere. Give a sweep whose card matters a directory of its own:
+#
+#     CCARC3_SWEEP_DIR=clean_rollouts_submission tools/clean_rollouts.py
+#
+# The name must still contain `clean_rollouts`: `build_trace_audit` decides
+# whether a run is one of ours by looking for it in the working directory, so a
+# rename would silently drop the whole sweep out of the audit.
+_SWEEP_DIR = os.environ.get("CCARC3_SWEEP_DIR") or "clean_rollouts"
+if "clean_rollouts" not in _SWEEP_DIR:
+    raise SystemExit(
+        f"CCARC3_SWEEP_DIR={_SWEEP_DIR!r} does not contain 'clean_rollouts', so "
+        f"build_trace_audit would not recognise the runs as ours. Rename it."
+    )
+OUT = SP / _SWEEP_DIR
 
 # **The strip is imported from the repo, not the scratchpad.** It used to come
 # from `SP`, which is the one store that reverts to an image snapshot when the
