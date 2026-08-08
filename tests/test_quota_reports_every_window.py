@@ -616,3 +616,52 @@ def test_a_lone_stream_is_not_a_quota_reading(tmp_path: Path):
     # And the debris is reported rather than silently dropped: pollution in the
     # live scan root is a fault worth seeing.
     assert "ignored 1 stream.jsonl" in out, out
+
+
+def test_both_harness_layouts_are_recognised(tmp_path: Path):
+    """**The discriminator knew one layout and silently dropped the other.**
+
+    `ccarc3` workspaces carry meta.json / session.py / rules.json / trace.jsonl /
+    result.json. The older `cc_harness` runs under `effort_max/` carry
+    initial_prompt.md, system_prompt.md and a `workspace/` directory and none of
+    the first set — so three real runs holding genuine `seven_day` readings were
+    being discarded as debris. It was harmless only by luck: those readings were
+    122 hours stale and a newer one was kept. Had a cc_harness run been the
+    freshest source, quota.sh would have reported a stale number, or MISSING.
+
+    A filter that drops real data while reporting confidence is the defect it was
+    written to fix, one layer along.
+    """
+    resets = time.time() + RESET_AHEAD
+    ws = tmp_path / "effort_max" / "78332cb0"
+    ws.mkdir(parents=True)
+    (ws / "stream.jsonl").write_text(
+        _event(SEVEN_DAY, "allowed_warning", 0.78, resets_at=resets) + "\n"
+        + _event(FIVE_HOUR, "allowed", 0.22, resets_at=resets) + "\n",
+        encoding="utf-8")
+    for marker in ("initial_prompt.md", "system_prompt.md"):
+        (ws / marker).write_text("x", encoding="utf-8")
+    (ws / "workspace").mkdir()
+
+    out = run_quota(tmp_path).stdout
+    got = rows(out)
+    assert util_of(got[SEVEN_DAY]) == "0.78", (
+        f"a cc_harness run was discarded as debris:\n{out}"
+    )
+    assert "ignored" not in out, out
+
+
+def test_run_log_alone_is_not_enough_to_count_as_a_run(tmp_path: Path):
+    """The markers have to mean "a solver ran here". `run.log` is generic enough
+    to admit scratch directories, so it is deliberately not one — and the
+    launcher-test directory on the box is exactly that case."""
+    resets = time.time() + RESET_AHEAD
+    ws = tmp_path / "launchertest"
+    ws.mkdir(parents=True)
+    (ws / "stream.jsonl").write_text(
+        _event(SEVEN_DAY, "allowed", 0.02, resets_at=resets) + "\n", encoding="utf-8")
+    (ws / "run.log").write_text("x", encoding="utf-8")
+
+    out = run_quota(tmp_path).stdout
+    assert "0.02" not in out, f"a bare run.log was accepted as a solver run:\n{out}"
+    assert "ignored 1 stream.jsonl" in out, out

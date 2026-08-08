@@ -62,8 +62,20 @@ EXPECTED = ("five_hour", "seven_day")
 # starts, and result.json after. Measured across the 178 streams on this box:
 # zero sit alone, and 172 have a sibling result.json. A synthetic fixture that
 # writes only stream.jsonl has none of them.
+# Two harness layouts write solver streams here, and the first version of this
+# list only knew one. `ccarc3` workspaces carry meta.json/session.py/rules.json/
+# trace.jsonl/result.json; the older `cc_harness` runs under `effort_max/` carry
+# initial_prompt.md, system_prompt.md and a `workspace/` directory instead. Three
+# of those were being discarded as debris while holding genuine `seven_day`
+# readings -- harmless only because they were 122h stale and something newer was
+# kept. A filter that drops real data while reporting confidence is the same
+# defect it was written to fix, one layer along.
+#
+# `run.log` alone is deliberately not a marker: it is generic enough to admit
+# scratch directories that are not runs at all.
 HARNESS_SIBLINGS = ("result.json", "trace.jsonl", "meta.json", "rules.json",
-                    "session.py")
+                    "session.py", "initial_prompt.md", "system_prompt.md",
+                    "workspace")
 
 def _is_real_workspace(path):
     d = os.path.dirname(path)
