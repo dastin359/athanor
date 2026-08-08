@@ -1215,6 +1215,11 @@ def test_a_resumed_run_rebuilds_its_level_costs_from_the_trace(monkeypatch, tmp_
 
     resumed = ArcClient("g1", trace_path=tmp_path / "t.jsonl",
                         info=GameInfo("g1", baseline_actions=(10, 20, 30)))
+    # `open()` now verifies the server is where the ledger says before resuming a
+    # run with work in it (see tests/test_resume_agreement.py). This one has two
+    # levels cleared, so it must present an agreeing card; the fake server here
+    # serves actions, not scorecards.
+    resumed.scorecard = lambda: {"cards": {"g1": {"levels_completed": [2]}}}
     resumed.open()
     assert resumed.level_costs == (7, 4)
 

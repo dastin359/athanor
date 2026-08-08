@@ -611,12 +611,68 @@ class ArcClient:
         from zero, which is precisely the bug this class exists to avoid.
         """
         if self._resumed and self.card_id:
+            self._assert_server_agrees()
             return self
         card = _post(f"{self.root}/api/scorecard/open", {"tags": list(self.tags)},
                      self._key, opener=self._opener)
         self.card_id = card["card_id"]
         self._save_state()
         return self
+
+    def _assert_server_agrees(self) -> None:
+        """Refuse a resume where the server is not where the ledger thinks it is.
+
+        **The 370-action loss, made impossible instead of merely diagnosable.**
+        A resume once preserved the ledger but not the game: trace indices
+        continued from 370 while the server replayed levels 0-5 on a fresh
+        scorecard, and the run re-spent every one of those actions before anyone
+        noticed. `_record_resume_state` was added afterwards and only snapshots
+        what was inherited -- it makes the failure reconstructable, not
+        preventable, which is the same detect-instead-of-enforce gap that has
+        cost this project a run at every level of the stack.
+
+        The mismatch is observable before a single action is spent, and for
+        free: reading a scorecard is a `GET` the proxy allows and the server does
+        not bill. If the card says this play has cleared fewer levels than the
+        ledger claims, the two are describing different games and continuing
+        would rewrite one with the other.
+
+        Raising rather than warning is deliberate. The cost of stopping is one
+        relaunch; the cost of continuing is the whole attempt, spent invisibly.
+        """
+        # Nothing spent, nothing to protect. A resume at the very start of a game
+        # has no ledger for the server to disagree with, and demanding a card
+        # read there would make an offline or not-yet-opened game unresumable for
+        # no gain. The 370-action loss required 370 actions to already exist.
+        if self.level <= 0 and self.actions_used <= 0:
+            return
+
+        try:
+            card = self.scorecard()
+        except Exception as exc:                  # noqa: BLE001
+            # A resume that cannot be verified is one that should not proceed:
+            # this call is the only thing standing between a mismatched card and
+            # a silently re-spent run.
+            raise RuntimeError(
+                f"resume: could not read the scorecard to confirm the server is "
+                f"at level {self.level} ({exc.__class__.__name__}: {exc}). "
+                f"Refusing to continue on an unverified card."
+            ) from exc
+
+        entry = (card.get("cards") or {}).get(self.game_id) or card
+        done = entry.get("levels_completed")
+        if isinstance(done, list):
+            done = done[-1] if done else None      # the play now in flight
+        if done is None:
+            return                                 # nothing to compare against
+        if int(done) < self.level:
+            raise RuntimeError(
+                f"resume: the ledger says level {self.level} but the server's "
+                f"card says {done} for this play. The game was replayed or the "
+                f"card is not the one this trace was written against; "
+                f"continuing would re-spend {self.actions_used} actions. "
+                f"Start fresh instead of resuming."
+            )
 
     def close(self) -> dict[str, Any]:
         """Close the scorecard. Never raises.
