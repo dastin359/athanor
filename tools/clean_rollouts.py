@@ -689,6 +689,22 @@ def _guarded(gid: str, infos: dict, rank: int) -> None:
         _free_slot()
 
 
+def _shared_card_id() -> str:
+    """The card this sweep is supposed to be building, or "" if not sharing."""
+    try:
+        return json.loads(SHARED_CARD_FILE.read_text()).get("card_id", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def _card_of(ws: pathlib.Path) -> str:
+    """The card a finished game actually scored on, off its own state file."""
+    try:
+        return json.loads((ws / "trace.state.json").read_text()).get("card_id", "")
+    except (OSError, ValueError):
+        return ""
+
+
 def _run_one(gid: str, infos: dict) -> None:
     banked = OUT / gid / "clean_result.json"
     if banked.exists():
@@ -766,6 +782,18 @@ def _run_one(gid: str, infos: dict) -> None:
         # concurrently now; without this the registry grows a live listener per
         # attempt for the lifetime of the driver.
         ab.release_proxy(gid)
+
+    # **Catch a split while it is still recoverable.** `verify_one_card.py` is the
+    # end-of-sweep check; by then a card that was reaped mid-sweep has already
+    # cost every game after it. One read per finished game turns that into a line
+    # in the log at the moment it happens.
+    want = _shared_card_id()
+    if want:
+        got = _card_of(workspace_of(run_dir, gid))
+        if got and got != want:
+            print(f"    *** {gid.split('-')[0]} scored on {got}, NOT the sweep card "
+                  f"{want} — this game is missing from the submission artifact ***",
+                  flush=True)
 
     state, data = verdict(workspace_of(run_dir, gid))
     mins = (time.time() - started) / 60
