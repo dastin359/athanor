@@ -436,7 +436,7 @@ def sweep_card():
         # A card with games on it is the opposite: those games cannot be moved,
         # so reminting silently produces a submission missing everything banked
         # so far. That is a decision for an operator, not a default.
-        played = [g for g in GAMES if _card_of(workspace_of(OUT / g / "attempt_1", g)) == card.card_id]
+        played = _cards_seen().get(card.card_id, [])
         with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
                                  "games_lost": len(played),
@@ -736,12 +736,28 @@ def _shared_card_id() -> str:
         return ""
 
 
-def _card_of(ws: pathlib.Path) -> str:
-    """The card a finished game actually scored on, off its own state file."""
-    try:
-        return json.loads((ws / "trace.state.json").read_text()).get("card_id", "")
-    except (OSError, ValueError):
-        return ""
+def _cards_seen() -> dict[str, list[str]]:
+    """``{card_id: [game, ...]}`` over **every** attempt this sweep has on disk.
+
+    **Two guards read `attempt_1` and meant "any attempt".** A game whose first
+    attempt was interrupted and whose second was the banked one leaves
+    `attempt_1/.../trace.state.json` missing or holding a different card, so
+    `sweep_card`'s refusal to remint over a card with games on it counted zero
+    and continued -- failing open, on the one decision the driver explicitly
+    refuses to make for an operator. The scan is a few file reads per pass and
+    the thing itself.
+    """
+    seen: dict[str, list[str]] = {}
+    for state in sorted(OUT.glob("*/attempt_*/*/trace.state.json")):
+        try:
+            cid = json.loads(state.read_text()).get("card_id", "")
+        except (OSError, ValueError):
+            continue
+        if cid:
+            gid = state.parent.name
+            if gid not in seen.setdefault(cid, []):
+                seen[cid].append(gid)
+    return seen
 
 
 def _run_one(gid: str, infos: dict) -> None:
@@ -824,15 +840,37 @@ def _run_one(gid: str, infos: dict) -> None:
 
     # **Catch a split while it is still recoverable.** `verify_one_card.py` is the
     # end-of-sweep check; by then a card that was reaped mid-sweep has already
-    # cost every game after it. One read per finished game turns that into a line
+    # cost every game after it. One scan per finished game turns that into a line
     # in the log at the moment it happens.
-    want = _shared_card_id()
-    if want:
-        got = _card_of(workspace_of(run_dir, gid))
-        if got and got != want:
-            print(f"    *** {gid.split('-')[0]} scored on {got}, NOT the sweep card "
-                  f"{want} — this game is missing from the submission artifact ***",
-                  flush=True)
+    #
+    # **It used to compare this game's state file against the live shared id, and
+    # that comparison cannot ever be unequal.** `_run_one` passes `fresh=True`,
+    # `build_workspace` unlinks `trace.state.json` when fresh, so `_resume` never
+    # runs -- and `_resume` is the only place `card_id` can become anything but
+    # the injected sweep card. `open()` then takes its lent-card branch and
+    # `_save_state` writes back exactly the id it was handed. `got == want` by
+    # construction, for every game, always: a check that reports by not running,
+    # and it made `verify_one_card.py`'s `foreign_card` branch dead for this
+    # driver too.
+    #
+    # The split that can actually happen is a succession across driver restarts:
+    # the card is reaped, a restart mints another, and half the sweep is on each.
+    # That is visible only in the sweep's own history, so compare against that.
+    seen = _cards_seen()
+    live = _shared_card_id()
+    if live and len(set(seen) | {live}) > 1:
+        for cid, games in sorted(seen.items()):
+            if cid != live:
+                print(f"    *** {len(games)} game(s) scored on {cid}, NOT the live "
+                      f"sweep card {live}: {', '.join(g.split('-')[0] for g in games)}"
+                      f" — they are missing from the submission artifact ***",
+                      flush=True)
+        # Stop rather than spend the rest of the queue building an artifact that
+        # is already incomplete. `sweep_card` refuses the same split at startup;
+        # this is the same refusal for a split that opens mid-pass.
+        _aborted.set()
+        with _slots:
+            _slots.notify_all()
 
     state, data = verdict(workspace_of(run_dir, gid))
     mins = (time.time() - started) / 60

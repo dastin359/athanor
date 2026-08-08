@@ -67,6 +67,13 @@ def cards_in(sweep: pathlib.Path) -> dict[str, list[str]]:
                     except (OSError, ValueError):
                         card = ""
             found[card].append(gid)
+            # **`foreign_card` cannot fire under `clean_rollouts`, so its silence
+            # is not evidence.** It is set only in `ArcClient._resume`, and the
+            # driver passes `fresh=True`, which unlinks `trace.state.json` before
+            # the client is built -- so `_resume` never runs and the field is
+            # never written. The live check here is the one above it: distinct
+            # `card` keys in `found`, which a succession across driver restarts
+            # really does produce. Kept because a resume-based flow would set it.
             if r.get("foreign_card"):
                 found.setdefault("__foreign__", []).append(
                     "%s (played on %s, sweep wanted %s)"
