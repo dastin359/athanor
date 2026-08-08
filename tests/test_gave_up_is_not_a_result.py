@@ -87,3 +87,43 @@ def test_a_win_is_never_second_guessed(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
 
     assert not S.collect_outcome(ws, exit_code=0, timed_out=False).get("error")
+
+
+def test_a_completed_win_killed_by_signal_is_not_re_run(tmp_path, monkeypatch):
+    """**Guards 2-4 exempt a win; guard 1 never did.** SIGTERM is how the
+    supervisor stops solvers at the quota ceiling, so this fires across a sweep
+    rather than once. `cd82` attempt_2 won 6 of 6, was recorded `interrupted, not
+    a result`, and was discarded and re-played -- its scorecard shows both plays
+    winning and the replacement's final playthrough identical to the one thrown
+    away.
+    """
+    ws = _ws(tmp_path, levels=3, baselines=(30, 40, 50))
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {
+        "actions_used": 90, "levels_reached": 3, "won": True,
+        "levels_reached_final_playthrough": 3})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+
+    out = S.collect_outcome(ws, exit_code=143, timed_out=False)
+
+    assert not out.get("error"), "a finished win is a result however the run ended"
+    assert out["killed_by_signal"] == 15, (
+        "the interruption is still recorded -- folding it into the error branch "
+        "would delete the evidence from exactly the runs this is about"
+    )
+
+
+def test_a_win_killed_mid_replay_is_still_re_run(tmp_path, monkeypatch):
+    """The exemption is "won *and* the last play went the distance". A stub final
+    playthrough banks a tiny action count beside a level count from a different
+    play -- the flattering half of each."""
+    ws = _ws(tmp_path, levels=3, baselines=(30, 40, 50))
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {
+        "actions_used": 95, "levels_reached": 3, "won": True,
+        "levels_reached_final_playthrough": 1})      # SIGTERM'd early in the replay
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+
+    out = S.collect_outcome(ws, exit_code=143, timed_out=False)
+
+    assert "re-run this game" in out.get("error", "")

@@ -320,13 +320,8 @@ class ArcClient:
     show_score: bool = False
     """Report the running RHAE score and its ceiling in :meth:`status`.
 
-    **Off by default only because an experiment is in flight.** The baseline-
-    free arm is a paired rerun of scored games, and its whole design is that one
-    variable changes between the arms. Turning a new signal on halfway through
-    would mean games 1-10 and games 11-25 ran different harnesses, so the flag
-    exists to keep the arm honest rather than because the signal is optional.
-
-    Turn it on in the workspace template once the arm completes.
+    The workspace template sets this. The ``False`` default keeps a bare
+    ``ArcClient`` silent, which is what the tests and the local bench want.
     """
 
     card_id: str = ""
@@ -401,9 +396,9 @@ class ArcClient:
     the board keeps coming back to where it has already been.
 
     **The distinction is the whole point, because the no-op signal missed the
-    only run this project has lost.** `tn36` spent 309 actions on a level worth a
-    small fraction of that and never cleared it, with **8** no-ops in the whole
-    level -- invisible to ``level_dead``. A third of those actions landed on a
+    only run this project has lost.** `tn36` ground through a level at over five
+    times what it was worth, with almost no no-ops in the whole level --
+    invisible to ``level_dead``. Nearly a third of those actions landed on a
     board it had already stood on.
 
     Replaying all 22 level-attempts on record through this exact accounting,
@@ -412,7 +407,7 @@ class ArcClient:
     ====================  =====  ==========  ========
     level                 ratio  revisited   cleared?
     ====================  =====  ==========  ========
-    tn36 L5               5.62x        31%   **no**
+    tn36 L5               5.62x        31%   yes, barely
     tn36 L1               2.57x        16%   yes
     su15 L7               0.93x        11%   yes
     tn36 L3               1.52x         8%   yes
@@ -421,9 +416,15 @@ class ArcClient:
     ====================  =====  ==========  ========
 
     (Fractions, not counts. The ratio column is actions over the level's median,
-    so printing the actions beside it divides straight back to the median -- five
-    of them, in a docstring inside ``inspect.getsource(ArcClient)``. The
-    percentages carry the entire argument; the numerators were the leak.)
+    so an action count printed beside it divides straight back to the median --
+    in a docstring inside ``inspect.getsource(ArcClient)``, which the withholding
+    note records a solver actually reading. The percentages carry the entire
+    argument; the numerators were the leak.
+
+    The table was cleaned on 2026-08-07 and the prose above it was not, so one
+    numerator survived ten lines away and this note reported the job done. That
+    is the real lesson: a fix applied to the instance that was noticed, and a
+    check that then declared the class closed.)
 
     **The control is the 1.52x pair.** `su15` L5 and `tn36` L3 ran at exactly
     the same multiple of baseline and both cleared, at 2% and 8%. `tn36` L5 ran
@@ -881,12 +882,15 @@ class ArcClient:
     # only question that decides what to do next: *is what I am doing still
     # worth anything?*
     #
-    # `su15` is the case that made this concrete. Its solver blew 268 actions on
-    # one level and 182 on another, each many times what the level was worth,
-    # then cleared level 7 and correctly chose to replay. Nothing in the harness
-    # could have told it that those two levels had already fixed its ceiling at
-    # 0.82 -- which is the fact that made the replay right, and the fact it had
-    # to guess.
+    # `su15` is the case that made this concrete. Its solver blew two levels at
+    # many times what each was worth, then cleared the one after and correctly
+    # chose to replay. Nothing in the harness could have told it that those two
+    # levels had already fixed its ceiling at 0.82 -- which is the fact that made
+    # the replay right, and the fact it had to guess.
+    #
+    # (No action counts here. `session.py` states the same two levels as ratios,
+    # and a count beside a ratio is a median in one division -- the halves were
+    # harmless apart and not together, which is why a per-file check missed it.)
 
     @property
     def completion_cap(self) -> float:
@@ -1092,6 +1096,26 @@ class ArcClient:
             gained = self.level - previous_level
             self.level_costs = self.level_costs + (self.level_actions + 1,) + (0,) * (gained - 1)
         self.level_actions = 0 if self.level > previous_level else self.level_actions + 1
+        # **The play-opening RESET is not an action, and this tally counted it.**
+        # `scoring.actions_per_level` drops it explicitly and the server agrees:
+        # seven ACTION6 calls preceded by the opening RESET come back as
+        # `actions: [7]`, not 8. Measured across every preserved run carrying
+        # `level_costs`, this was +1 against the scorer on element 0 of any run
+        # with no full reset, and exact everywhere else -- a run whose last play
+        # began with a full reset already zeroes here, twelve lines down.
+        #
+        # It matters now in a way it did not before: the workspace template sets
+        # `show_score=True`, so every game in a sweep prints a running score
+        # derived from this tally while the banked number comes from the offline
+        # scorer. Two figures for one quantity, differing by one action on the
+        # first level, is the kind of discrepancy that costs an afternoon to
+        # rediscover.
+        #
+        # `actions_used` carries the same +1 and is deliberately left alone: it
+        # feeds the budget ceiling, where counting the opening RESET is the
+        # conservative direction, and changing it is a separate decision.
+        if action == 0 and self.actions_used == 1:
+            self.level_actions = 0
         # The server's own flag is not reliable. On the one full reset this
         # project has recorded, the level went 6 -> 0 and ``full_reset`` came
         # back **False**, so the counter read zero and the run reported "zero
@@ -1390,10 +1414,10 @@ class ArcClient:
                 )
             parts.append(note)
         if self.level_revisits:
-            # Reported separately because it is a different failure. On the level
-            # tn36 lost, the no-op count above saw 8 of 309 actions; this one saw
-            # 95. Every action was changing the board -- and putting it back
-            # somewhere it had already been.
+            # Reported separately because it is a different failure. On the
+            # level `tn36` ground through, the no-op count above saw under 3% of
+            # the actions; this one saw nearly a third. Every action was changing
+            # the board -- and putting it back somewhere it had already been.
             parts.append(
                 f"{self.level_revisits}/{self.level_tried} actions returned the "
                 f"board to a state already seen on this level"

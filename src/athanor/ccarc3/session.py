@@ -980,9 +980,35 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     # the supervisor's own quota stop, which kills solvers by design. A *timeout*
     # is excluded deliberately: that is a real outcome under a rule we chose, and
     # `bp35` is recorded that way on purpose.
+    # **A win is exempt here too, and for four months it was not.** Guards 2, 3
+    # and 4 below all carry `not won`; this one never did, because it landed
+    # first and the exemption arrived with the crash guard afterwards. Nothing
+    # justifies the asymmetry, and SIGTERM is not a rare event -- it is how the
+    # supervisor stops solvers at the quota ceiling by design, so this fires
+    # across a sweep rather than once. `cd82` attempt_2 won 6 of 6 on 655
+    # actions, was recorded `interrupted, not a result`, and was discarded and
+    # re-played; its scorecard shows both plays winning and the replacement's
+    # final playthrough byte-identical to the one thrown away.
+    #
+    # **The exemption is "won *and* the last play went the distance", not bare
+    # "won".** A solver SIGTERM'd early in its replay has already won, but its
+    # final playthrough is a stub, and banking that pairs a tiny action count
+    # with a level count from a different play -- the flattering half of each.
+    # Guard 2 carries that exposure already; this one would carry it far more
+    # often.
+    #
+    # The record of the interruption is kept either way. Folding it into the
+    # same branch as the error would delete `killed_by_signal` from exactly the
+    # runs this is about, which is how the naive form of this fix loses the
+    # evidence it was written to preserve.
     sig = _killing_signal(exit_code)
     if sig and not timed_out:
         outcome["killed_by_signal"] = sig
+    finished_cleanly = (
+        outcome.get("won")
+        and outcome.get("levels_reached_final_playthrough") == outcome.get("levels_total")
+    )
+    if sig and not timed_out and not finished_cleanly:
         outcome["error"] = (
             f"solver killed by signal {sig} after {outcome.get('actions_used', 0)} "
             f"actions — interrupted, not a result; re-run this game"

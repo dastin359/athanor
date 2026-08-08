@@ -1425,3 +1425,32 @@ def test_baselines_for_is_absent_from_the_solver_namespace():
     assert "baselines_for" not in dir(pkg)
     assert "baselines_for" not in pkg.__all__
     assert callable(client_mod.baselines_for), "harness-side import still works"
+
+
+def test_level_costs_match_the_scorer_when_the_play_opens_with_a_reset(
+    monkeypatch, tmp_path
+):
+    """**The invariant above was already asserted and could not fail.**
+
+    `_levelled` starts the game with an `ACTION1`, so transition 0 is never a
+    RESET and `actions_per_level`'s "a RESET that opens a play is not an action"
+    exclusion never fires. Both sides then agreed on a trace that avoided the
+    only case where they differed: measured across every preserved run carrying
+    `level_costs`, the client read +1 against the scorer on element 0 of any run
+    with no full reset, and exact everywhere else.
+
+    A real game always opens with RESET, so this is the shape that runs.
+    """
+    from athanor.ccarc3.ledger import load
+    from athanor.ccarc3.scoring import actions_per_level
+
+    c, post = _levelled(monkeypatch, tmp_path, (10, 20, 30), 3)
+    c.reset()                                  # the opening RESET a real play has
+    _clear(c, post, 1, 7)
+    _clear(c, post, 2, 4)
+
+    from_trace = actions_per_level(load(c.trace_path), 3)[:2]
+    assert c.level_costs == tuple(from_trace), (
+        f"client says {c.level_costs}, scorer says {tuple(from_trace)} — "
+        f"the workspace prints one and the banked result uses the other"
+    )
