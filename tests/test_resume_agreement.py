@@ -13,8 +13,10 @@ scorecard is a GET the proxy allows and the server does not bill.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -89,3 +91,94 @@ def test_a_resume_with_nothing_spent_does_not_demand_a_card_read(tmp_path):
     c = _client(tmp_path, 0, RuntimeError("no server here"))
     c.actions_used = 0
     assert c.open() is c
+
+
+# ==========================================================================
+# Two holes the shared scorecard opened in this guard, found 2026-08-08 by an
+# adversarial hunt and reproduced by running the real code.
+# ==========================================================================
+
+def test_a_card_with_no_entry_for_this_game_refuses(tmp_path):
+    """**The `or card` fallback read the other games' aggregate.**
+
+    A 200 whose `cards` map has no entry for this game is the exact "this trace
+    was never played on this card" state the guard exists to catch. The old code
+    fell through to the card-level `levels_completed` — on a 25-game shared card,
+    a number produced by the other 24 — and because that aggregate is an int
+    rather than the per-play list it skipped the `isinstance` branch and was
+    compared directly, so a large number silently satisfied the check.
+    """
+    for body in (
+        {"levels_completed": 9, "total_actions": 400},          # no `cards` key
+        {"cards": {"other-game": {"levels_completed": [9]}}, "levels_completed": 9},
+        {"cards": {}},
+    ):
+        c = _client(tmp_path, 6, body)
+        with pytest.raises(RuntimeError, match="carries no entry"):
+            c.open()
+
+
+def test_a_game_idle_past_the_reap_deadline_refuses(tmp_path):
+    """**A readable card is not evidence the game is alive.**
+
+    The two are on different clocks: a game idle past ~18 minutes is reaped, a
+    card is not, and under one shared card the other 24 games keep it warm. The
+    reaped play's row still records the level the ledger claims, so the level
+    comparison is `5 < 5` and cannot fire — every bad resume on record was caught
+    by a 404 on a per-game card, and the shared card removes that detector.
+    """
+    agreeing = {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}}
+    c = _client(tmp_path, 6, agreeing)
+    c.last_touched = time.time() - (ArcClient.REAP_DEADLINE_S + 60)
+    with pytest.raises(RuntimeError, match="reap deadline"):
+        c.open()
+
+
+def test_a_gap_the_record_says_survived_still_resumes(tmp_path):
+    """The deadline is the UPPER edge of the measured bracket, deliberately.
+
+    `sk48` resumed cleanly across a gap of at least 13.6 minutes, so refusing at
+    the lower edge would reject a gap this project has on record as survivable.
+    """
+    agreeing = {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}}
+    c = _client(tmp_path, 6, agreeing)
+    c.last_touched = time.time() - (13.7 * 60)
+    c.open()                                  # must not raise
+
+
+def test_a_state_file_without_the_stamp_resumes_as_before(tmp_path):
+    """Every run banked before this field existed has no stamp. A guard that
+    breaks them on deploy is worse than the hole it closes."""
+    agreeing = {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}}
+    c = _client(tmp_path, 6, agreeing)
+    c.last_touched = 0.0                      # the legacy shape
+    c.open()                                  # must not raise
+
+
+def test_the_stamp_advances_only_when_the_server_answered(tmp_path):
+    """**Where the stamp is written decides whether the guard means anything.**
+
+    The reap clock measures time since the SERVER last answered this game.
+    `_save_state` runs on paths with no server contact at all — `open()`'s
+    lent-card branch, and `gate.on_change`, which `gate.check()` can fire at the
+    start of `_send` before the request goes out. Stamping there refreshes the
+    clock without touching ARC, so an idle game would look freshly alive and the
+    reap check above could never fire: the proxy-for-the-thing mistake, inside
+    the fix for a proxy-for-the-thing mistake.
+
+    So: persisting state must carry the stamp forward unchanged, never renew it.
+    """
+    c = _client(tmp_path, 6, {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}})
+    stale = time.time() - (60 * 60)
+    c.last_touched = stale
+
+    c._save_state()
+
+    saved = json.loads((tmp_path / "trace.state.json").read_text())
+    assert saved["last_touched"] == pytest.approx(stale, abs=1.0), (
+        "saving state renewed the reap clock without the server having answered: "
+        f"stored {saved['last_touched']}, expected {stale}"
+    )
+    assert time.time() - saved["last_touched"] > ArcClient.REAP_DEADLINE_S, (
+        "the persisted stamp no longer reads as idle, so the guard is disarmed"
+    )

@@ -286,6 +286,12 @@ class ArcClient:
 
     game_id: str
     trace_path: str | Path = "trace.jsonl"
+    last_touched: float = 0.0
+    """Epoch seconds when the server last answered an action for this game.
+
+    Zero on a client that has not acted, and absent from state files written
+    before 2026-08-08 -- both of which are read as "unknown", never as "stale".
+    """
     api_key: str | None = None
     root: str = ROOT_URL
     tags: tuple[str, ...] = ("ccarc3",)
@@ -516,6 +522,7 @@ class ArcClient:
                     "full_resets": self.full_resets,
                     "wasted_actions": self.wasted_actions,
                     "level_actions": self.level_actions,
+                    "last_touched": self.last_touched,
                     "level_costs": list(self.level_costs),
                     "last_advanced": self._last_advanced,
                     "level_tried": self.level_tried,
@@ -600,6 +607,7 @@ class ArcClient:
         # suppress OVER BASELINE on precisely the resumed runs the warning is
         # for -- a silently wrong number is worse than an absent one, so derive
         # it from the trace instead.
+        self.last_touched = float(saved.get("last_touched") or 0.0)
         if "level_actions" in saved:
             self.level_actions = int(saved["level_actions"])
         else:
@@ -723,10 +731,48 @@ class ArcClient:
                 f"Refusing to continue on an unverified card."
             ) from exc
 
-        entry = (card.get("cards") or {}).get(self.game_id) or card
+        # **The game's own entry, with no fallback to the card.** This read
+        # `... or card`, so when the card carried no entry for this game -- the
+        # exact "this trace was never played on this card" state the guard exists
+        # to catch -- it fell through to the CARD-LEVEL aggregate. On a 25-game
+        # shared card that aggregate is produced by the other 24 games, and being
+        # an int rather than the per-play list it skipped the `isinstance` branch
+        # and was compared directly, so a large number from other games silently
+        # satisfied the check. Measured: five card bodies with no entry for this
+        # game all returned RESUME ALLOWED.
+        entry = (card.get("cards") or {}).get(self.game_id)
+        if entry is None:
+            raise RuntimeError(
+                f"resume: card {self.card_id} carries no entry for "
+                f"{self.game_id}, so this trace was not written against it; "
+                f"continuing would re-spend {self.actions_used} actions. "
+                f"Start fresh instead of resuming."
+            )
         done = entry.get("levels_completed")
         if isinstance(done, list):
             done = done[-1] if done else None      # the play now in flight
+        # **A readable card is not evidence the GAME is alive.** The two are on
+        # different clocks, measured in `shared_card`: a game idle past ~18 min
+        # is reaped, a card is not. Under one card shared by 25 games the other
+        # 24 keep it warm, so the read succeeds -- and the reaped play's row
+        # still records the level the ledger claims, so the comparison below is
+        # `5 < 5` and cannot fire. Every bad resume on record was caught by a 404
+        # on a per-game card; the shared card removes that detector by
+        # construction, which is why the gap is checked directly.
+        #
+        # Absent on state files written before this field existed, and those must
+        # resume as they always did rather than break on deploy.
+        if self.last_touched:
+            idle = time.time() - self.last_touched
+            if idle > self.REAP_DEADLINE_S:
+                raise RuntimeError(
+                    f"resume: {idle / 60:.1f} minutes since the server last "
+                    f"answered this game, past the {self.REAP_DEADLINE_S / 60:.1f}"
+                    f"-minute reap deadline. The game is gone even if the card "
+                    f"still reads; continuing would replay from level 0 with "
+                    f"{self.actions_used} actions already banked. Start fresh."
+                )
+
         if done is None:
             return                                 # nothing to compare against
         if int(done) < self.level:
@@ -766,6 +812,16 @@ class ArcClient:
         except Exception as exc:  # noqa: BLE001 -- deliberate: see docstring
             self.close_error = f"{type(exc).__name__}: {exc}"
             return {}
+
+    REAP_DEADLINE_S = 18.2 * 60
+    """Seconds of game idleness after which ARC has certainly reaped the game.
+
+    Bracketed by measurement in :mod:`athanor.ccarc3.shared_card`: eight resumes
+    put the deadline inside ``(13.6, 18.2]`` minutes. The UPPER edge is used, not
+    the lower: `sk48` resumed cleanly across a gap of at least 13.6 minutes
+    ("possibly ~19") and refusing there would reject a gap the record says
+    survived. Above 18.2 every recorded resume found a replayed game.
+    """
 
     SNAPSHOT_EVERY = 50
     """Actions between scorecard snapshots, on top of the event-driven ones."""
@@ -1085,6 +1141,14 @@ class ArcClient:
         frame = _post(f"{self.root}/api/cmd/{name}", payload, self._key, opener=self._opener)
         if "error" in frame:
             raise RuntimeError(f"{name} refused by server: {frame['error']}")
+        # **Stamped here, not in `_save_state`.** What the reap clock measures is
+        # time since the SERVER last heard from this game, and `_save_state` also
+        # runs from `open()`'s lent-card branch and from `gate.on_change`, which
+        # `gate.check()` can fire before any server contact at all. Stamping
+        # there would refresh the clock without touching ARC, which is precisely
+        # the proxy-for-the-thing mistake. Epoch seconds, because this is a
+        # machine comparison -- CLAUDE.md's Pacific rule governs reports.
+        self.last_touched = time.time()
 
         previous_level = self.level
         self.guid = frame.get("guid") or self.guid
