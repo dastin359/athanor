@@ -214,6 +214,50 @@ while true; do
 
     refresh_proxy
     cd "$REPO" || exit 1
+
+    # **Refuse to work on the wrong branch.** `git push origin "$BRANCH"` pushes
+    # the local ref NAMED $BRANCH, not HEAD, and exits 0 with "Everything
+    # up-to-date" when that ref has not moved. Nothing compared the two, so a
+    # checkout of any other branch (`main` exists locally) would have this daemon
+    # committing evidence onto that branch while pushing an untouched
+    # `claude/...` ref and logging "pushed N files" every cycle -- success on
+    # every line, nothing preserved anywhere. Not silently redirected to
+    # `HEAD:$BRANCH`: that would publish whatever happens to be checked out.
+    cur="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo DETACHED)"
+    if [ "$cur" != "$BRANCH" ]; then
+        log "REFUSING — HEAD is on $cur, not $BRANCH; nothing preserved this cycle"
+        sleep "$TICK"
+        continue
+    fi
+
+    # **Drain a push backlog even on a cycle with nothing new.** The commit and
+    # push both sat inside the change gate below, so once evidence stopped
+    # changing the whole block was skipped: a push that failed on the last cycle
+    # carrying new evidence -- exactly when a sweep's final result.json lands --
+    # was never retried, and the daemon sat in its 300s loop looking healthy
+    # while the work existed only on a disk that has been rolled back five times.
+    #
+    # Measured against `$BRANCH`, not `HEAD`, because that is the ref the push
+    # sends. Local-only, so it costs nothing and needs no network.
+    #
+    # It deliberately does NOT reuse `$n` from inside the gate: this script runs
+    # under `set -u` and `n` is unbound on any cycle that skips the gate, so
+    # borrowing that message would abort the daemon on its first post-restart
+    # cycle -- the container-rollback recovery this exists for.
+    ahead="$(git rev-list --count "origin/$BRANCH..$BRANCH" 2>/dev/null || echo 0)"
+    if [ "${ahead:-0}" -gt 0 ] 2>/dev/null; then
+        drained=0
+        for i in 1 2 3 4; do
+            git push -q origin "$BRANCH" 2>/dev/null && { drained=1; break; }
+            sleep $((2**i))
+        done
+        if [ "$drained" = 1 ]; then
+            log "drained a backlog of $ahead unpushed commit(s)"
+        else
+            log "BACKLOG STUCK — $ahead commit(s) unpushed, proxy=${HTTPS_PROXY:-unset}"
+        fi
+    fi
+
     if [ -n "$(git status --porcelain evidence 2>/dev/null)" ]; then
         # **Stage first, then check.** `key_is_clean` reads
         # `git diff --cached -- evidence`, which is the INDEX, and it used to run

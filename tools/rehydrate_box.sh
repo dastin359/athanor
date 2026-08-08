@@ -29,17 +29,34 @@ cd "$REPO" || exit 1
 echo "box $(cat /proc/sys/kernel/random/boot_id) up $(cut -d' ' -f1 /proc/uptime)s"
 
 # 1. Repo. Retry the fetch: a replaced box often races container networking.
+#
+# **"already current" used to cover three different outcomes.** HEAD is
+# unchanged when the tree really is up to date, when all five fetch retries
+# failed (the networking race the retry loop exists for), and when the ff-only
+# merge was REFUSED because HEAD had diverged — unpushed local commits, which is
+# precisely the state a rollback recovery has to notice. Both commands sent their
+# errors to /dev/null and neither status was tested, so the one line printed was
+# "already current" in all three, and the recovery step that this script's own
+# header calls the load-bearing one reported success for having done nothing.
+fetched=0
 for delay in 0 2 4 8 16; do
   [ "$delay" = 0 ] || sleep "$delay"
-  git fetch origin "$BRANCH" -q 2>/dev/null && break
+  git fetch origin "$BRANCH" -q 2>/dev/null && { fetched=1; break; }
 done
+[ "$fetched" = 1 ] || echo "repo   FETCH FAILED after 5 tries — origin unreachable; the tree is NOT known current"
+
 before="$(git rev-parse --short HEAD)"
-git merge --ff-only "origin/$BRANCH" -q 2>/dev/null
-after="$(git rev-parse --short HEAD)"
-if [ "$before" = "$after" ]; then
-  echo "repo   $after (already current)"
+if git merge --ff-only "origin/$BRANCH" -q 2>/dev/null; then
+  after="$(git rev-parse --short HEAD)"
+  if [ "$before" = "$after" ]; then
+    [ "$fetched" = 1 ] && echo "repo   $after (already current)"
+  else
+    echo "repo   $before -> $after (recovered from rollback)"
+  fi
 else
-  echo "repo   $before -> $after (recovered from rollback)"
+  echo "repo   FF-ONLY REFUSED — HEAD $before has diverged from origin/$BRANCH"
+  echo "       (unpushed local commits). The tree is NOT current and this script"
+  echo "       will not resolve it: rebase or push by hand."
 fi
 
 # 2. Standing instructions call these by their old scratchpad paths.
@@ -76,7 +93,15 @@ ln -sfn "$REPO/tools/quota.sh"           "$SP/quota.sh"
 # after one silently re-runs them -- the exact failure the last block of this
 # script refuses to tolerate from `refresh_audit.sh`. `2>/dev/null` here read as
 # "nothing to restore" whether that was true or the script had crashed.
-bash "$REPO/tools/box_fingerprint.sh" >/dev/null 2>&1 && echo "fingerprint logged"
+# **`&& echo "fingerprint logged"` tested `tail`, not the fingerprint.**
+# box_fingerprint.sh runs without `set -e` or `pipefail` and ends with
+# `tail -5 "$LOG"`, so its exit status was "the log file is readable" — a failed
+# commit and four failed pushes both left it 0. It exits on its own success now.
+if bash "$REPO/tools/box_fingerprint.sh" >/dev/null 2>&1; then
+  echo "fingerprint logged"
+else
+  echo "fingerprint NOT recorded — the row is local only, or was never written"
+fi
 for restore in restore_banked_results restore_clean_rollouts; do
   # The rollout driver reads its banked markers off the scratchpad too, and
   # restores only attempts that finished without an error.

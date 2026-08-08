@@ -53,13 +53,29 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$now" "$boot" "$up" "$head" "$dirs" "$rerun" "$note" >> "$LOG"
 
 cd "$REPO" || exit 1
+
+# **The exit status has to mean "the row reached origin".** This script's last
+# command was `tail -5 "$LOG"`, so its status was `tail`'s — the log file is
+# readable — and `rehydrate_box.sh` read that as "fingerprint logged" while a
+# failed commit or four failed pushes went unmentioned. A fingerprint row that
+# exists only on a box that is about to be replaced is the one case it is for.
+pushed=1                     # nothing to push is already-pushed
 if [ -n "$(git status --porcelain "$LOG")" ]; then
+    pushed=0
     git add "$LOG"
-    git commit -q -m "evidence: box fingerprint $now (uptime ${up}s, head $head)"
-    for i in 1 2 3 4; do
-        git push -q origin "$BRANCH" 2>/dev/null && break
-        sleep $((2**i))
-    done
+    if git commit -q -m "evidence: box fingerprint $now (uptime ${up}s, head $head)"; then
+        for i in 1 2 3 4; do
+            git push -q origin "$BRANCH" 2>/dev/null && { pushed=1; break; }
+            sleep $((2**i))
+        done
+    else
+        echo "fingerprint: COMMIT FAILED — row not recorded" >&2
+    fi
 fi
 
 tail -5 "$LOG"
+[ "$pushed" = 1 ] || {
+    echo "fingerprint: PUSH FAILED — the row is local only and will block the" >&2
+    echo "  next ff-only merge on this box." >&2
+    exit 1
+}
