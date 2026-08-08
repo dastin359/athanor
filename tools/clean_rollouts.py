@@ -441,9 +441,13 @@ def sweep_card():
             fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
                                  "games_lost": len(played),
                                  "reason": str(gone)[-160:]}) + "\n")
-        dead = SHARED_CARD_FILE.with_suffix(f".{card.card_id[:8]}.dead.json")
-        SHARED_CARD_FILE.replace(dead)
-
+        # **Refuse BEFORE retiring the file, or the refusal deletes its own
+        # trigger.** This retired `shared_card.json` first and raised second, so
+        # the hard stop lasted exactly one process: the supervisor relaunches
+        # within ten minutes, the next `sweep_card()` finds no card file at all,
+        # skips this whole branch, and silently mints a fresh card. An operator
+        # decision the driver explicitly declines to make for you was therefore
+        # made for you, on a timer, and the log line announcing it scrolled past.
         if played:
             raise SystemExit(
                 f"shared card {card.card_id} is gone and {len(played)} game(s) "
@@ -453,6 +457,8 @@ def sweep_card():
                 f"a fresh card, or accept a partial artifact deliberately — this "
                 f"driver will not choose for you."
             )
+        dead = SHARED_CARD_FILE.with_suffix(f".{card.card_id[:8]}.dead.json")
+        SHARED_CARD_FILE.replace(dead)
         print(f"shared card {card.card_id} was reaped before any game reached it "
               f"({str(gone)[-60:]}); nothing lost, opening another", flush=True)
 

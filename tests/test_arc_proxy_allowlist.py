@@ -207,3 +207,80 @@ def test_a_shim_refuses_another_game_and_does_not_bill_its_own_budget(monkeypatc
             except Exception:                      # noqa: BLE001
                 pass
 
+
+
+def test_a_lent_card_cannot_be_closed_through_the_shim(monkeypatch):
+    """**The one forwarded endpoint that can end the whole sweep.**
+
+    `/api/scorecard/close` is on the allowlist because a per-game run closes its
+    own card through this shim. Under the sweep's shared card it would finalize
+    a submission artifact carrying 25 games' scores, mid-run. `ArcClient.close`
+    already declines for a card it does not own — but that guard lives in the
+    client, and a solver reaches the shim with nine lines of urllib.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    from athanor.ccarc3 import arc_proxy
+
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-used-offline")
+
+    lent = arc_proxy.Proxy(game_id="aaaa-1111")
+    lent.adopt_session(({"name": "AWSALBAPP-0", "value": "x"},))
+    try:
+        req = urllib.request.Request(
+            f"{lent.url}/api/scorecard/close",
+            data=_json.dumps({"card_id": "the-sweep-card"}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=8)
+            raise AssertionError("the shim closed a card lent by the driver")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403, f"expected a refusal, got {exc.code}"
+    finally:
+        lent.shutdown()
+
+
+def test_a_shim_that_owns_its_card_may_still_close_it(monkeypatch):
+    """The refusal must be conditional, and this has to DRIVE the request.
+
+    Its first version only inspected `card_is_lent` and the allowlist, so making
+    the refusal unconditional -- which would break every per-game run, the reason
+    `close` is on the allowlist at all -- left it green. It now posts a close
+    through a shim with no adopted session and requires the failure NOT to be the
+    lent-card refusal. The upstream call cannot succeed offline; what matters is
+    which wall it hits.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    from athanor.ccarc3 import arc_proxy
+
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-used-offline")
+    own = arc_proxy.Proxy(game_id="bbbb-2222")
+    try:
+        assert own.state.card_is_lent is False, (
+            "a shim with no adopted session must not think its card is lent"
+        )
+        assert arc_proxy._allowed("/api/scorecard/close"), (
+            "close must stay on the allowlist for runs that own their card"
+        )
+        req = urllib.request.Request(
+            f"{own.url}/api/scorecard/close",
+            data=_json.dumps({"card_id": "my-own-card"}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        body, code = "", None
+        try:
+            body = urllib.request.urlopen(req, timeout=15).read().decode()
+        except urllib.error.HTTPError as exc:
+            code, body = exc.code, exc.read().decode(errors="ignore")
+        except urllib.error.URLError:
+            body = "(upstream unreachable, which is fine offline)"
+        assert "lent by the driver" not in body, (
+            f"a shim that owns its card was refused as if the card were lent "
+            f"(code={code}): {body[:200]}"
+        )
+    finally:
+        own.shutdown()

@@ -184,6 +184,11 @@ class ProxyState:
                 )
             return self._opener
 
+    @property
+    def card_is_lent(self) -> bool:
+        """True once :meth:`adopt_session` pinned this shim to a driver's card."""
+        return getattr(self, "_card_is_lent", False)
+
     def adopt_session(self, cookies: "tuple[dict[str, str], ...]") -> None:
         """Route this shim to the backend holding a shared scorecard.
 
@@ -196,6 +201,9 @@ class ProxyState:
         with self._lock:
             self._adopted = tuple(cookies)
             self._opener = None
+            # A card reached through adopted cookies belongs to the driver, not
+            # to this game. See the close refusal in `_forward`.
+            self._card_is_lent = True
 
     def reset_session(self) -> None:
         with self._lock:
@@ -345,6 +353,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._deny(403, f"this shim serves {wanted}, not {asked!r}; "
                                 f"every action must name its own game")
                 return
+
+        # **Closing a lent card is never a solver's call.** `/api/scorecard/close`
+        # is on the allowlist because a per-game run legitimately closes its own
+        # card through this shim at the end. Under the sweep's shared card it is
+        # the one forwarded endpoint that can finalize the whole submission
+        # artifact -- 25 games' scores on one card -- and `ArcClient.close`
+        # already declines to call it for a card it does not own. That guard
+        # lives in the client, which a solver can bypass with nine lines of
+        # urllib; this one lives where the solver cannot reach it.
+        if self.state.card_is_lent and path == "/api/scorecard/close":
+            sys.stderr.write("REFUSED close: this shim's card is lent by the "
+                             "driver and closing it would end the sweep\n")
+            sys.stderr.flush()
+            self._deny(403, "this card is lent by the driver; closing it would "
+                            "finalize a sweep that is still running")
+            return
 
         if charge:
             # 403 and not 429: `client._send` raises on 4xx without retrying, so

@@ -99,3 +99,35 @@ def test_an_empty_card_is_reminted_without_a_fuss(out, monkeypatch):
     monkeypatch.delenv("CCARC3_NO_SHARED_CARD", raising=False)
 
     assert cr.sweep_card().card_id == "card-B"
+
+
+def test_the_refusal_survives_a_driver_restart(out, monkeypatch):
+    """**The hard stop must not delete its own trigger.**
+
+    `sweep_card` retired `shared_card.json` and raised afterwards, so the
+    refusal lasted exactly one process: the supervisor relaunches within ten
+    minutes, the next call finds no card file, skips the whole reaped-card
+    branch and silently mints a fresh one. The operator decision this driver
+    explicitly declines to make was therefore made on a timer.
+    """
+    _attempt(out, "aa11-x", 1, "card-A")
+    monkeypatch.setattr(cr, "SHARED_CARD_FILE", out / "shared_card.json")
+    monkeypatch.setattr(cr, "SHARED_CARD_HISTORY", out / "history.jsonl")
+    (out / "shared_card.json").write_text(json.dumps({"card_id": "card-A", "cookies": {}}))
+    monkeypatch.setattr(cr.sc, "load", lambda p: cr.sc.SharedCard("card-A", {}))
+    monkeypatch.setattr(cr.sc, "read_card",
+                        lambda card, gid: (_ for _ in ()).throw(RuntimeError("404 not found")))
+    monkeypatch.setattr(cr.sc, "open_card",
+                        lambda tags: pytest.fail("minted a new card over a refusal"))
+    monkeypatch.delenv("CCARC3_NO_SHARED_CARD", raising=False)
+
+    for attempt in (1, 2, 3):
+        with pytest.raises(SystemExit) as exc:
+            cr.sweep_card()
+        assert "cannot be moved to a new card" in str(exc.value), (
+            f"restart {attempt} did not refuse"
+        )
+        assert (out / "shared_card.json").exists(), (
+            f"restart {attempt}: the refusal retired its own trigger, so the next "
+            "process would mint a fresh card silently"
+        )
