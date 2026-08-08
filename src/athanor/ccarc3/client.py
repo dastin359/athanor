@@ -202,8 +202,16 @@ the one place the field can be withheld once.
 
 Scoped to the environment rather than a call argument because the solver's
 process is where it must apply: the *runner* needs the real numbers to size a
-game's budget and score the result. `session.build_cli_args` sets it for the
-child only, and nothing sets it on the runner.
+game's budget and score the result.
+
+**`tools/ablate_baselines.build_without_baselines` is what sets it**, on the
+child's env, and nothing in `session.py` does -- `build_cli_args` assembles argv
+and never touches an environment at all. So layer 3 of the withholding stack
+exists only on the strip path: a plain `run_game()` hands the child a workspace
+whose `session.py` already carries `baseline_actions=(...)`, and arming the flag
+there would guard a door that layer 1 leaves open. Nothing sets it on the runner,
+which is the half of the old sentence that was true and is the part that
+matters.
 
 **It is the whole rule, with no bypass.** `list_games` used to take an
 `_unfiltered=True` escape hatch and `baselines_for` used to ignore the flag

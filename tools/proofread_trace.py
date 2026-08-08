@@ -152,7 +152,7 @@ def recover_root(commands: list[str], game_id: str) -> pathlib.Path | None:
 # multiple is the baseline total, so each product is a leak of the same secret.
 BUDGET_MULTIPLES = (2.0, 5.0)
 
-FAILING_VERDICTS = ("LEAK", "REACH", "CARD", "NOT", "INBOUND")
+FAILING_VERDICTS = ("LEAK", "REACH", "CARD", "NOT", "INBOUND", "ENV")
 
 
 def strayed(command: str, workspace: pathlib.Path) -> list[str]:
@@ -459,6 +459,31 @@ def main() -> int:
         print(f"  card           OK — {max(mine) if mine else 0} levels this attempt "
               f"({len(done)} play(s) on the card), {entry.get('total_actions')} actions "
               f"vs result {result.get('actions_used')}")
+    # 3b. the child's environment, as recorded when the workspace was built.
+    #
+    # **This is the surface that cost two runs and was checked by a sentence.**
+    # `tu93` printed its own median array and `bp35` made the same call six
+    # minutes in, both because `ARC_API_KEY` was in the child's environment; both
+    # were caught by a watcher reading the transcript afterwards, which is
+    # detection paying for prevention's absence. `build_trace_audit` excluded the
+    # environment from its digest and said this tool read it "from the live
+    # process" -- it never did. `session._env_facts` records the key *names* at
+    # the one moment they are knowable, and this is what reads them.
+    #
+    # Absent on every run banked before 2026-08-08, so its absence is reported
+    # and never fatal: a rule that retroactively voids the corpus is a rule that
+    # gets switched off.
+    env = result.get("child_env")
+    if env is None:
+        print("  child env      not recorded (run predates the record)")
+    else:
+        reached = sorted(k for k in ("ARC_API_KEY", "ARCPRIZE_API_KEY",
+                                     "CCARC3_MAX_ACTIONS") if env.get(k))
+        if reached:
+            verdicts.append(f"ENV: {', '.join(reached)} reached the child")
+        else:
+            print("  child env      OK — neither the key nor the cap reached the child")
+
     if (result.get("attempts") or 1) != 1 or result.get("error"):
         verdicts.append(f"NOT ONE-SHOT: attempts={result.get('attempts')} "
                         f"error={result.get('error')}")

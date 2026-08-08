@@ -600,9 +600,16 @@ def surface_digest(root: pathlib.Path) -> str:
     child. It is excluded because it cannot be recovered from a finished run, so
     including it on the reference side only would make every digest mismatch by
     construction. (It did, briefly: both clean runs read `superseded` against a
-    workspace proven byte-identical.) The environment is checked directly
-    instead, per run, by `proofread_trace.py`, which reads it from the live
-    process rather than inferring it.
+    workspace proven byte-identical.) The environment is recorded instead, per
+    run, by `session._env_facts` -- key *names* only, into `result.json`, at the
+    one moment they are knowable -- and `proofread_trace.py` fails a run whose
+    record shows `ARC_API_KEY` or `CCARC3_MAX_ACTIONS` reaching the child.
+
+    **That sentence used to say `proofread_trace` "reads it from the live process
+    rather than inferring it", and it did not.** It takes a workspace path and
+    reads `stream.jsonl`; in `--gz` mode there is no process to read. Nothing
+    anywhere recorded the child environment, so the exclusion here was justified
+    by a check that did not exist -- for the surface that cost `tu93` and `bp35`.
 
     **`client.py` is solver-visible and is deliberately still not in here.** What
     `status()` prints is read by the solver every turn, and on 2026-08-07 that

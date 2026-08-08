@@ -962,6 +962,39 @@ def _prior_give_ups(ws: Workspace) -> int:
     return 0
 
 
+# Names only, never values -- a value in `result.json` is a leak with a longer
+# half-life than the run. `False` is the answer the strip path is supposed to
+# give for the first two.
+# `ARCPRIZE_API_KEY` is here because `ablate_baselines` already guards both
+# spellings and a record that watched only one would be a check with a hole in
+# exactly the shape of its subject. `CCARC3_PROXY_URL` is deliberately absent: it
+# is read on the runner and never reaches the child, so recording it would add a
+# permanent `False` that reads like a verified absence.
+RECORDED_ENV = ("ARC_API_KEY", "ARCPRIZE_API_KEY", "CCARC3_MAX_ACTIONS",
+                "CCARC3_HIDE_BASELINES", "CCARC3_ARC_ROOT")
+
+
+def _env_facts(ws: Workspace) -> dict[str, Any]:
+    """Which of the env vars that matter reached the child, as presence flags.
+
+    **The child's environment was recorded nowhere and was checked nowhere.**
+    `build_trace_audit.surface_digest` excludes it from the digest -- correctly,
+    since it cannot be recovered from a finished run and would make every digest
+    mismatch by construction -- and justified that by saying `proofread_trace.py`
+    "reads it from the live process rather than inferring it". It does not, and
+    never did: `proofread_trace` takes a workspace path and reads `stream.jsonl`,
+    and in `--gz` mode there is no process to read. Its only environment-related
+    rule is `PROBES`, which flags that the solver *looked* -- inference from the
+    transcript, and only when the solver happened to look.
+
+    So the one solver-visible surface that matters most -- whether `ARC_API_KEY`
+    and `CCARC3_MAX_ACTIONS` reached the child -- was covered by a sentence
+    rather than by a check. Recording it at the moment the workspace is built is
+    the only time it is knowable, and it makes the claim true.
+    """
+    return {"child_env": {k: k in ws.env for k in RECORDED_ENV}}
+
+
 def _card_facts(ws: Workspace) -> dict[str, Any]:
     """Which scorecard this run scored on.
 
@@ -1001,6 +1034,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     outcome = {
         "game_id": ws.info.game_id,
         **_card_facts(ws),
+        **_env_facts(ws),
         "levels_total": ws.info.levels,
         "baseline_total": ws.info.baseline_total,
         **ledger_facts(ws.trace_path),

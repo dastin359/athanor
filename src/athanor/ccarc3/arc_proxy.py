@@ -58,8 +58,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 UPSTREAM = "https://three.arcprize.org"
 
-# Every path a solver legitimately needs, and nothing else. Derived from the only
-# four call sites in client.py that reach the network.
+# Every path a solver legitimately needs, and nothing else. Derived from
+# client.py's network call sites **minus `/api/games`**: there are five, not
+# four, and `list_games` (client.py:254) is the fifth. It is excluded
+# deliberately and must stay excluded -- it returns `baseline_actions` for all 25
+# environments, which is the one thing this allowlist exists to deny. Reading the
+# tuple as a transcription of the client's surface is how the exclusion gets
+# "restored" by someone tidying up.
 ALLOW = (
     re.compile(r"^/api/cmd/[A-Z0-9_]+$"),                     # RESET, ACTION1..7
     re.compile(r"^/api/scorecard/open$"),
