@@ -25,6 +25,16 @@ def _game(sweep, gid, card, *, acts=10, levels=3, foreign=""):
 
 
 def _run(sweep, *extra):
+    """Run the checker against a fixture.
+
+    Declares the fixture's own size unless the test says otherwise: without it
+    every card-identity test would also trip the completeness gate, which
+    defaults to the driver's 25-game queue. The completeness dimension has its
+    own tests below rather than riding along in all of them.
+    """
+    extra = list(extra)
+    if "--games" not in extra and "--partial" not in extra:
+        extra += ["--games", str(len(list(pathlib.Path(sweep).glob("*/clean_result.json"))))]
     return subprocess.run([sys.executable, str(TOOL), str(sweep), *extra],
                           capture_output=True, text=True)
 
@@ -97,3 +107,29 @@ def test_the_banked_attempt_is_the_one_checked(tmp_path):
     out = _run(tmp_path)
 
     assert "BANKED" in out.stdout and "ABANDONED" not in out.stdout
+
+
+def test_a_sweep_missing_games_is_not_submittable(tmp_path):
+    """**A gate that counts only what arrived cannot see what did not.**
+
+    This enumerated `*/clean_result.json` and reported "one card, N games —
+    submittable" for whatever N happened to be there, so a sweep that lost five
+    games to crashes passed: every game that *did* bank was on one card.
+    Verified on a three-game fixture with one unbanked — exit 0, "submittable".
+    """
+    _game(tmp_path, "aa11-x", "CARD")
+    _game(tmp_path, "bb22-y", "CARD")
+
+    out = _run(tmp_path, "--games", "3")
+
+    assert out.returncode == 1
+    assert "INCOMPLETE" in out.stdout and "2 of 3" in out.stdout
+
+
+def test_partial_is_an_explicit_choice(tmp_path):
+    """Mid-sweep the incompleteness is expected; it must be asked for, not the
+    default, or the gate is back where it started."""
+    _game(tmp_path, "aa11-x", "CARD")
+
+    assert _run(tmp_path, "--games", "3").returncode == 1
+    assert _run(tmp_path, "--games", "3", "--partial").returncode == 0

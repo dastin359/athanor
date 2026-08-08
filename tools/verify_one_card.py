@@ -76,10 +76,30 @@ def cards_in(sweep: pathlib.Path) -> dict[str, list[str]]:
     return found
 
 
+def _expected_games() -> int:
+    """How many games the sweep is supposed to contain.
+
+    Read from the driver's own queue rather than passed in, so the two cannot
+    drift. Returns 0 if it cannot be imported, which falls back to counting only
+    what banked -- the old behaviour, and the reason this exists.
+    """
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import clean_rollouts                      # noqa: PLC0415
+        return len(clean_rollouts.GAMES)
+    except Exception:                              # noqa: BLE001
+        return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep")
     ap.add_argument("--expect", default="", help="the card id the sweep opened")
+    ap.add_argument("--games", type=int, default=0,
+                    help="how many games the sweep should contain "
+                         "(default: the length of clean_rollouts.GAMES)")
+    ap.add_argument("--partial", action="store_true",
+                    help="allow a sweep that has not finished every game")
     args = ap.parse_args()
 
     sweep = pathlib.Path(args.sweep)
@@ -99,7 +119,20 @@ def main() -> int:
         print("(no card_id recorded)  %d games  %s" % (
             len(unknown), " ".join(sorted(g.split("-")[0] for g in unknown))))
 
+    # **A gate that only counts what arrived cannot see what did not.** This
+    # enumerated `*/clean_result.json` and reported "one card, N games --
+    # submittable" for whatever N happened to be there: a sweep that lost five
+    # games to crashes passed, because every game that *did* bank was on one
+    # card. Verified on a three-game fixture with one game unbanked -- exit 0,
+    # "submittable". Written the same evening as the note about guards that
+    # report OK by not looking.
     ok = True
+    expected = 0 if args.partial else (args.games or _expected_games())
+    if expected and total < expected:
+        print("\nINCOMPLETE: %d of %d games banked a result. The other %d are not "
+              "on this card or any other — a submission built from it is missing "
+              "them." % (total, expected, expected - total))
+        ok = False
     if len(found) > 1:
         print("\nSPLIT: %d distinct cards across %d games. This sweep cannot be "
               "submitted as one scorecard_url." % (len(found), total))

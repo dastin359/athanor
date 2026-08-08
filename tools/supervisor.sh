@@ -44,10 +44,18 @@ RUNNER_RE=".*/$(basename "$RUNNER" | sed 's/\./\\./g')"
 # pending, killed mid-game, and left the solver burning quota with no parent
 # left to write result.json. That is the exact failure the politeness exists
 # to prevent.
+# **`CCARC3_SWEEP_DIR` moves the driver's directory and must move this one too.**
+# `clean_rollouts.py` reads that variable to give a submission sweep its own
+# directory; nothing else did. Exported here and left unset elsewhere, the
+# supervisor would walk `clean_rollouts` while the driver worked in
+# `clean_rollouts_submission` -- seeing nothing pending, killing mid-game, and
+# leaving a solver burning quota with no parent to write `result.json`. Which is
+# the failure the comment above already describes, arriving through the door that
+# was opened to fix something else.
 case "$(basename "$RUNNER")" in
     ablate_baselines.py) WORK="ablate_nobaseline";;
     rerun_losses.py)     WORK="rerun_losses";;
-    *)                   WORK="clean_rollouts";;
+    *)                   WORK="${CCARC3_SWEEP_DIR:-clean_rollouts}";;
 esac
 LOG="$SP/$(basename "$RUNNER" .py).log"
 # Repo first: the scratchpad copy is whatever the image snapshot held.
