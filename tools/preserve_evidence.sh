@@ -64,7 +64,10 @@ KEEP=(trace.jsonl trace.state.json result.json scorecard.json rules.json
 # tell afterwards which version a finished run was talking to.
 RUNTIME=(client.py gate.py)
 
-log() { echo "$(date -u +%H:%M:%S) $*"; }
+# **Pacific at the source, per CLAUDE.md.** A convention applied by hand at
+# report time gets skipped whenever a log line is pasted through, which is
+# exactly how this daemon's lines reach a status report.
+log() { echo "$(TZ=America/Los_Angeles date '+%H:%M:%S %Z') $*"; }
 
 # **Refuse to commit if the key is anywhere in the staged tree.** The whitelist
 # should make this impossible; that is exactly why it is worth asserting, because

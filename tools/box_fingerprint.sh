@@ -33,7 +33,12 @@ SP="/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratc
 mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] || printf 'utc\tboot_id\tuptime_s\thead\tscratch_dirs\trerun_present\tnote\n' > "$LOG"
 
+# The `utc` COLUMN stays UTC: it is machine-readable, ISO-8601, explicitly
+# Z-suffixed, and every existing row is in it. CLAUDE.md's Pacific rule is about
+# reports, status lines and commit messages -- text a person reads and mistakes
+# for local time -- so the commit message below gets a Pacific rendering instead.
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+now_local=$(TZ=America/Los_Angeles date '+%Y-%m-%d %H:%M %Z')
 boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 up=$(awk '{printf "%d", $1}' /proc/uptime 2>/dev/null)
 head=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)
@@ -63,7 +68,7 @@ pushed=1                     # nothing to push is already-pushed
 if [ -n "$(git status --porcelain "$LOG")" ]; then
     pushed=0
     git add "$LOG"
-    if git commit -q -m "evidence: box fingerprint $now (uptime ${up}s, head $head)"; then
+    if git commit -q -m "evidence: box fingerprint $now_local (uptime ${up}s, head $head)"; then
         for i in 1 2 3 4; do
             git push -q origin "$BRANCH" 2>/dev/null && { pushed=1; break; }
             sleep $((2**i))

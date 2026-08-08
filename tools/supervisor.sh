@@ -136,7 +136,7 @@ util_now() {
 ge() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}'; }
 
 stop_politely() {
-    echo "$(date -u +%H:%M) util=$1 >= $LIMIT — stopping after the in-flight game"
+    echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') util=$1 >= $LIMIT — stopping after the in-flight game"
     # **Ask whether a solver is running, not whether every directory on disk was
     # tidied.** This counted any workspace with a `trace.jsonl` and no
     # `result.json` as "in flight" — over every attempt that has ever existed,
@@ -193,7 +193,7 @@ refresh_proxy() {
     code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
            "${HTTPS_PROXY:-http://127.0.0.1:1}/__agentproxy/status" 2>/dev/null)
     if [ "$code" != "200" ]; then
-        echo "$(date -u +%H:%M) SKIPPING LAUNCH — proxy ${HTTPS_PROXY:-unset} did not"\
+        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SKIPPING LAUNCH — proxy ${HTTPS_PROXY:-unset} did not"\
              "answer (got '${code:-no response}'). Every outbound call would fail."\
              "Refresh $SP/proxy_env from a live session."
         return 1
@@ -203,7 +203,7 @@ refresh_proxy() {
 
 start() {
     refresh_proxy || return 1
-    echo "$(date -u +%H:%M) util=$1 < $RESUME — starting $(basename "$RUNNER")"
+    echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') util=$1 < $RESUME — starting $(basename "$RUNNER")"
     set -a
     . "$SP/arc3/.env"
     set +a
@@ -213,11 +213,34 @@ start() {
 
 ceiling_stopped=0
 
+quiet_since=0
 while true; do
     u=$(util_now)
     running=$(pids_of "$RUNNER_RE")
 
     # A non-numeric reading ("<threshold") is not a reason to act either way.
+    #
+    # **But say so, because doing nothing quietly is how a stall becomes
+    # permanent.** With no reading this loop skips its entire stop/start block:
+    # it neither stops a running solver at the ceiling nor restarts after a
+    # reset, and it logs nothing at all, so an unattended box can sit inert for
+    # hours looking exactly like a healthy idle one. The policy itself is
+    # deliberately unchanged -- AUTOPILOT.md is explicit that `unknown` is
+    # "not a reason to stall indefinitely, and not permission either", so the
+    # decision to start one game to restore the reading stays with an operator.
+    # What changes is that the silence is now a line in the log.
+    if [ -z "$u" ] || [ "${u#*[0-9]}" = "$u" ]; then
+        if [ "$quiet_since" = "0" ]; then
+            quiet_since=$SECONDS
+            echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') NO QUOTA READING — neither starting nor stopping." \
+                 "Run scratchpad/quota.sh; one game restores it."
+        elif [ $((SECONDS - quiet_since)) -ge 3600 ]; then
+            quiet_since=$SECONDS
+            echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') still no quota reading after an hour — nothing has been launched"
+        fi
+    else
+        quiet_since=0
+    fi
     if [ -n "$u" ] && [ "${u#*[0-9]}" != "$u" ]; then
         if [ -n "$running" ] && ge "$u" "$LIMIT"; then
             stop_politely "$u"
