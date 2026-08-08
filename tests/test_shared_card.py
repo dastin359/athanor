@@ -137,12 +137,29 @@ def test_a_shim_without_a_shared_card_keeps_its_own_session():
     assert list(jar) == []
 
 
-def test_a_card_that_came_back_unpinned_is_refused(monkeypatch):
+@pytest.mark.parametrize("cookies", [
+    (),                                                          # nothing at all
+    ({"name": "GAMESESSION", "value": "g", "domain": "d", "path": "/"},),
+    ({"name": "GAMESESSION", "value": "g", "domain": "d", "path": "/"},
+     {"name": "csrftoken", "value": "c", "domain": "d", "path": "/"}),
+])
+def test_a_card_that_came_back_unpinned_is_refused(monkeypatch, cookies):
     """Without a stickiness cookie the card is unreachable from anywhere, and
-    every game would fail at its first RESET with a message naming the game."""
+    every game would fail at its first RESET with a message naming the game.
+
+    **The empty case alone could not catch a broken check.** This passed only
+    `()`, and `any(...)` over an empty sequence is False whatever
+    `PINNING_PREFIX` holds — so setting that prefix to `""`, which makes
+    `pinned` true for *every* cookie and disables the guard entirely, left all
+    17 tests in this file green. Found when an agent made exactly that edit.
+
+    The middle case is the one that occurs: a real card always comes back with
+    `GAMESESSION`, and the question is only whether a stickiness cookie came
+    with it.
+    """
     monkeypatch.setenv("ARC_API_KEY", "k")
     monkeypatch.setattr(sc, "_post", lambda *a, **k: {"card_id": "C"})
-    monkeypatch.setattr(sc, "export_cookies", lambda opener: ())
+    monkeypatch.setattr(sc, "export_cookies", lambda opener: cookies)
 
     with pytest.raises(RuntimeError, match="stickiness"):
         sc.open_card()
