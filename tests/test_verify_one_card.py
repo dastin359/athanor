@@ -133,3 +133,40 @@ def test_partial_is_an_explicit_choice(tmp_path):
 
     assert _run(tmp_path, "--games", "3").returncode == 1
     assert _run(tmp_path, "--games", "3", "--partial").returncode == 0
+
+
+def test_the_expected_count_comes_from_the_drivers_own_queue():
+    """**`_expected_games` had no test, and was silently set to `return 0`.**
+
+    Every other test here passes `--games N` explicitly, so none of them ever
+    called this function — and `return 0` makes `expected` falsy, which disables
+    the completeness gate entirely while leaving the suite green. The edit
+    reached a commit because `git add -A` swept it in unread.
+
+    The count has to come from the driver's queue so the two cannot drift, and
+    it has to be non-zero or the gate it feeds does nothing.
+    """
+    import importlib
+    import sys as _s
+
+    _s.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
+    voc = importlib.import_module("verify_one_card")
+    cr = importlib.import_module("clean_rollouts")
+
+    assert voc._expected_games() == len(cr.GAMES)
+    assert voc._expected_games() > 0, (
+        "a zero expectation turns the completeness check into a no-op"
+    )
+
+
+def test_a_sweep_missing_games_fails_without_being_told_how_many(tmp_path):
+    """The gate must work on the default path, which is the one a submission
+    actually uses — no `--games`, no `--partial`."""
+    _game(tmp_path, "aa11-x", "CARD")
+    _game(tmp_path, "bb22-y", "CARD")
+
+    out = subprocess.run([sys.executable, str(TOOL), str(tmp_path)],
+                         capture_output=True, text=True)
+
+    assert out.returncode == 1, out.stdout
+    assert "INCOMPLETE" in out.stdout

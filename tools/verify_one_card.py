@@ -86,7 +86,7 @@ def _expected_games() -> int:
     try:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         import clean_rollouts                      # noqa: PLC0415
-        return 0
+        return len(clean_rollouts.GAMES)
     except Exception:                              # noqa: BLE001
         return 0
 
