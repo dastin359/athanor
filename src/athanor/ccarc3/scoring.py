@@ -139,9 +139,28 @@ def score_environment(
                     "after an earlier one was left incomplete"
                 )
             if agent <= 0:
-                raise ValueError("completed-level action counts must be positive")
+                # **Deliberately refused, and `client.py` disagreed about it.**
+                # `_send` records 0 for the extra levels of a multi-level
+                # advance, and its comment claimed "Zero is read as 'cleared for
+                # free' by `_play_score`". It is not: this raises, and that
+                # comment has been corrected rather than this rule relaxed.
+                #
+                # Scoring 0 as "cleared for free" means the cap, 1.15 -- the
+                # maximum a level can earn. So the two ways to be wrong are not
+                # symmetric: if a zero ever arrives from a parsing fault rather
+                # than a real double advance, accepting it awards a defect the
+                # best possible score and the run reads as excellent. Refusing
+                # costs a crash and a look. A double advance has never been
+                # observed in 50 preserved runs; a parsing fault has, more than
+                # once, in this project.
+                raise ValueError(
+                    f"completed-level action counts must be positive, got {agent}. "
+                    f"If the server really credited two levels at once, that level "
+                    f"cost nothing and needs a deliberate decision here — it is not "
+                    f"scored automatically, because 0 would earn the cap."
+                )
             completed += 1
-            score = min(LEVEL_SCORE_CAP, (human / agent) ** 2)
+            score = LEVEL_SCORE_CAP if agent == 0 else min(LEVEL_SCORE_CAP, (human / agent) ** 2)
 
         weighted_sum += weight * score
         levels.append(LevelScore(level=index, human=human, agent=agent, score=score))

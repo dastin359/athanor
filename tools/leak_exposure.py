@@ -82,7 +82,18 @@ def blocks(stream: pathlib.Path):
 def main() -> int:
     verify_present_before_the_fix()
     pats = [(n, p, re.compile(p)) for n, ps in WANTED.items() for p in ps]
-    streams = sorted(EV.glob("*/attempt_*/*/stream*.jsonl.gz"))
+    # **It scanned one directory in one layout, and claimed the whole arm.**
+    # `EV` was hardcoded to `clean_rollouts` and the glob matched only the
+    # nested `<game>/attempt_N/<game>/` shape, so the baseline-free arm
+    # (`ablate_nobaseline`, flat) and every ad-hoc `rerun_*` directory were
+    # invisible — while the module docstring said the leaks were checked across
+    # "the whole of the 25-environment arm". A scan that cannot see a cohort
+    # reports it clean.
+    streams = sorted(
+        s for root in EV.parent.iterdir() if root.is_dir()
+        for pattern in ("*/attempt_*/*/stream*.jsonl.gz", "*/stream*.jsonl.gz")
+        for s in root.glob(pattern)
+    )
     print(f"scanning {len(streams)} preserved streams\n")
 
     findings = 0

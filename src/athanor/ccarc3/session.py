@@ -191,10 +191,15 @@ class Workspace:
 # still 'under budget' for a given environment". A solver that knows its allowance
 # paces itself against it, which is the wrong objective -- the score is completion
 # first and efficiency only as a tiebreak, and across 32 scored runs every point
-# lost was lost by not finishing. A hard stop does exist far out, enforced in
-# `arc_proxy` where the solver does not run, so a runaway loop cannot spend
-# without limit. This line used to read the cap from the environment; the
-# environment no longer carries it, so it evaluated to 0 anyway.
+# lost was lost by not finishing. A hard stop exists far out **on the
+# baseline-free path**, enforced in `arc_proxy` where the solver does not run,
+# so a runaway loop cannot spend without limit there. Scoped, because
+# `Proxy.set_budget` has exactly one caller —
+# `ablate_baselines.build_without_baselines` — and a plain `run_game` with no
+# strip installed therefore arms no ceiling at any layer. That is fine for the
+# local bench and is not what this sentence used to claim. This line used to
+# read the cap from the environment; the environment no longer carries it, so it
+# evaluated to 0 anyway.
 #
 # `quiet_pace=True` -- withhold the human medians from every solver-facing
 # surface: the pace ratio, `pace()`, and the `raw`/ceiling half of the score

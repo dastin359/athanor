@@ -1108,8 +1108,16 @@ class ArcClient:
             #
             # A jump of more than one level has never been observed; if the
             # server ever credits two at once, the extra levels really did cost
-            # zero actions of their own and are recorded as such. Zero is read
-            # as "cleared for free" by :meth:`_play_score`, not as missing data.
+            # zero actions of their own and are recorded as such.
+            #
+            # **This used to add "zero is read as 'cleared for free' by
+            # `_play_score`". It is not.** `scoring.score_environment` refuses a
+            # zero-action completed level outright, so recording one makes the
+            # score raise rather than resolve generously. That refusal is
+            # deliberate -- 0 would earn the cap, so accepting it awards a
+            # parsing fault the best score a level can get -- and it means a
+            # genuine double advance is a decision someone has to make, not a
+            # case already handled.
             gained = self.level - previous_level
             self.level_costs = self.level_costs + (self.level_actions + 1,) + (0,) * (gained - 1)
         self.level_actions = 0 if self.level > previous_level else self.level_actions + 1

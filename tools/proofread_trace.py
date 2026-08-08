@@ -148,6 +148,10 @@ def recover_root(commands: list[str], game_id: str) -> pathlib.Path | None:
 # Every verdict prefix that means "this run is not admissible". `INBOUND` was
 # absent for the whole life of the value-based scan, which is the only check here
 # that survives reformatting -- see the note at the predicate.
+# Every action-cap multiple this project has run at. The cap divided by the
+# multiple is the baseline total, so each product is a leak of the same secret.
+BUDGET_MULTIPLES = (2.0, 5.0)
+
 FAILING_VERDICTS = ("LEAK", "REACH", "CARD", "NOT", "INBOUND")
 
 
@@ -396,7 +400,16 @@ def main() -> int:
     if base:
         arr = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in base) + r"\s*[\])]"
         checks.append(("own per-level array", re.compile(arr)))
-        checks.append((f"budget {sum(base) * 5}", re.compile(rf"\b{sum(base) * 5}\b")))
+        # **Two multiples are in use and this checked one.** The cap is the
+        # baseline total times `budget_multiple`, so a solver that learns its cap
+        # recovers the total by dividing. `clean_rollouts` runs at 5.0 and
+        # `ablate_baselines` at 2.0, and `athanor ccarc3 run` takes the figure on
+        # the command line — so a run at any multiple but 5 sailed past this.
+        # Checking a set costs nothing; missing the arm's own multiple was the
+        # whole exposure.
+        for mult in BUDGET_MULTIPLES:
+            cap = int(sum(base) * mult)
+            checks.append((f"budget {cap}", re.compile(rf"\b{cap}\b")))
     checks += [
         ("api/games or key", re.compile(r"/api/games|ARC_API_KEY|ARCPRIZE_API_KEY")),
         # Any game's medians, not only this one's. The per-level check above is
