@@ -571,3 +571,33 @@ def test_extraction_targets_the_real_script() -> None:
     src = _extract("util_now")
     assert "awk" in src, "util_now no longer runs awk; this test file is stale"
     assert 'bash "$QUOTA"' in src, "util_now no longer shells out to QUOTA"
+
+
+# ==========================================================================
+# Gap found by mutation-testing this file, closed.
+# ==========================================================================
+
+def test_a_partially_numeric_utilization_is_rejected_not_half_read(tmp_path: Path) -> None:
+    """`if (t ~ /^[0-9.]+$/)` — the guard that makes util_now reject a malformed
+    number rather than let awk coerce its numeric prefix.
+
+    `test_nonnumeric_utilization_is_skipped_not_zeroed` names this behaviour and
+    cannot see it: its only non-numeric fixture is `util=<threshold>`, which awk
+    coerces to 0, and awk's uninitialised accumulator is already 0 — so skipping
+    and zeroing are indistinguishable there. The mutation is only observable on a
+    value with a numeric PREFIX: `util=0.99junk` coerces to 0.99 and would win
+    over a healthy sibling window, turning a garbled line into a stop.
+    """
+    # **Newline-joined, because `line()` does not terminate.** Concatenating
+    # them put both windows on ONE record, and util_now accumulates once per
+    # record from whatever `u` holds at the end of the field loop -- so only the
+    # last util= counted and the mutation was invisible. A fixture that cannot
+    # express the failure is the defect this suite exists for.
+    canned = "\n".join([line("five_hour", "allowed", "0.99junk"),
+                        line("seven_day", "allowed", "0.10"),
+                        "status=allowed"])
+    got = run_util_now(tmp_path, canned)
+    assert got.strip() == "0.10", (
+        f"a garbled utilization was half-read as 0.99 instead of skipped: {got!r}"
+    )
+    assert len(got.strip().splitlines()) == 1, f"util_now must emit one line: {got!r}"

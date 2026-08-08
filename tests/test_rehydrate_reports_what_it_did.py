@@ -573,3 +573,65 @@ def test_rehydrate_source_still_uses_symlinks_for_all_five():
     missing = set(EXPECTED_LINKS) - names
     assert not missing, f"no ln -sfn for: {sorted(missing)}"
     assert not re.search(r"^\s*cp .*\$SP", REHYDRATE_TEXT, re.M), "copies drift; use symlinks"
+
+
+# ==========================================================================
+# Gaps found by mutation-testing this file, closed.
+# ==========================================================================
+
+def test_step1_names_the_heads_in_the_direction_it_moved(tmp_path: Path):
+    """`$before -> $after`, not the reverse.
+
+    The recovery line is how an operator reads which way the tree moved after a
+    rollback. The old assertion only required both hashes to appear somewhere,
+    so swapping them read identically — a line that says the tree went from the
+    NEW head to the OLD one describes the opposite of what happened.
+    """
+    env = _clean_env(_home(tmp_path))
+    origin, box = _make_origin_and_box(tmp_path, env)
+
+    # origin moves ahead; the box is rewound, so step 1 must fast-forward it.
+    work = tmp_path / "work"
+    _git(env, tmp_path, "clone", "-q", "--branch", BRANCH, str(origin), str(work))
+    _git(env, work, "config", "user.name", "W")
+    _git(env, work, "config", "user.email", "w@example.invalid")
+    after_sha = _commit(env, work, "B")
+    _git(env, work, "push", "-q", "origin", BRANCH)
+    before = _git(env, box, "rev-parse", "--short", "HEAD").stdout.strip()
+
+    out = _assert_step1_ran(_run_step1(box, env))
+    after = _git(env, box, "rev-parse", "--short", "HEAD").stdout.strip()
+    assert before != after, "the sandbox did not actually fast-forward"
+    line = [l for l in out.splitlines() if "recovered from rollback" in l]
+    assert line, out
+    assert f"{before} -> {after}" in line[0], (
+        f"the recovery line names the heads in the wrong direction: {line[0]!r}"
+    )
+
+
+def test_step1_tells_the_operator_what_to_do_about_a_divergence(tmp_path: Path):
+    """The refusal has to be actionable.
+
+    A bare "FF-ONLY REFUSED" tells an unattended operator that something is
+    wrong and nothing about what to do; the guidance lines are the difference
+    between a report and an alarm. Deleting them left the old test green.
+    """
+    env = _clean_env(_home(tmp_path))
+    origin, box = _make_origin_and_box(tmp_path, env)
+
+    work = tmp_path / "work"
+    _git(env, tmp_path, "clone", "-q", "--branch", BRANCH, str(origin), str(work))
+    _git(env, work, "config", "user.name", "W")
+    _git(env, work, "config", "user.email", "w@example.invalid")
+    _commit(env, work, "theirs")
+    _git(env, work, "push", "-q", "origin", BRANCH)
+    _commit(env, box, "ours")                      # both sides now have unique commits
+
+    out = _assert_step1_ran(_run_step1(box, env))
+    assert "FF-ONLY REFUSED" in out, out
+    assert "unpushed local commits" in out, (
+        f"the refusal does not say WHY the tree diverged:\n{out}"
+    )
+    assert "rebase or push by hand" in out, (
+        f"the refusal does not say what to do about it:\n{out}"
+    )

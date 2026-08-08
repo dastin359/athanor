@@ -669,3 +669,96 @@ def test_the_progress_line_reported_is_the_newest_one(tmp_path):
         ["bash", "-c", f'LOG={log}\n{_line("arm")}\necho "$arm"'],
         capture_output=True, text=True, timeout=60).stdout.strip()
     assert "zz99-latest" in got, f"expected the newest progress line, got {got!r}"
+
+
+# ==========================================================================
+# Loop-state resets. Three mutations survived the first pass because nothing
+# ever drove the loop through a TRANSITION -- idle then live, or complete then
+# work again. Each reset below is the line that makes a report happen once
+# rather than every poll, or lets it happen again when the state returns.
+#
+# `runner_alive` is replaced with a file check so the test can flip liveness
+# between polls. That is a seam, not a dodge: what is under test here is the
+# counter arithmetic around the call, and `runner_alive` itself is pinned by
+# test_runner_name_is_read_out_of_supervisor_sh and by the argv-exactness test.
+# ==========================================================================
+
+def _scriptable(box, test_expr: str) -> None:
+    """Rewrite the sandbox script so runner_alive is `test_expr`.
+
+    Liveness is made a function of the poll counter rather than of a file a
+    thread races to touch: `snapshot_results.py` appends one line per iteration
+    at the top of the loop, so during iteration N the counter reads N and the
+    schedule below is exact. The first version of this used a thread and a flag
+    file, and it could not distinguish the reset from its absence -- it never
+    accumulated enough idle polls after the runner returned.
+    """
+    text = box.script.read_text(encoding="utf-8")
+    start = text.index("runner_alive() {")
+    end = text.index("\n}", start) + 2
+    body = "runner_alive() {\n" + f"    {test_expr}\n" + "}\n"
+    box.script.write_text(text[:start] + body + text[end:], encoding="utf-8")
+
+
+def _polls_expr(box) -> str:
+    return f'[ "$(wc -l < {box.sp / "polls.txt"} 2>/dev/null || echo 0)" -eq 3 ]'
+
+
+def test_the_idle_counter_clears_when_the_runner_comes_back(tmp_path):
+    """`IDLE_POLLS=0` on the live path.
+
+    Without it a runner that flaps accumulates idle polls across the gaps and
+    reports an absence that was never sustained. The schedule is exact: the
+    runner is alive in poll 3 only.
+
+      with the reset: 1,2 idle (2) -> poll 3 alive, cleared -> 4,5 idle (2). Silent.
+      without it:     1,2 idle (2) -> poll 3 alive, not cleared -> poll 4 hits
+                      IDLE_LIMIT=3 and reports.
+
+    Run to poll 5, assert silence. Anything longer would reach the limit legitimately
+    and the test would pass for the wrong reason.
+    """
+    # The stub freezes AT poll 5, so polls 6+ cannot slip through before the
+    # kill and reach IDLE_LIMIT legitimately -- which is what happened when this
+    # was written with stop_after_polls=7, and would have made the test pass for
+    # the wrong reason in the other direction.
+    box = _sandbox(tmp_path, games=3, banked=1, stop_after_polls=5)
+    _scriptable(box, _polls_expr(box))
+
+    out, _running, _polls = _run(box, until_polls=5, timeout=90)
+    assert "NO RUNNER" not in out, (
+        "the idle counter did not clear when the runner returned, so a flapping "
+        f"runner reported an absence that was never sustained:\n{out}"
+    )
+
+
+def test_sweep_completion_can_be_announced_again_after_new_work(tmp_path):
+    """`ANNOUNCED_COMPLETE=0` on the work-pending path.
+
+    The announcement itself promises "holding, will report ... new work". Deleting
+    the re-arm keeps that promise for the first cycle only: once a sweep completes
+    the flag stays set, so a later completion is silent. Nothing drove
+    complete -> new work -> complete.
+    """
+    box = _sandbox(tmp_path, games=2, banked=2, stop_after_polls=12)
+    _scriptable(box, "false")                    # always idle
+
+    import threading
+    def churn():
+        sp_polls = box.sp / "polls.txt"
+        def n():
+            return len(sp_polls.read_text().splitlines()) if sp_polls.exists() else 0
+        while n() < 2: time.sleep(0.02)
+        # New work appears: unbank one game, so work_pending flips to true.
+        banked = sorted(box.out.glob("*/clean_result.json"))
+        moved = banked[0].with_suffix(".json.away")
+        banked[0].rename(moved)
+        while n() < 6: time.sleep(0.02)
+        moved.rename(banked[0])                  # and the sweep completes again
+    t = threading.Thread(target=churn, daemon=True); t.start()
+
+    out, _running, _polls = _run(box, until_polls=11, timeout=120)
+    assert out.count("SWEEP COMPLETE") >= 2, (
+        "completion was announced once and never again after new work arrived, "
+        f"so the announcement's own promise is not kept:\n{out}"
+    )

@@ -278,3 +278,65 @@ def test_reformatting_a_recorded_result_is_not_a_new_game(sandbox: Path) -> None
     changed = run(sandbox)
     assert changed.returncode == EXIT_NEW_RESULTS, changed.stdout
     assert reported_ids(changed.stdout) == {"clean_rollouts/cln03-ff"}
+
+
+# ==========================================================================
+# Gaps found by mutation-testing this file, closed.
+# ==========================================================================
+
+def test_record_honours_the_sweep_dir(sandbox: Path) -> None:
+    """`--record` must stamp the sweep it was pointed at.
+
+    If it recorded `clean_rollouts` while the run lived in
+    `clean_rollouts_submission`, the marker would never match and every game of
+    the 25-game sweep would re-flag as new on every hourly check, forever. The
+    mutation that pins CLEAN_ROOT inside the --record branch left the file green.
+    """
+    clean_game(sandbox, "clean_rollouts_submission", "g1")
+    rec = run(sandbox, "--record", sweep="clean_rollouts_submission")
+    assert rec.returncode == 0, rec.stderr
+    assert "recorded 1 results" in rec.stdout, rec.stdout
+
+    again = run(sandbox, sweep="clean_rollouts_submission")
+    assert again.returncode == 0 and again.stdout.strip() == "", (
+        f"a recorded submission sweep still reads as new:\n{again.stdout}"
+    )
+
+
+def test_the_rebuild_recipe_carries_the_game_that_changed(sandbox: Path) -> None:
+    """The recipe printed for a new result has to name it, or an operator
+    rebuilds the audit from nothing under a non-default sweep dir."""
+    clean_game(sandbox, "clean_rollouts_submission", "g1")
+    out = run(sandbox, sweep="clean_rollouts_submission").stdout
+    assert "g1" in out, out
+    recipe = [l for l in out.splitlines() if "build_trace_audit.py" in l]
+    assert recipe, out
+    assert recipe[0].rstrip().endswith("build_trace_audit.py") is False, (
+        f"the rebuild recipe carries no arguments, so it would rebuild nothing:\n{recipe[0]}"
+    )
+
+
+def test_an_unwritable_marker_is_exit_3_not_silence(sandbox: Path) -> None:
+    """The other exit-3 guard: silence must never mean "the check could not
+    run". A regular file where the marker's directory belongs is the
+    container-replacement case in miniature."""
+    clean_game(sandbox, "clean_rollouts", "g1")
+    m = marker(sandbox)
+    m.parent.parent.mkdir(parents=True, exist_ok=True)
+    m.parent.write_text("not a directory", encoding="utf-8")
+
+    r = run(sandbox)
+    assert r.returncode == 3, (
+        f"an unwritable marker exited {r.returncode}, which an hourly caller "
+        f"treats as a no-op:\n{r.stdout}{r.stderr}"
+    )
+
+
+def test_a_file_where_the_sweep_dir_should_be_is_not_a_sweep(sandbox: Path) -> None:
+    """`-d`, not `-e`. A regular file at the sweep path is not a directory to
+    scan; accepting it globs nothing and reports a clean no-op."""
+    (sandbox / "scratch" / "clean_rollouts_submission").write_text("x", encoding="utf-8")
+    r = run(sandbox, sweep="clean_rollouts_submission")
+    assert r.returncode == 3, (
+        f"a regular file was accepted as a sweep directory (exit {r.returncode})"
+    )
