@@ -36,3 +36,4 @@ replicate/
 # their target so rename(2) stays within one filesystem; they must never be
 # staged by that script's own `git add evidence`.
 evidence/**/*.tmp.*
+.coverage
