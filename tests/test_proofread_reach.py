@@ -145,3 +145,46 @@ def test_escapes_do_not_fire_on_ordinary_game_prose(label, command):
 def test_escapes_still_catch_every_real_network_reach(command):
     """Anchoring must not cost coverage."""
     assert [w for rx, w in pt.ESCAPES if rx.search(command)], f"missed: {command}"
+
+
+def test_the_parents_transcript_is_not_exempt(tmp_path):
+    """**The richest target on the box sat inside a whitelisted directory.**
+
+    `/root/` is skipped as the agent's own home — dotfiles, caches, npm noise —
+    which is right for signal-to-noise and wrong for exactly one subtree.
+    `~/.claude/projects/<project>/<session>.jsonl` is the parent harness's own
+    transcript: every command it ran and every result it saw, `list_games()`
+    included. Measured 2026-08-08 the live one was 102 MB with ~1,847 lines
+    carrying median arrays for all 25 games, in plain text, and mode 600 is no
+    defence because solvers run as the same uid. It was reported as `reach OK`.
+    """
+    ws = tmp_path / "zz00-x"
+    ws.mkdir()
+    cmd = ("grep -o 'baseline_actions[^]]*]' "
+           "/root/.claude/projects/-home-user-athanor/abc123.jsonl | head")
+
+    assert any(".claude" in hit for hit in pt.strayed(cmd, ws)), (
+        "a solver reading the parent's transcript reads the whole answer key"
+    )
+
+
+def test_a_sibling_session_and_the_todo_store_are_covered_too(tmp_path):
+    """Naming one file would leave the same content one directory away."""
+    ws = tmp_path / "zz00-x"
+    ws.mkdir()
+
+    assert pt.strayed("cat /root/.claude/projects/-other-project/deadbeef.jsonl", ws)
+    assert pt.strayed("cat /root/.claude/todos/whatever.json", ws)
+    assert pt.strayed("cat /root/.config/claude/anything", ws)
+
+
+def test_ordinary_agent_home_noise_is_still_exempt(tmp_path):
+    """The exemption exists because a check that cries wolf gets ignored. It has
+    to keep doing its job, or closing this hole just reopens the old one."""
+    ws = tmp_path / "zz00-x"
+    ws.mkdir()
+
+    for benign in ("cat /root/.bashrc",
+                   "ls /root/.npm/_cacache",
+                   "python -c 'import sys; print(sys.path)' > /root/out.txt"):
+        assert not pt.strayed(benign, ws), benign
