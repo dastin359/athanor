@@ -374,8 +374,16 @@ def test_a_killed_solver_is_an_error_not_a_loss(ws):
     timeout = collect_outcome(ws, exit_code=-1, timed_out=True)
     assert "killed_by_signal" not in timeout
 
-    # A clean exit stays clean.
-    assert "error" not in collect_outcome(ws, exit_code=0, timed_out=False)
+    # A clean exit is not a *signal* death. It is no longer unconditionally
+    # clean: since GIVE_UP_ATTEMPTS landed, a clean exit that stopped with the
+    # allowance untouched is itself retryable, and this fixture -- one level of
+    # three, one action spent -- is precisely that case. What this test pins is
+    # that the signal machinery stays out of it.
+    clean = collect_outcome(ws, exit_code=0, timed_out=False)
+    assert "killed_by_signal" not in clean
+    assert "gave up" in clean.get("error", ""), (
+        "a solver that stopped one action in did not lose, it quit"
+    )
 
 
 def test_a_wall_clock_timeout_is_only_a_result_if_the_budget_ran_out(ws):

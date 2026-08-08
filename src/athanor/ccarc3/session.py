@@ -885,16 +885,38 @@ def _killing_signal(exit_code: int) -> int:
 def _action_budget(ws: Workspace) -> int:
     """The run's action cap, as written into the workspace at setup.
 
-    Read from `meta.json` rather than recomputed, so it reflects the multiple the
-    run actually got. Returns 0 when it cannot be read, which makes every caller
-    fall through to its existing behaviour rather than guess.
+    Read from `meta.json` first, so it reflects the multiple the run actually got.
+
+    **The `meta.json` read has been dead in every baseline-free run since the
+    strip landed, and nothing said so.** `strip_baselines` removes
+    `action_budget` from `meta.json` on purpose -- the cap is the baseline total
+    times `budget_multiple`, so a solver that can read its cap can recover the
+    medians. Correct, and it silently zeroed this function for exactly the runs
+    it exists to serve: `collect_outcome`'s "a timeout with most of the budget
+    unspent is not a result" guard reads it, got 0 for all 25 clean rollouts, and
+    never fired once. A guard reading a field that a different subsystem removed
+    is a guard that passes by not running -- the same shape as the brake that
+    read as engaged and the watcher blind to its own run.
+
+    So fall back to the parent's own arithmetic. `ws.info` carries the real
+    baselines in memory: the strip rewrites files in the workspace, not the
+    `GameInfo` the driver holds, and `collect_outcome` already publishes
+    `baseline_total` from it. This is parent-side only and never reaches the
+    solver.
+
+    Returns 0 only when neither source has anything, which leaves every caller
+    falling through to its previous behaviour rather than guessing.
     """
     try:
         meta = json.loads((ws.root / "meta.json").read_text(encoding="utf-8"))
+        budget = meta.get("action_budget")
+        if isinstance(budget, int) and budget > 0:
+            return budget
     except (OSError, ValueError):
-        return 0
-    budget = meta.get("action_budget")
-    return budget if isinstance(budget, int) and budget > 0 else 0
+        pass
+    if ws.info and ws.info.baseline_total:
+        return ws.info.suggested_budget(ws.config.budget_multiple)
+    return 0
 
 
 def _card_facts(ws: Workspace) -> dict[str, Any]:
@@ -918,6 +940,17 @@ def _card_facts(ws: Workspace) -> dict[str, Any]:
         # This game is NOT on the shared card, whatever the driver intended.
         facts["foreign_card"] = saved["foreign_card"]
     return facts
+
+
+GIVE_UP_ATTEMPTS = 3
+"""How many times a game that quit early is re-run before its loss is accepted.
+
+Not unbounded, unlike an interruption. A run cut short by a signal or a crash
+says nothing about the environment, so retrying it is free information. A run
+that *stopped on its own* might be reporting something real about the game, and
+at roughly $60 a run the difference between 3 tries and 12 is about $540 spent
+to hear the same answer.
+"""
 
 
 def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[str, Any]:
@@ -999,6 +1032,44 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
                 f"solver hit the wall clock after {used} of {budget} actions "
                 f"({used / budget:.0%} of budget) — interrupted by the clock, "
                 f"not a result; re-run this game"
+            )
+    # **A solver that stopped while most of its allowance was untouched did not
+    # lose either. It gave up.**
+    #
+    # `lf52` is why this exists, and it is the largest recoverable loss in the
+    # set: `exit_code 0`, `error: null`, `timed_out: false`, stopped **three
+    # levels short of the end** with well under half its allowance spent and the
+    # ceiling nowhere in sight. Nothing stopped it; it stopped. Banked with no
+    # error it keeps that score forever, and
+    # `if prior and not prior.get("error"): skip` makes it permanent. An earlier
+    # `bp35` run did the same, one level short, with almost all of its ceiling
+    # untouched.
+    #
+    # (Deliberately no numbers: this file is on the solver's PYTHONPATH and
+    # reachable by `inspect.getsource`, and an action count written beside a
+    # baseline total is a human median in two subtractions. The first draft of
+    # this comment carried both and the leak test rejected it.)
+    #
+    # This is the fourth face of one failure: interrupted, crashed, clocked out,
+    # and now quit — all four look like a real loss in `result.json`, and all
+    # four are the harness failing to record that the environment was never
+    # actually contested.
+    #
+    # **Bounded, unlike the other three.** They mark a run retryable without
+    # limit because an interruption says nothing about the game. Quitting might:
+    # a solver that stops at 7 of 10 three times running may be telling us the
+    # game is hard, and 12 passes at roughly $60 a run is $720 to learn it. After
+    # `GIVE_UP_ATTEMPTS` tries the result stands as real.
+    elif not exit_code and not timed_out and not outcome.get("won"):
+        budget = _action_budget(ws)
+        used = outcome.get("actions_used", 0) or 0
+        if budget and used < budget / 2 and outcome.get("attempts", 1) < GIVE_UP_ATTEMPTS:
+            outcome["error"] = (
+                f"solver stopped at {outcome.get('levels_reached')} of "
+                f"{outcome.get('levels_total')} levels after {used} of {budget} "
+                f"actions ({used / budget:.0%} of budget) with no error and no "
+                f"timeout — it gave up with the allowance untouched, which is not "
+                f"a result; re-run this game"
             )
     if ws.rules_path.exists():
         book = json.loads(ws.rules_path.read_text(encoding="utf-8"))
