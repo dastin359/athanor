@@ -204,8 +204,16 @@ while true; do
     refresh_proxy
     cd "$REPO" || exit 1
     if [ -n "$(git status --porcelain evidence 2>/dev/null)" ]; then
+        # **Stage first, then check.** `key_is_clean` reads
+        # `git diff --cached -- evidence`, which is the INDEX, and it used to run
+        # one line before `git add`. At that moment nothing is staged, so its
+        # loop iterated over an empty list and returned clean every time: the
+        # backstop guarding an API key against a public push had never inspected
+        # a file. Its own comment says the whitelist should make a hit
+        # impossible and that this is exactly why it is worth asserting -- and
+        # then it asserted nothing.
+        git add evidence
         if key_is_clean; then
-            git add evidence
             n=$(git diff --cached --name-only | wc -l)
             git commit -q -m "evidence: preserve ccarc3 run artifacts ($n files)
 
@@ -253,6 +261,14 @@ live API key appears anywhere under evidence/." || {
             # the session worker restarted, and every push after that failed
             # without a word.
             [ "$pushed" = 1 ] || log "PUSH FAILED after 4 tries — proxy=${HTTPS_PROXY:-unset}; $n files committed locally only"
+        else
+            # **Unstage, or the refusal only delays the leak.** Staging now
+            # happens before the check, so a refusal leaves the offending files
+            # in the index and the next cycle's `git add` would sweep them into
+            # a commit that passes -- because by then the key may no longer be
+            # in the newly-added files, while the already-staged ones ride along.
+            git reset -q -- evidence
+            log "unstaged evidence after the key check refused"
         fi
     fi
     sleep "$TICK"
