@@ -109,7 +109,10 @@ pids_of() {
 # because a window can refuse before its own number reaches the ceiling.
 util_now() {
     bash "$QUOTA" 2>/dev/null | awk '
-        /rejected|out_of_credits/ && /five_hour|seven_day/ { print "1.00"; exit }
+        # `exit` still runs END, so printing here emitted the refusal AND the
+        # accumulated worst -- two lines into a variable every caller treats as
+        # one number. Flag it and let END decide.
+        /rejected|out_of_credits/ && /five_hour|seven_day/ { rej = 1 }
         /five_hour|seven_day/ {
             # VOID means resetsAt is in the past: the window rolled over and its
             # utilization is 0, whatever the stale field still says.
@@ -123,7 +126,10 @@ util_now() {
             if (u >= 0 && u > worst) worst = u
             seen = 1
         }
-        END { if (seen && worst >= 0) printf "%.2f\n", worst }
+        END {
+            if (rej) { print "1.00" }
+            else if (seen && worst >= 0) printf "%.2f\n", worst
+        }
     '
 }
 

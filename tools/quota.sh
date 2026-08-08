@@ -16,11 +16,14 @@
 #   stale + allowed_warning/rejected -> still binding. Utilization only grew.
 #   stale + allowed                  -> unknown. It may have crossed since.
 #   resetsAt in the past             -> void. The window rolled over.
-S=/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad
+S="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
 python3 - <<'PY'
 import json, glob, os, time
 
-S = "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+# Overridable so this script can be exercised against a fixture. It had no
+# such hook, so three tests of its scan logic silently ran against the live
+# scratchpad and "passed" by reporting the real numbers.
+S = os.environ.get("CCARC3_SCRATCH") or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 FRESH = 3600  # a reading younger than this is trusted as-is
 
 streams = sorted(
@@ -29,15 +32,43 @@ streams = sorted(
     reverse=True,
 )
 
-latest = {}  # rateLimitType -> (mtime, info)
-for p in streams[:40]:
+# Every window this is required to report on. Absence of one of these is a
+# finding, not a silence -- see the two defects below.
+EXPECTED = ("five_hour", "seven_day")
+
+# **Scan until every expected window is found, not a fixed 40 files.**
+# `streams[:40]` looked generous and was not: `seven_day` events are rare
+# (five_hour dominates), and on this box they appeared at mtime-ranks 2, 3, 4, 5
+# and then nothing until rank 43. Thirty-six further stream.jsonl writes evict
+# all four -- and a 25-game sweep writes up to 75. Past that point this printed
+# the five_hour row and a clean `status=allowed`, never mentioning that the
+# window whose exhaustion costs days had not been looked at; `if not latest`
+# only fires when EVERY type is missing, so per-window absence read as health.
+# Downstream, supervisor.sh's `util_now` returns empty, its `[ -n "$u" ]` guard
+# skips the whole stop/start block, and it neither stops at the ceiling nor
+# restarts after a reset.
+#
+# Newest-first, so the common case still stops after a handful of files.
+latest = {}  # rateLimitType -> (mtime, seq, info)
+scanned = 0
+for p in streams:
+    if all(t in latest for t in EXPECTED):
+        break
+    scanned += 1
     mt = os.path.getmtime(p)
     try:
         fh = open(p)
     except OSError:
         continue
     with fh:
-        for line in fh:
+        # **Last write wins within a file, which `mt >` could not express.**
+        # Both sides of `mt > latest[t][0]` are the same file's mtime, so it is
+        # False by construction and the FIRST event in a file won -- the oldest
+        # and lowest reading. Every solver that crosses a second threshold logs
+        # two, and a later `rejected` was silently discarded in favour of the
+        # earlier `allowed`, then stamped with the file's mtime and labelled
+        # fresh. Measured here: reported 0.83 while the newest event said 0.84.
+        for seq, line in enumerate(fh):
             if '"rate_limit_event"' not in line:
                 continue
             try:
@@ -48,11 +79,20 @@ for p in streams[:40]:
                 continue
             i = d["rate_limit_info"]
             t = i.get("rateLimitType", "?")
-            if t not in latest or mt > latest[t][0]:
-                latest[t] = (mt, i)
+            if t not in latest or (mt, seq) > latest[t][:2]:
+                latest[t] = (mt, seq, i)
+
+latest = {t: (mt, i) for t, (mt, seq, i) in latest.items()}
 
 if not latest:
     print("status=unknown reason=no-reading-on-disk")
+    raise SystemExit
+
+missing = [t for t in EXPECTED if t not in latest]
+if missing:
+    for t in missing:
+        print(f"  {t:10} MISSING — no event in any of {scanned} stream.jsonl scanned")
+    print(f"status=unknown reason=window-not-observed:{','.join(missing)}")
     raise SystemExit
 
 now = time.time()

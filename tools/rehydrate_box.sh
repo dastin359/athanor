@@ -67,6 +67,7 @@ done
 # work that finished days ago.
 ln -sfn "$REPO/docs/ccarc3_autopilot.md" "$SP/AUTOPILOT.md"
 ln -sfn "$REPO/docs/ccarc3_memory.md"    "$SP/MEMORY.md"
+ln -sfn "$REPO/tools/quota.sh"           "$SP/quota.sh"
 
 # 3+4. Fingerprint and banked results.
 #
