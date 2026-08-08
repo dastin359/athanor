@@ -2508,9 +2508,34 @@ Published Opus 5 on the same public demo set, 24 Jul 2026, High effort: **40.68%
 
 **Efficiency is not the constraint.** Twenty-two of 25 sit at `E` 1.0000 with the
 completion cap binding, and 16 of those are at the `raw` ceiling of 1.1500 —
-meaning the score is clipped, not earned at the margin. Even the three losses
-were *efficient* on the levels they cleared: `sk48` at 0.18× and `sp80` at 0.18×
-of the human action count.
+meaning the score is clipped, not earned at the margin. The three losses are more mixed than
+this section claimed, and the corrected figures are below.
+
+> **Corrected 2026-08-08.** This read "Even the three losses were *efficient* on
+> the levels they cleared: `sk48` at 0.18× and `sp80` at 0.18× of the human
+> action count." Neither number is an efficiency ratio: **0.18 is `tn36`'s
+> budget-utilisation fraction** — the 18% in the very next paragraph — borrowed
+> and attributed to two other games as a ratio against human actions. Two
+> denominators welded together, the same error as `rules.py`'s 46-of-157.
+>
+> Re-derived from `evidence/ccarc3/trace_audit/runs.json.gz` against the live
+> per-level medians, on the levels each run actually cleared:
+>
+> | run | levels | actions | vs human total for the levels it cleared | vs its budget |
+> |---|---|---|---|---|
+> | `sp80` | 5 of 6 | 137 | **0.37×** | 5.3% |
+> | `sk48` | 5 of 8 | 632 | **0.94×** | 11.8% |
+> | `tn36` | 5 of 7 | 289 | **1.45×** | 18.2% |
+>
+> So `sp80` was efficient, `sk48` was about even with the human count, and
+> `tn36` was **over** it — the opposite of what the sentence claimed for the set.
+> What survives is the point the paragraph is actually making: all three stopped
+> with most of the budget unspent, so completion rather than efficiency is the
+> binding axis.
+>
+> The `ratio` column in the table above divides by the human total across **all**
+> levels, including ones the run never reached, so it is not the same quantity
+> and reads lower for any incomplete run.
 
 **Completion is the only axis left.** The 1.333 points missing from a perfect 25
 sit entirely in three games that each cleared exactly five levels and stopped.
@@ -5145,6 +5170,28 @@ doing so scored `su15` at 0.0567 for a run that won 9 of 9.
 |---|---|---|---|---|---|
 | never saw the prompt | 20 | 0.9566 | 17/20 | 4 | bp35 0.7252, lf52 0.4537, sk48 0.9538 |
 | **saw it** | **5** | **1.0000** | **5/5** | **0** | none |
+
+> **The n=20 group is not a comparable pool, corrected 2026-08-08.** Eight of its
+> members are the contaminated set this same document withdrew ~1,100 lines
+> earlier — "a median was in the doctrine they read", explicitly *not poolable* —
+> and `lf52` and `sk48`, two of the three runs named in its "below 1.0" column,
+> are among them. So the 0.9566 mean is computed over a mixture of the
+> repaired-surface rollouts and runs whose own section says they cannot be
+> compared with anything.
+>
+> Restricted to the 17 publishable rollouts, which is the split the section is
+> actually about:
+>
+> | set | n | mean E | at E=1 | below 1.0 |
+> |---|---|---|---|---|
+> | never saw the prompt | 12 | **0.9771** | 11/12 | `bp35` 0.7252 |
+> | saw it | 5 | **1.0000** | 5/5 | none |
+>
+> The direction is unchanged and the gap narrows: 0.9771 against 1.0000, one
+> miss instead of three. Two of the three sub-1.0 runs in the wider table were
+> never eligible to be counted here, which made the contrast look larger than
+> the evidence supports — and that is the reading the paragraph below already
+> warns against.
 
 The prompt is `fd18b89`, the `status()` line that fires at the winning frame:
 *"WON — and `restart_for_replay()` is legal RIGHT NOW and illegal after any

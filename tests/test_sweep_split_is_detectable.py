@@ -33,10 +33,21 @@ sys.path.insert(0, str(REPO / "tools"))
 import clean_rollouts as cr    # noqa: E402
 
 
-def _attempt(out: pathlib.Path, gid: str, n: int, card_id: str) -> None:
+def _attempt(out: pathlib.Path, gid: str, n: int, card_id: str,
+             *, produced_result: bool = True) -> None:
+    """One attempt on disk.
+
+    `result.json` is written by default because `_cards_seen` counts only
+    attempts that got somewhere: `trace.state.json` lands before the first
+    action, so without this an attempt killed by a container replacement -- the
+    ordinary case this driver discards and re-runs -- would count as a game
+    scored on the card.
+    """
     ws = out / gid / f"attempt_{n}" / gid
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "trace.state.json").write_text(json.dumps({"game_id": gid, "card_id": card_id}))
+    if produced_result:
+        (ws / "result.json").write_text(json.dumps({"game_id": gid}))
 
 
 @pytest.fixture
@@ -131,3 +142,19 @@ def test_the_refusal_survives_a_driver_restart(out, monkeypatch):
             f"restart {attempt}: the refusal retired its own trigger, so the next "
             "process would mint a fresh card silently"
         )
+
+
+def test_an_attempt_that_never_produced_a_result_is_not_a_game_on_the_card(out):
+    """**`trace.state.json` lands before the first action.**
+
+    `open()` writes it, so an attempt killed by a container replacement leaves
+    one behind having scored nothing. Counting those inflated both consumers:
+    `sweep_card` would refuse to remint -- stopping the whole sweep as an
+    operator decision -- over work that was never banked, and the split report
+    would name games that never played.
+    """
+    _attempt(out, "aa11-x", 1, "card-A", produced_result=False)
+    assert cr._cards_seen() == {}, "an attempt with no result counted as scored"
+
+    _attempt(out, "aa11-x", 2, "card-A")            # this one got somewhere
+    assert cr._cards_seen() == {"card-A": ["aa11-x"]}

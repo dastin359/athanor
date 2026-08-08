@@ -284,3 +284,43 @@ def test_a_shim_that_owns_its_card_may_still_close_it(monkeypatch):
         )
     finally:
         own.shutdown()
+
+
+def test_a_refused_request_with_a_body_does_not_desync_the_connection(monkeypatch):
+    """**A defence that corrupts the traffic it permits.**
+
+    `_refuse` answered and returned with the request body still unread, so on a
+    keep-alive connection the leftover bytes were parsed as the next request
+    line — and the victim is the NEXT call, which is a legitimate one. The body
+    is drained before any response is emitted now.
+    """
+    import http.client
+    import json as _json
+
+    from athanor.ccarc3 import arc_proxy
+
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-used-offline")
+    px = arc_proxy.Proxy(game_id="aaaa-1111")
+    try:
+        host, port = px.url.split("//", 1)[1].split(":")
+        conn = http.client.HTTPConnection(host, int(port), timeout=10)
+        # A refused path, carrying a body — /api/games is the one the allowlist exists for.
+        conn.request("POST", "/api/games", body=_json.dumps({"x": "y" * 200}),
+                     headers={"Content-Type": "application/json"})
+        first = conn.getresponse()
+        first.read()
+        assert first.status == 403, f"expected a refusal, got {first.status}"
+
+        # The next call on the SAME connection must still be parsed as a request.
+        conn.request("POST", "/api/cmd/RESET",
+                     body=_json.dumps({"game_id": "aaaa-1111"}),
+                     headers={"Content-Type": "application/json"})
+        second = conn.getresponse()
+        second.read()
+        assert second.status != 400, (
+            "the refused request's body was parsed as the next request line — "
+            "the connection is desynced and a legitimate call paid for it"
+        )
+        conn.close()
+    finally:
+        px.shutdown()

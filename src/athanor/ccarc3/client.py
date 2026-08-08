@@ -924,10 +924,18 @@ class ArcClient:
             self.scorecard_error = f"{type(exc).__name__}: {exc}"
             return
         try:
-            path = self.trace_path.parent / "scorecard.json"
+            # `trace_path` is declared `str | Path` and the class's own
+            # solver-facing example passes a str, so `.parent` on it raised
+            # AttributeError -- which `except OSError` does not catch. The
+            # docstring promises this never raises; it now does not, because the
+            # code says so rather than because the happy path happened to be a
+            # Path. Same reason the except is widened: a snapshot is bookkeeping,
+            # and burying a solver's real exception under a cleanup failure is
+            # the mistake this function was written to avoid.
+            path = Path(self.trace_path).parent / "scorecard.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(card, indent=2), encoding="utf-8")
-        except OSError as exc:
+        except Exception as exc:  # noqa: BLE001 -- deliberate: see docstring
             self.scorecard_error = f"{type(exc).__name__}: {exc}"
 
     def __enter__(self) -> "ArcClient":

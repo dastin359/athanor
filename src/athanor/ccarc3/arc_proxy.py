@@ -315,12 +315,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _forward(self, method: str) -> None:
         path = self.path.split("?", 1)[0]
+        # **Drain the body before answering anything, including a refusal.**
+        # `_refuse` used to reply and return with the request body still unread,
+        # so on a keep-alive connection those leftover bytes were parsed as the
+        # next request line -- and the victim is the NEXT call on that
+        # connection, which is a legitimate one. A defence that corrupts the
+        # traffic it permits is worse than the request it declined.
+        n = int(self.headers.get("Content-Length") or 0)
+        payload = self.rfile.read(n) if n else None
+
         if not _allowed(path):
             self._refuse(path)
             return
         charge = bool(_CMD.match(path))
-        n = int(self.headers.get("Content-Length") or 0)
-        payload = self.rfile.read(n) if n else None
 
         # **A shim is dedicated to one game, and until 2026-08-07 it did not
         # check.** `ProxyState` held only `(max_actions, actions_used)` and this

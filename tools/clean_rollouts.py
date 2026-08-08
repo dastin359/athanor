@@ -754,7 +754,16 @@ def _cards_seen() -> dict[str, list[str]]:
     the thing itself.
     """
     seen: dict[str, list[str]] = {}
+    # **Only attempts that produced a result count as "scored on" a card.**
+    # `trace.state.json` is written by `open()` before a single action, so an
+    # attempt killed by a container replacement -- the ordinary case this driver
+    # discards and re-runs -- used to count as a game on the card. That inflates
+    # `sweep_card`'s refusal (stopping the sweep over work that was never
+    # banked) and the split report alike. A result.json beside the state file is
+    # the cheapest evidence the attempt got somewhere.
     for state in sorted(OUT.glob("*/attempt_*/*/trace.state.json")):
+        if not (state.parent / "result.json").exists():
+            continue
         try:
             cid = json.loads(state.read_text()).get("card_id", "")
         except (OSError, ValueError):

@@ -206,9 +206,28 @@ def actions_per_level(
     next one, shortening each level by one and inventing a phantom level at the
     end.
 
-    Verified against ground truth rather than reasoned about alone: on `ls20`
-    this returns 18 actions for level 0, which is exactly what that solver
-    reported for itself; grouping by the recorded level gives 17.
+    **The ground-truth check that stood here has gone stale, and inverted.** It
+    named a per-level figure for `ls20` level 0 and offered a second, lower one
+    as what the *rejected* attribution would give. Re-measured on the trace it
+    names, `evidence/ccarc3/ablate_nobaseline/ls20-9607627b`, this function now
+    returns the lower of the two — so a reader re-deriving the check matches it
+    against the rejected reading and concludes the code uses the rule this
+    docstring argues against.
+
+    Nothing regressed: the play-starting RESET was later excluded from the count
+    (see the block further down), which moved level 0 down by exactly one action.
+    The check was simply never re-derived afterwards.
+
+    It is also no longer discriminating — both attributions return the same
+    per-level list on that trace, so the example cannot separate them any more,
+    and finding one where they still differ is work this note does not do.
+    Stated rather than papered over, because a check that agrees with both
+    answers is not evidence for either.
+
+    (The figures are described rather than printed. Per-level action counts are
+    published medians for some game -- the leak guard in
+    `tests/test_ccarc3_no_medians_in_source.py` caught the first draft of this
+    paragraph doing exactly that -- and this file is on the solver's path.)
 
     **Replayed levels are NOT summed, and that is measured, not assumed.**
     A live probe of the scorecard settles it. The API records, per game:

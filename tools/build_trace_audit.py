@@ -348,9 +348,20 @@ def arc_actions_per_level(game_dir: pathlib.Path, game_id: str) -> list[int] | N
     def _rank(i: int) -> tuple[float, int]:
         try:
             per = scoring.server_actions_per_level(scorecard, game_id, play=i)
+            # **Pad to the level count, or an unfinished play cannot be ranked.**
+            # `server_actions_per_level` returns one entry per level the play
+            # COMPLETED, so for any game no play swept, `per` is shorter than
+            # `baselines` and `score_environment` raises "arrays must have equal
+            # length" -- swallowed by the except below, scoring every play -1.0
+            # and making the selection arbitrary on exactly the runs whose play
+            # choice matters. `None` is how this module already spells "level not
+            # reached" and `score_environment` reads it as a zero-scoring level.
+            per = (list(per) + [None] * len(baselines))[:len(baselines)]
             return (scoring.score_environment(baselines, per).score,
                     -sum(a for a in per if a))
-        except (KeyError, ValueError, IndexError, ZeroDivisionError):
+        except (KeyError, ValueError, IndexError, ZeroDivisionError) as exc:
+            print(f"    {game_id}: play {i} unrankable ({type(exc).__name__}: "
+                  f"{exc})", file=sys.stderr)
             return (-1.0, 0)
 
     try:

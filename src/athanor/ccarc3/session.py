@@ -1240,6 +1240,16 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         except (OSError, ValueError) as exc:
             outcome["rules_error"] = f"{type(exc).__name__}: {exc}"
             book = {}
+    # **Absent cost is not zero cost.** `run_cost` returns {} when the stream
+    # carries no final `result` event, and a wall-clock timeout guarantees that:
+    # the CLI is signalled, so it never writes one. The outcome then has no
+    # `cost_usd`, `turns` or `duration_s` at all, and any total that sums across
+    # runs silently treats the missing one as free -- a $60 game costing $0 in
+    # the arm's own accounting. Recording the absence is what lets a total say
+    # "over 24 of 25 runs" instead of quietly meaning it.
+    if "cost_usd" not in outcome:
+        outcome["cost_unavailable"] = True
+
     outcome["mechanics_recorded"] = len(book.get("verified", []))
     outcome["refutations_recorded"] = len(book.get("refuted", []))
 
