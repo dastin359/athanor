@@ -225,7 +225,17 @@ while true; do
         # then it asserted nothing.
         git add evidence
         if key_is_clean; then
-            n=$(git diff --cached --name-only | wc -l)
+            # **Count and commit the same set, and let that set be `evidence`.**
+            # `n` counted the WHOLE index and the commit carried no pathspec, so
+            # this daemon would commit anything another process happened to have
+            # staged -- under an "evidence: preserve" message, and without
+            # `key_is_clean` ever reading it, because that guard scans
+            # `-- evidence` only. A session doing ordinary `git add` work in this
+            # tree every few minutes is all it takes; the daemon ticks every 300s.
+            # It has not fired in 60 preserver commits, checked by name, which is
+            # luck rather than design. The pathspec makes the guard's scope and
+            # the commit's scope the same set by construction.
+            n=$(git diff --cached --name-only -- evidence | wc -l)
             git commit -q -m "evidence: preserve ccarc3 run artifacts ($n files)
 
 Pushed continuously because the disk is not durable: five container rollbacks
@@ -234,7 +244,7 @@ the scratchpad lost twelve games' traces by existing only on disk.
 
 Gzipped ledgers, state, scorecards, rule books and streams. No secret and no
 virtualenv -- the file set is a whitelist, and a guard refuses the commit if the
-live API key appears anywhere under evidence/." || {
+live API key appears anywhere under evidence/." -- evidence || {
                 # **A failed commit must not be reported as a push.** Commits
                 # here are ssh-signed through `/tmp/code-sign`, and on 2026-08-07
                 # that signer returned 503: the commit died with "failed to write

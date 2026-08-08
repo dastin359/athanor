@@ -96,11 +96,35 @@ pids_of() {
 #
 # VOID means resetsAt is in the past, which means the window rolled over and
 # utilization is 0. Reading it that way is what lets the arm resume unattended.
+# **Both windows, and the worse of the two.** This filtered on `/seven_day/`, so
+# the five-hour line was discarded before any comparison could see it. The
+# seven-day window is the one that costs days and that is why it was singled out
+# -- but exhausting the five-hour one is a HARD KILL of in-flight solvers, not a
+# slowdown, and with seven_day below the ceiling this loop would have gone on
+# relaunching into a rejected five-hour window every ten minutes. AUTOPILOT.md
+# names watching one window and calling it quota as the original mistake; this
+# was the same mistake with the other window on top.
+#
+# A `rejected` status on EITHER window is a stop regardless of utilization,
+# because a window can refuse before its own number reaches the ceiling.
 util_now() {
-    bash "$QUOTA" 2>/dev/null | awk '/seven_day/ {
-        if (index($0, "VOID")) { print "0.00"; exit }
-        for (i = 1; i <= NF; i++) if ($i ~ /^util=/) { sub("util=", "", $i); print $i }
-    }'
+    bash "$QUOTA" 2>/dev/null | awk '
+        /rejected|out_of_credits/ && /five_hour|seven_day/ { print "1.00"; exit }
+        /five_hour|seven_day/ {
+            # VOID means resetsAt is in the past: the window rolled over and its
+            # utilization is 0, whatever the stale field still says.
+            if (index($0, "VOID")) { u = 0.0 }
+            else {
+                u = -1
+                for (i = 1; i <= NF; i++)
+                    if ($i ~ /^util=/) { t = $i; sub("util=", "", t);
+                                         if (t ~ /^[0-9.]+$/) u = t + 0 }
+            }
+            if (u >= 0 && u > worst) worst = u
+            seen = 1
+        }
+        END { if (seen && worst >= 0) printf "%.2f\n", worst }
+    '
 }
 
 ge() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a+0 >= b+0)}'; }

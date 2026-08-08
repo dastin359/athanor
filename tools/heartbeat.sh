@@ -134,9 +134,56 @@ while true; do
     # Emit progress *and* the signals worth waking for. A filter that only ever
     # reports forward movement is silent through a stall, which reads identically
     # to healthy running.
-    arm=$(grep -E '^\[[0-9]+/' "$SP/ablate.log" 2>/dev/null | tail -1)
-    fail=$(grep -E 'FAILED|Traceback|quota|rate.?limit|429' "$SP/ablate.log" 2>/dev/null | tail -1)
-    d=$(ls -dt "$SP"/ablate_nobaseline/*/ 2>/dev/null | head -1)
+    #
+    # **Every field here read the retired arm.** `arm`, `fail`, `d`, `n`, `age`,
+    # `done_n` and `total` all came off `$SP/ablate.log` and
+    # `$SP/ablate_nobaseline/`, last written 2026-08-06/07. The commit that
+    # repointed `runner_alive` at the live runner left this block behind, so the
+    # emitted line described a sweep that had already ended -- pinned at
+    # `[25/25] wa30: already finished, skipping | 0 acts (?s ago) | 25/25 done`
+    # whatever the live runner was doing. `fail` was the worst of them: the one
+    # alarm this block exists for, grepping a file nothing writes to.
+    #
+    # The log is derived the way supervisor.sh derives it (`$SP/<runner>.log`),
+    # and the progress counts come from the driver itself rather than from a log
+    # format. Both are the thing rather than a proxy for it.
+    LOG="$SP/$(basename "$RUNNER_NAME" .py).log"
+
+    # **Anchored, because the obvious pattern is a permanent false alarm.**
+    # Bare `429` matches ephemeral proxy ports and any scorecard UUID containing
+    # those digits: on the live log that is 32 hits, of which ZERO are HTTP 429s,
+    # and the newest is the healthy startup line
+    # `arc_proxy: http://127.0.0.1:44297 (key withheld...)`. Since `tail -1`
+    # takes the newest match, an unanchored pattern would print that every poll
+    # and bury the 36 real tracebacks underneath it. Bare `quota` is the same
+    # mistake: it appears in ordinary quota accounting. A status line that cries
+    # failure continuously is no better than one that never does.
+    fail=$(grep -E 'Traceback \(most recent call last\)|FAILED|PROOFREAD DID NOT RUN|aborting:|rate.?limit|out_of_credits|HTTP Error 429|\b429[: ]+(Too Many|Client Error)|status[ =:]+429' \
+                "$LOG" 2>/dev/null | tail -1)
+
+    # The formats clean_rollouts.py actually writes (:509 and :787).
+    arm=$(grep -E '^(=== |--- pass )' "$LOG" 2>/dev/null | tail -1)
+
+    read -r done_n total < <(/home/user/athanor/.venv/bin/python - <<'EOF' 2>/dev/null
+import sys
+sys.path[:0] = ["/home/user/athanor/tools", "/home/user/athanor/src"]
+try:
+    import clean_rollouts as cr
+    print(len(list(cr.OUT.glob("*/clean_result.json"))), len(cr.GAMES))
+except Exception:
+    print("?", "?")
+EOF
+)
+    done_n=${done_n:-?}; total=${total:-?}
+
+    d=$(/home/user/athanor/.venv/bin/python -c '
+import sys; sys.path[:0]=["/home/user/athanor/tools","/home/user/athanor/src"]
+try:
+    import clean_rollouts as cr
+    ws=sorted(cr.OUT.glob("*/attempt_*/*/trace.jsonl"), key=lambda p: p.stat().st_mtime)
+    print(ws[-1].parent if ws else "")
+except Exception:
+    print("")' 2>/dev/null)
     n=0
     [ -n "$d" ] && [ -f "$d/trace.jsonl" ] && n=$(wc -l < "$d/trace.jsonl")
     # Age of the newest trace write. A long age is not proof of a stall: a solver
@@ -144,13 +191,8 @@ while true; do
     # process before concluding anything from it.
     age="?"
     [ -n "$d" ] && [ -f "$d/trace.jsonl" ] && age=$(( $(date +%s) - $(stat -c %Y "$d/trace.jsonl") ))
-    done_n=$(ls "$SP"/ablate_nobaseline/*/result.json 2>/dev/null | wc -l)
-    # Total comes from the runner's own log line, not a constant: the queue grew
-    # from 13 to 25 and a hardcoded denominator silently understated progress.
-    total=$(echo "$arm" | grep -oE '^\[[0-9]+/[0-9]+\]' | grep -oE '[0-9]+\]' | tr -d ']')
-    total=${total:-?}
-    q=$(bash "$SP/quota.sh" 2>/dev/null | grep seven_day | tr -s ' ')
+    q=$(bash "$SP/quota.sh" 2>/dev/null | grep -E 'five_hour|seven_day' | tr -s ' ' | tr '\n' ';')
 
-    echo "baseline-free: ${arm:-starting} | ${n} acts (${age}s ago) | ${done_n}/${total} done |${q}${fail:+ | LAST FAILURE: $fail}"
+    echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') ${arm:-starting} | ${n} acts (${age}s ago) | ${done_n}/${total} done | ${q}${fail:+ | LAST FAILURE: $fail}"
     sleep 420
 done

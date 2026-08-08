@@ -39,7 +39,15 @@ ROOTS=("ablate_nobaseline")
 # two levels down at <game>/attempt_N/<game>/. A plain <root>/*/result.json glob
 # matches neither, so three finished clean rollouts were invisible here and the
 # hourly check reported "nothing new" while the artifact had never seen them.
-CLEAN_ROOT="clean_rollouts"
+#
+# **Honour `CCARC3_SWEEP_DIR`, because the submission sweep does not run here.**
+# This was pinned to the literal `clean_rollouts`, while `clean_rollouts.py:81`
+# reads `CCARC3_SWEEP_DIR` and its own header *requires* a submission sweep to
+# use a separate directory (`CCARC3_SWEEP_DIR=clean_rollouts_submission`). So the
+# hourly safety net would have watched an empty finished sweep and reported
+# "nothing new" through every game of the 25-game run it exists to catch --
+# silence indistinguishable from a no-op, for the one sweep that matters.
+CLEAN_ROOT="${CCARC3_SWEEP_DIR:-clean_rollouts}"
 
 # One entry per line, matched with grep -Fxq. The first version stored them
 # space-separated on one line and matched with a `case` glob requiring a space on
@@ -133,7 +141,23 @@ if [ "${1:-}" = "--record" ]; then
   exit 0
 fi
 
-touch "$MARKER"
+# **Silence must mean "nothing new", not "the check could not run".** `touch`
+# fails when `evidence/ccarc3/trace_audit/` does not exist -- the container
+# replacement case this script's header is about -- and `grep -f` then fails with
+# "No such file", `|| true` swallows it, `new` is empty and the exit is 0. That
+# is the same no-op signature as a healthy quiet hour, on the one run where the
+# marker of what has already been published is gone.
+#
+# Nothing here is silent about its own inability to look.
+if ! mkdir -p "$(dirname "$MARKER")" 2>/dev/null || ! touch "$MARKER" 2>/dev/null; then
+    echo "refresh_audit: cannot write $MARKER — not a no-op, the check did not run" >&2
+    exit 3
+fi
+if [ ! -d "$SP/$CLEAN_ROOT" ]; then
+    echo "refresh_audit: $SP/$CLEAN_ROOT does not exist — nothing to scan, and that" >&2
+    echo "  is a missing scratchpad rather than a finished sweep. Check CCARC3_SWEEP_DIR." >&2
+    exit 3
+fi
 new="$(stamps | sort | grep -Fxv -f "$MARKER" || true)"
 [ -z "$new" ] && exit 0
 
