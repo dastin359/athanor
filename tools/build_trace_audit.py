@@ -533,6 +533,17 @@ def mark_contaminated(data: dict, runs: list) -> list[str]:
     return sorted(voided)
 
 
+def _attempt_index(path: pathlib.Path) -> int:
+    """Attempt number from a stream filename, ordered oldest first.
+
+    `stream.1.jsonl` is the first attempt and `stream.jsonl` the last, the same
+    convention `ingest` uses. An unnumbered stream therefore sorts after every
+    numbered one rather than before, which is what "earliest" has to mean here.
+    """
+    part = path.name.split(".")[1]
+    return int(part) if part.isdigit() else 1 << 30
+
+
 def backfill_start_times(runs: list) -> list[str]:
     """Recover start times for rows ingested before `stream_start` existed.
 
@@ -549,10 +560,22 @@ def backfill_start_times(runs: list) -> list[str]:
         gid = row["id"].split("@")[0]
         # Earliest stream across every batch that holds this game: attempt order
         # is numeric, and `stream.11` sorts before `stream.2` as a string.
+        #
+        # **The rank used to read `0 if ".jsonl" == p.name[-11:-3] else 1`, which
+        # is a six-character string compared against an eight-character slice and
+        # is therefore `False` for every name that can exist.** Checked against
+        # the whole evidence tree: 12 distinct stream file names, zero matches. So
+        # the tuple degenerated to a plain lexicographic sort on `p.name`, and the
+        # ordering this comment describes was never applied -- `stream.11` did
+        # sort before `stream.2`, and a game present in two batches interleaved
+        # them in `iterdir()` order. It happened not to matter, because the loop
+        # takes the first candidate that yields a timestamp and `stream.1` leads
+        # under either rule; it would have mattered the first time `stream.1` was
+        # missing or unstamped, which is exactly the run that needs backfilling.
         cands = sorted(
             (p for batch in evidence.iterdir() if batch.is_dir()
              for p in batch.glob(f"{gid}/**/stream*.jsonl.gz")),
-            key=lambda p: (0 if ".jsonl" == p.name[-11:-3] else 1, p.name),
+            key=lambda p: (_attempt_index(p), str(p)),
         )
         for path in cands:
             stamp = ""
@@ -911,6 +934,42 @@ def _under_scratchpad(path: pathlib.Path) -> bool:
     return True
 
 
+def _boot_time() -> float:
+    """Wall-clock instant this kernel booted, from `/proc/stat`'s `btime`."""
+    for line in pathlib.Path("/proc/stat").read_text().splitlines():
+        if line.startswith("btime "):
+            return float(line.split()[1])
+    raise OSError("/proc/stat carries no btime")
+
+
+def _process_started(entry: pathlib.Path) -> float:
+    """When this process actually started, in epoch seconds.
+
+    **This used to be `(entry / "stat").stat().st_mtime`, which is the timestamp
+    of a procfs inode and not the start of anything.** Measured across this box's
+    97 live processes on 2026-08-09: the mtime understated the true age of every
+    single one, by 2 seconds on the youngest and by **29 minutes** on a process
+    that had been alive 4h42m. Two ten-minute-old shells both read 496s -- an
+    error of 17% -- because a procfs inode is stamped when it is instantiated in
+    the dcache, which is whenever something last looked the process up, not when
+    the process was forked.
+
+    The direction matters: the error is always toward *younger*, and `elapsed_s`
+    is the field an operator reads to decide whether a solver is stalled. A panel
+    that shows 4h13m for a game that has been running 4h42m argues against
+    intervening in exactly the case that needs it.
+
+    Field 22 of `/proc/<pid>/stat` is the start time in clock ticks since boot,
+    which is the kernel's own answer. `comm` (field 2) may contain spaces and
+    parentheses, so the fields are split after the *last* `)` rather than by
+    whitespace across the whole line.
+    """
+    stat = (entry / "stat").read_text()
+    fields = stat[stat.rindex(")") + 2:].split()
+    ticks = float(fields[19])          # field 22 overall: starttime
+    return _boot_time() + ticks / os.sysconf("SC_CLK_TCK")
+
+
 def live_games() -> list[dict]:
     """Games with a solver running *right now*, for the page's live panel.
 
@@ -970,8 +1029,8 @@ def live_games() -> list[dict]:
             pass
         started = None
         try:
-            started = (entry / "stat").stat().st_mtime
-        except OSError:
+            started = _process_started(entry)
+        except (OSError, ValueError, IndexError):
             pass
         out.append({
             "id": cwd.name,
