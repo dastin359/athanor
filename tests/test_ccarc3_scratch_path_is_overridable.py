@@ -354,3 +354,57 @@ def test_the_branch_is_not_read_from_head() -> None:
             f"{tool} derives BRANCH from git state: {line!r} -- this disarms "
             f"the HEAD-vs-BRANCH guard in preserve_evidence.sh"
         )
+
+
+# ==========================================================================
+# part four -- the fingerprint's work count
+#
+# `scratch_dirs` counted `ablate_nobaseline` alone, so through a submission
+# sweep it would sit frozen at 25 while saying nothing about the work at risk --
+# in the one row whose purpose is noticing that a replacement took the disk.
+# ==========================================================================
+
+
+def _fingerprint_count(scratch: pathlib.Path, sweep: str | None) -> int:
+    """Evaluate the real counting block from box_fingerprint.sh."""
+    src = (TOOLS / "box_fingerprint.sh").read_text(encoding="utf-8")
+    start = src.index("dirs=0")
+    end = src.index("done", start) + len("done")
+    env = {k: v for k, v in os.environ.items() if k != "CCARC3_SWEEP_DIR"}
+    if sweep:
+        env["CCARC3_SWEEP_DIR"] = sweep
+    out = subprocess.run(
+        ["/bin/bash", "-c", f'SP={scratch}\n' + src[start:end] + '\nprintf "%s" "$dirs"'],
+        capture_output=True, text=True, check=True, env=env,
+    )
+    return int(out.stdout.strip())
+
+
+def test_the_fingerprint_counts_the_live_sweep(tmp_path: pathlib.Path) -> None:
+    for arm, n in (("ablate_nobaseline", 2), ("clean_rollouts", 3)):
+        for i in range(n):
+            (tmp_path / arm / f"g{i}").mkdir(parents=True)
+    assert _fingerprint_count(tmp_path, None) == 5, (
+        "the live sweep's games are not counted"
+    )
+
+
+def test_the_fingerprint_follows_a_renamed_sweep(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "ablate_nobaseline" / "g0").mkdir(parents=True)
+    for i in range(4):
+        (tmp_path / "clean_rollouts_submission" / f"g{i}").mkdir(parents=True)
+    assert _fingerprint_count(tmp_path, "clean_rollouts_submission") == 5, (
+        "the submission sweep's games are invisible to the fingerprint"
+    )
+
+
+def test_the_fingerprint_counts_rerun_directories(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "ablate_nobaseline" / "g0").mkdir(parents=True)
+    (tmp_path / "rerun_losses" / "g1").mkdir(parents=True)
+    (tmp_path / "rerun_bp35_fixed" / "g2").mkdir(parents=True)
+    assert _fingerprint_count(tmp_path, None) == 3
+
+
+def test_the_fingerprint_is_zero_on_an_empty_box(tmp_path: pathlib.Path) -> None:
+    """A replacement that lost everything must read 0, not fail or inflate."""
+    assert _fingerprint_count(tmp_path, None) == 0

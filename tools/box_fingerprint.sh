@@ -51,7 +51,24 @@ now_local=$(TZ=America/Los_Angeles date '+%Y-%m-%d %H:%M %Z')
 boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 up=$(awk '{printf "%d", $1}' /proc/uptime 2>/dev/null)
 head=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)
-dirs=$(ls -1 "$SP/ablate_nobaseline" 2>/dev/null | wc -l)
+# **`scratch_dirs` counted the RETIRED arm.** It was `ls "$SP/ablate_nobaseline"`,
+# so through a submission sweep the column would sit frozen at 25 and say nothing
+# about the work actually at risk -- in a row whose entire purpose is noticing
+# that a container replacement took the disk with it. Same stale-arm shape as the
+# snapshot batch list and the live panel's cwd filter.
+#
+# It now counts game directories across every work root: the retired arm, the
+# live sweep (whatever CCARC3_SWEEP_DIR names) and any rerun_*. The column name
+# always read as "work on disk"; this is what it now measures.
+#
+# **The basis changed on 2026-08-09**, so rows before that date count only
+# ablate_nobaseline and are not comparable with later ones. Recorded here because
+# a series that silently changes meaning is worse than one that jumps.
+dirs=0
+for _root in "$SP/ablate_nobaseline" "$SP/${CCARC3_SWEEP_DIR:-clean_rollouts}" "$SP"/rerun_*; do
+    [ -d "$_root" ] || continue
+    dirs=$(( dirs + $(ls -1 "$_root" 2>/dev/null | wc -l) ))
+done
 rerun=$([ -d "$SP/rerun_losses" ] && echo yes || echo no)
 
 # A boot_id we have logged before means the same kernel boot -- so the session
