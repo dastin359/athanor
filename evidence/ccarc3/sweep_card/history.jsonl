@@ -1,0 +1,9 @@
+{"card_id": "C1", "event": "opened", "at": 1786270528.7906435}
+{"card_id": "DEAD", "event": "retired", "at": 1786270528.7961237, "games_lost": 0, "reason": "404: card_id not found"}
+{"card_id": "FRESH", "event": "opened", "at": 1786270528.796451}
+{"card_id": "card-A", "event": "retired", "at": 1786270538.7101421, "games_lost": 1, "reason": "404 not found"}
+{"card_id": "card-A", "event": "retired", "at": 1786270538.7125182, "games_lost": 0, "reason": "404 not found"}
+{"card_id": "card-B", "event": "opened", "at": 1786270538.7127135}
+{"card_id": "card-A", "event": "retired", "at": 1786270538.7159793, "games_lost": 1, "reason": "404 not found"}
+{"card_id": "card-A", "event": "retired", "at": 1786270538.7163336, "games_lost": 1, "reason": "404 not found"}
+{"card_id": "card-A", "event": "retired", "at": 1786270538.7165215, "games_lost": 1, "reason": "404 not found"}
