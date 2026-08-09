@@ -104,8 +104,18 @@ corpus.
   and the stale-proxy incident.
 * **The agent proxy port changes on restart.** Refresh `$SP/proxy_env` from the
   live session's `HTTPS_PROXY` on every check.
-* **Monitors cap at 30 minutes** whatever timeout you request, and die with the
+* **Monitors cap at 30 minutes** whatever timeout you request (`persistent: true`
+  and `timeout_ms: 3600000` both return `timeout 1800000ms`), and die with the
   session. Re-arm them; put durability in a detached process or in git.
+* **`setsid` does not detach a process from a Monitor's death — `ppid 1` does.**
+  It gives a child its own SESSION, not a new PARENT, so a descendant sweep
+  still reaches it. A heartbeat launched with `setsid nohup ... &` from a
+  watchdog died on every 30-minute cycle while `supervisor.sh` and
+  `preserve_evidence.sh` sailed through, and the only visible difference was
+  that field. Launch with a double fork — `( setsid bash "$X" ... & )`, subshell
+  exits at once — and CHECK `ppid`, because a launch line containing `setsid` is
+  not evidence of anything. It also survives a session-worker restart, verified
+  2026-08-09.
 * `git add -A` can sweep in files the preserver wrote mid-commit.
 
 ## Constraints from the operator

@@ -121,6 +121,23 @@ mutation-verified test):
 | a corrupt `rules.json` cannot lose a won run | `session.collect_outcome` | it raised before `result.json` was written |
 | the timeout reaches the solver's children | `session.run_game` | grandchildren kept spending after the kill |
 
+**Three more found 2026-08-09, all aimed at THIS sweep, all the same shape** —
+the sweep-directory name written as a literal in one place and derived from
+`CCARC3_SWEEP_DIR` in another. Under
+`CCARC3_SWEEP_DIR=clean_rollouts_submission` each failed silently:
+
+| what | where | what it would have cost |
+|---|---|---|
+| the restore writes where the driver reads | `restore_clean_rollouts.py` | after a container replacement it restored banked games to `clean_rollouts/` while the driver read `clean_rollouts_submission/`, found nothing, and **re-ran games already on the shared card** — money twice, and a card cannot un-play a game |
+| the rebuild command points at the workspace | `refresh_audit.sh` | the `case` matched the literal, so a renamed sweep fell through to the flat arm and emitted `--ingest <game dir>`, which holds only `clean_result.json` — the audit announces new results and the artifact never changes |
+| the ledger records this arm at all | `snapshot_results.py` | its batch list was written for the arms of the day; **25 banked games, zero rows**. Recovering them added 30 |
+
+**Also new: the supervisor now refuses to launch without a usable key.** It
+sourced `$SP/arc3/.env` unchecked in a file with no `set -e`, so a fresh
+container — where the scratchpad has reverted and the key is deliberately not in
+the repo — would launch a runner that 401s every action, and relaunch it every
+ten minutes. `key_ok` checks the VALUE, not the file.
+
 **Watch during the sweep:** `lf52` (7/10, E=0.4537 — the biggest recoverable
 loss) and `bp35` (0.7252, the only sub-1.0 in the publishable set).
 
@@ -162,15 +179,32 @@ Three passes, ~60 commits, all pushed to
 
 ## §F. Environment and daemons
 
-Four long-lived processes, all checked argv-element-exact (**never `pgrep -f`** —
-it matches this session's own CLI, and once killed a live monitor):
+**Five** long-lived processes, all checked argv-element-exact (**never
+`pgrep -f`** — it matches this session's own CLI, and once killed a live
+monitor; on 2026-08-09 it was still in `supervisor.sh`'s orphan sweep, matching
+6 live pids against 0 for the argv-exact form, because the scratchpad path
+itself contains `claude-0`):
 
 | process | role | if down |
 |---|---|---|
 | `tools/supervisor.sh` | relaunches the runner every 10 min under the quota ceiling | `setsid nohup bash tools/supervisor.sh >> $SP/supervisor.log 2>&1 < /dev/null &` |
 | `tools/preserve_evidence.sh` | pushes evidence to origin every 300s | same shape |
 | `context_watch.py` | context threshold alarm | see `~/.claude/skills/context-handoff` |
-| `tools/heartbeat.sh` | Monitor-hosted; reports daemon loss and new work | re-arm the Monitor |
+| `tools/heartbeat.sh` | **detached** (`ppid 1`); reports daemon loss and new work | the watchdog relaunches it within 60s |
+| `tools/heartbeat_watch.sh` | Monitor-hosted watchdog over the heartbeat | re-arm the Monitor over **this**, never over `heartbeat.sh` |
+
+**CORRECTED 2026-08-09 — this table used to say `heartbeat.sh` was
+"Monitor-hosted" and to "re-arm the Monitor" on it.** That coupling is what made
+the Monitor's timeout the heartbeat's lifetime: the Monitor expired, took the
+heartbeat with it, and nothing reported the loss, because `daemon_check` lists
+the other three and cannot list itself. Arm the Monitor over
+`heartbeat_watch.sh`; it launches the heartbeat **double-forked** so it
+reparents to init and outlives both the Monitor and a session-worker restart.
+
+`setsid` alone is not enough and looked like it was — it gives a child its own
+SESSION, not a new PARENT, so a descendant sweep still reached it. The field to
+check is `ppid`: the surviving daemons all read **1**. Verified across three
+Monitor timeouts and one worker restart.
 
 **The agent proxy port changes when the session worker restarts.** Long-lived
 daemons keep the value they launched with, so `$SP/proxy_env` must be refreshed
