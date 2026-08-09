@@ -65,7 +65,16 @@ class LevelScore:
 
     @property
     def capped(self) -> bool:
-        """The raw ratio exceeded 1.15 and was clipped — i.e. beat the human."""
+        """The raw ratio exceeded 1.15 and was clipped — i.e. beat the human.
+
+        **Strictly greater, and the boundary is unreachable rather than
+        untested.** A mutation pass flags `>` -> `>=` as surviving; it is an
+        equivalent mutant. No IEEE double squares to exactly 1.15 -- the two
+        nearest candidates give 1.1499999999999997 and 1.1500000000000001 -- so
+        no `(human / agent)` can land on the boundary and the two forms cannot
+        be distinguished by any input. `>` is still the correct spelling: at
+        exactly the cap nothing is clipped, so nothing was capped.
+        """
         return self.completed and (self.human / self.agent) ** 2 > LEVEL_SCORE_CAP
 
 
@@ -160,7 +169,18 @@ def score_environment(
                     f"scored automatically, because 0 would earn the cap."
                 )
             completed += 1
-            score = LEVEL_SCORE_CAP if agent == 0 else min(LEVEL_SCORE_CAP, (human / agent) ** 2)
+            # **`agent == 0` is unreachable, and the branch that handled it said
+            # the opposite of the rule above.** The guard four lines up raises on
+            # `agent <= 0`, so the old ternary --
+            # `LEVEL_SCORE_CAP if agent == 0 else ...` -- could never run. Dead
+            # code is not why it mattered: it implemented, in the line
+            # immediately after, exactly the policy the comment spends a
+            # paragraph refusing ("0 would earn the cap"). Anyone relaxing the
+            # guard to admit a real double advance would have silently inherited
+            # the cap-award instead of making the deliberate decision the guard's
+            # own message demands. Found by mutation: flipping that branch to 0.0
+            # left all 1070 tests green, because nothing can reach it.
+            score = min(LEVEL_SCORE_CAP, (human / agent) ** 2)
 
         weighted_sum += weight * score
         levels.append(LevelScore(level=index, human=human, agent=agent, score=score))
