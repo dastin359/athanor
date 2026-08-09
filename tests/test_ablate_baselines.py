@@ -186,6 +186,14 @@ def test_install_withholds_the_key_and_the_cap_from_the_solver(tmp_path, monkeyp
     the solver's PYTHONPATH.
     """
     monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    # **Set the second name too, or the assertion below cannot fail.** It was
+    # absent from the environment, so `"ARCPRIZE_API_KEY" not in ws.env` was
+    # vacuously true whether or not the strip ran -- and deleting
+    # `env.pop("ARCPRIZE_API_KEY", None)` from build_workspace survived the whole
+    # 1079-test suite. The harness strips two credential names and only one of
+    # them was verified; `ablate_baselines.assert_installed` and
+    # `proofread_trace` both guard the pair, so the project treats it as live.
+    monkeypatch.setenv("ARCPRIZE_API_KEY", "test-key-not-real-either")
     monkeypatch.delenv("CCARC3_PROXY_URL", raising=False)
 
     ab.install()
