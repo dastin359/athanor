@@ -130,6 +130,42 @@ All eleven mutants are now caught, including the two calibration points, whose
 tests carry the table above in their docstrings so the next person to widen the
 window sees what it costs.
 
+## The network gate, mutation-audited (2026-08-09)
+
+`arc_proxy` is the only thing standing between the solver and `/api/games`,
+which returns `baseline_actions` for all 25 environments. Twelve mutants, three
+survivors, all three now closed or explained.
+
+* **`set_budget` drops the session, and the adopted one has to survive it.** A
+  card is reachable only from a session carrying its four `AWSALBAPP-*`
+  stickiness cookies — measured live, 8 of 8 card reads succeed direct and 1 of 8
+  through a shim without them. `proxy_for()` adopts the driver's cookies when a
+  sweep shares a card; `build_without_baselines` then calls `set_budget`, which
+  resets the session so a new game cannot inherit the previous one's pinning. The
+  two coexist only because `_adopted` is stored apart from the live jar and
+  re-seeded. Nothing tested either half, and its own docstring names the hazard:
+  storing them in the jar alone "would make the order of these two calls silently
+  load-bearing". Deleting the reset, collapsing the store, or clearing
+  `_card_is_lent` all passed the suite. This is on task #35's path — a shim that
+  loses its pinning fails its first RESET with `game <id> not found`, a message
+  that names the game and means the session.
+* **The exhaustion refusal must not name the cap.** The cap is the withheld
+  per-level total times `budget_multiple`, and `budget_multiple` defaults to 5.0
+  in this package's source on the solver's `PYTHONPATH`. `CCARC3_MAX_ACTIONS` is
+  popped from the child's environment precisely so the figure stays out of reach;
+  a mutant that formatted the ceiling into the refusal handed it back, and passed
+  all 110 proxy tests.
+* **Equivalent mutant, third of three recorded.** `p.match(path)` →
+  `p.search(path)` in `_allowed` changes nothing, because every `ALLOW` pattern
+  is `^…$` and without `re.MULTILINE` a leading `^` matches only at position 0.
+  That equivalence is a property of the four patterns, not of the code, so the
+  anchoring is now asserted directly — removing either anchor from any pattern is
+  caught, and the `search` mutant stays a documented equivalence rather than an
+  untested coincidence.
+
+(The other two recorded equivalent mutants: `scoring.capped()` `>`→`>=`, and the
+reap deadline `>`→`>=`.)
+
 ## Still open, and not a finding
 
 Task #35, the 25-game sweep onto one shared scorecard, is blocked on quota, not
