@@ -34,6 +34,30 @@ sys.path.insert(0, str(REPO / "src"))
 from athanor.ccarc3 import session as sess  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _own_the_knob():
+    """Restore `CCARC3_MAX_NUDGES` around every test in this file.
+
+    `monkeypatch.delenv(name, raising=False)` records nothing when the variable
+    is already absent, so a test that then calls `enable_nudging()` — which sets
+    it outside monkeypatch's knowledge — leaves it set for the rest of the
+    session. That is what happened: two stream-rotation tests in
+    `test_ccarc3_session.py` began making three launches instead of one and
+    failed on a glob returning the new empty stream first.
+
+    Owning the variable here rather than trusting each test to is the only form
+    that cannot be got wrong by the next test added to this file.
+    """
+    saved = os.environ.get("CCARC3_MAX_NUDGES")
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop("CCARC3_MAX_NUDGES", None)
+        else:
+            os.environ["CCARC3_MAX_NUDGES"] = saved
+
+
 @pytest.fixture
 def harness(tmp_path, monkeypatch):
     """A `run_game` whose launches are recorded instead of spawned."""
