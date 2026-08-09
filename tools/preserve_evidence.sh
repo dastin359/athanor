@@ -217,8 +217,28 @@ preserve_dir() {
 # is the difference between self-healing and silently useless.
 refresh_proxy() { [ -f "$SP/proxy_env" ] && . "$SP/proxy_env"; }
 
+# `--once` runs a single cycle and exits: preserve, commit, push, stop. The
+# preserve half and the restore half have each been tested against a fixture
+# evidence tree written by hand, never against each other -- so the layout
+# `preserve_dir` produces and the layout `restore_clean_rollouts.py` reads have
+# only ever been checked against one person's idea of both. That is not
+# hypothetical here: `preserve_dir`'s own comment records that it used to derive
+# the destination from one directory level, which dropped the batch name and
+# collided every batch's `attempt_1` in one directory. The restore's fixtures
+# would not have noticed.
+#
+# Same move as `rehydrate_box.sh --links-only`, for the same reason: a loop that
+# never exits cannot be exercised except by racing a timeout against it.
+# Referenced as `${ONCE:-0}` everywhere below, never bare: the branch guard and
+# the change gate are both extracted and run as standalone slices by
+# tests/test_preserve_evidence_commits_only_evidence.py under `set -u`, where an
+# unbound variable kills the block before it does anything. Same lesson as
+# `rehydrate_box.sh`'s LINKS_ONLY, learned twice in one night.
+ONCE=0
+[ "${1:-}" = "--once" ] && ONCE=1
+
 mkdir -p "$DEST"
-log "preserving evidence every ${TICK}s -> $DEST"
+[ "${ONCE:-0}" = 1 ] || log "preserving evidence every ${TICK}s -> $DEST"
 
 while true; do
     # **Three hardcoded names, and the submission sweep is not one of them.**
@@ -262,6 +282,7 @@ while true; do
     cur="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo DETACHED)"
     if [ "$cur" != "$BRANCH" ]; then
         log "REFUSING — HEAD is on $cur, not $BRANCH; nothing preserved this cycle"
+        if [ "${ONCE:-0}" = 1 ]; then exit 1; fi
         sleep "$TICK"
         continue
     fi
@@ -343,6 +364,7 @@ live API key appears anywhere under evidence/." -- evidence || {
                     rm -f "$REPO/.git/index.lock"
                     log "  removed a stale .git/index.lock left by the failed commit"
                 fi
+                if [ "${ONCE:-0}" = 1 ]; then exit 1; fi
                 sleep "$TICK"
                 continue
             }
@@ -372,5 +394,6 @@ live API key appears anywhere under evidence/." -- evidence || {
             log "unstaged evidence after the key check refused"
         fi
     fi
+    if [ "${ONCE:-0}" = 1 ]; then exit 0; fi
     sleep "$TICK"
 done
