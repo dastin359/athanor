@@ -84,9 +84,21 @@ def checks() -> list[tuple[str, str, bool]]:
          or "withdrawn" in read("docs/ccarc3_results.md")),
         # -- the rest of the 20 the workflow never adjudicated, worked through
         #    2026-08-07 evening
+        # **This entry required the LEAK to still be there.** It asserted
+        # `"190/h on this level" in DOCTRINE.md`, and 190 is `tn36`'s -- exactly
+        # what 810b72f ("the doctrine leaked two totals") removed, replacing the
+        # `status()` example with the symbolic `a/h ... = a/h`. So the entry went
+        # OPEN the moment the leak was fixed, and anyone "closing" it as written
+        # would have put the figure back.
+        #
+        # Closed now means the figure is ABSENT. That is the property; the
+        # wording around it is not. The general guarantee lives in
+        # tests/test_ccarc3_no_medians_in_source.py, which reads the asset and
+        # compares against the real published medians rather than any literal.
         ("u4 high", "session.ASSETS exports the UNSTRIPPED doctrine; §6 held real medians",
          "(spent, baseline, 0.77)" in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")
-         and "190/h on this level" in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")),
+         and "190/h" not in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")
+         and "190/55" not in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")),
         ("u5 high", "the strip's own comment quoted a real total and its cap",
          "518" not in read("tools/ablate_baselines.py")
          and "2590" not in read("tools/ablate_baselines.py")),
@@ -107,10 +119,18 @@ def checks() -> list[tuple[str, str, bool]]:
          < read("tools/ablate_baselines.py").index("no longer contains the conditional")),
         ("u10 low", "the 403 body named a figure equal to the cap",
          "exhausted after" not in read("src/athanor/ccarc3/arc_proxy.py")),
+        # The tn36 clause was superseded by a LATER correction, not regressed:
+        # fbf8887 ("four figures that did not follow from their own evidence")
+        # changed "five runs on record: one cleared 5 of 7 and the rest cleared
+        # all" to "six runs. One cleared 5 of 7 and one cleared 6 of 7". This
+        # entry kept asserting the pre-correction text, so a fix that improved
+        # the doctrine reopened the finding that the doctrine was wrong.
         ("u11 low", "four doctrine arithmetic errors",
          all(x in read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")
              for x in ("the rule is 20/0", "being slow on the\nlast one",
-                       "almost one action in three", "`tn36` has five runs"))),
+                       "almost one action in three", "`tn36` has six runs"))
+         and "`tn36` has five runs" not in
+             read("src/athanor/ccarc3/assets/CCARC3_DOCTRINE.md")),
         ("u12 low", "25 evidence directories held only a copy of HEAD",
          not list(pathlib.Path(REPO, "evidence/ccarc3/clean_rollouts")
                   .glob("*/client.py.gz"))),
