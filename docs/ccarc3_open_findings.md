@@ -166,6 +166,91 @@ survivors, all three now closed or explained.
 (The other two recorded equivalent mutants: `scoring.capped()` `>`→`>=`, and the
 reap deadline `>`→`>=`.)
 
+## The three solver-facing modules, mutation-audited (2026-08-09)
+
+`grids.py`, `rules.py` and `ledger.py` were the last on-path modules with line
+coverage and no mutation audit. **95 mutants** across the three, all of them
+kept in `tools/mutation_battery_ccarc3.py` so the audit can be re-run rather
+than believed; 27 survived the suite as written. **Four were real defects; the rest were test holes.** The
+split is worth stating that way round, because "the module was correct and
+nothing was checking it" is the ordinary outcome here and is still worth the
+work: an unchecked correct module is one edit away from an unchecked wrong one.
+
+### The four defects
+
+1. **`grids.logical()` returned the caller's own array on one of its two
+   branches.** It copies when it reduces and aliased when it does not, so which
+   contract applied was a property of the *data*. A solver writing to the result
+   was writing to the ledger's frame. The aliasing branch is the one real games
+   take — a board scaled into the 64×64 viewport rarely has an integer block
+   factor, which the function and the doctrine both already say — and the
+   copying branch is the one an `np.kron` fixture takes, which is why the tests
+   only ever saw the safe half. `collapse()` had the same split on its
+   empty-grid branch. Both now always return a fresh array.
+
+2. **`grids.cell_boundaries()` pooled frames of different shapes silently**, and
+   bounded the answer by whichever frame came last. It is documented to take a
+   whole trace and ARC-AGI-3 changes board shape at a level boundary, so the
+   ordinary call was also the broken one. Measured: a 12×12 frame with a
+   boundary at row 6, pooled with a 6×6 frame, returned `[0, 3]` — the 12×12's
+   real boundary dropped for being out of range of a board it never belonged
+   to, and the survivor reported as an index into the wrong frame. It now
+   refuses, for the reason `diff()` already refuses a shape change.
+
+3. **`ledger.TraceWriter.append()` recorded score 0 for a frame carrying
+   `score: None` beside a real `levels_completed`.** The fallback was keyed on
+   key-absence (`frame.get("score", fallback)`), not on value-absence, so the
+   compatibility seam between `arc_agi_3`'s `score` and `arcengine`'s
+   `levels_completed` had a third door its own code comment did not cover. The
+   blast radius is larger than it looks: `infer_levels` reads score increments
+   as level boundaries, so a zeroed score collapses every level in a trace into
+   level 0.
+
+4. **`counts` was missing from `grids.__all__` and `ledger_facts` from
+   `session.__all__`.** Harmless only by luck — `ccarc3/__init__` imports by
+   name, which ignores `__all__` — but that is the *fifth* stale enumerated list
+   in this repo. Replaced with the derived rule rather than a sixth manual
+   entry: anything the package exports must be exported by the module defining
+   it, and no module may promise a name it does not have.
+
+### The test holes worth naming
+
+`rules.py` had no code defects at all, and four of its seven survivors were the
+exact failure the module exists to prevent, in the places nothing checked:
+
+- `VerifyResult.vacuous` reading `holds == 0` instead of `applicable == 0`
+  relabels a **refuted** rule as "never applicable" — the module's founding
+  distinction, inverted, passing every test.
+- `PredictionReport.perfect` without its `correct > 0` clause reports a forward
+  model that declined every transition as perfect. The docstring tells solvers
+  `perfect` is the thing to chase.
+- `PredictionReport.accuracy` counting skips in the denominator punishes a model
+  for declining honestly.
+- `regressions()` broadened from "applicable and violated" to "not vacuous"
+  fires on a mechanic that is **working**. Its own docstring says why that is
+  fatal — "a boolean predicate would have fired on both and trained everyone to
+  ignore the alarm" — and nothing made it stay quiet. There is now a test that
+  runs a four-rule book where nothing is wrong and asserts silence.
+
+In `ledger.py`, `load()` chained `before` from `grids[-1]`; taking `grids[0]`
+passed everything, because the two agree until an action renders more than one
+frame — which `grids.py` opens by warning is the normal case. And
+`TraceWriter.append` could stop writing `full_reset` altogether without a single
+failure, a flag that `board_replaced` and `level_pace` both read.
+
+### Three of my own new tests survived their mutants
+
+Written to kill a specific mutant, they passed against it. The instructive one:
+`monotone_rows`' threshold defaults to 0.9, and a nine-of-ten fixture sits
+*exactly* on it, so the test passed whether or not the skipped pair was counted
+in the denominator. The fixture agreed with the mutant. Same defect as the ones
+above, one level up — which is the argument for running the battery against new
+tests too, not just against old code.
+
+**Totals: 95 mutants, 93 caught, 2 equivalent and argued below.** Re-verify
+with `.venv/bin/python tools/mutation_battery_ccarc3.py`, which exits non-zero
+on any survivor it is not expecting.
+
 ## Equivalent mutants, recorded rather than tested around (2026-08-09)
 
 A mutant that survives is either a gap in the tests or a change that cannot alter

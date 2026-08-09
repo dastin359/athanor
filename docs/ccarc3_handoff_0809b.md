@@ -299,11 +299,16 @@ derive-don't-enumerate change made to `rehydrate_box.sh` and `snapshot_results.p
 2. **`surface_digest` excludes `client.py` and the child environment**, because
    stored digests are historical and cannot be recomputed. "Same digest" does not
    mean "identical solver surface".
-3. **Three solver-facing modules have never been mutation-audited** — only line
-   covered: `src/athanor/ccarc3/grids.py` (what the solver sees of the board),
-   `rules.py`, and `ledger.py` (which writes `trace.jsonl`, from which every
-   downstream number is derived). **This is the highest-value remaining audit
-   work and it costs no quota.**
+3. ~~**Three solver-facing modules have never been mutation-audited.**~~
+   **Done 2026-08-09** — `grids.py`, `rules.py` and `ledger.py` are audited:
+   95 mutants, 4 code defects fixed, 27 test holes closed, 2 equivalent mutants
+   argued. The battery is committed as `tools/mutation_battery_ccarc3.py` and
+   re-runs in about five minutes. See §3 "The solver-facing modules" below and the commits
+   `89f31a4`, `55c6990`, `dfe0be6`. Nothing solver-facing in `ccarc3/` is now
+   unaudited. The remaining unaudited surface is `client.py` and `scoring.py`,
+   which were audited earlier by a different route (the network gate and the
+   card-scoring probes) but never with a full mutant battery — a reasonable
+   next target, and it also costs no quota.
 4. `coverage` is not installed in every container's venv. Do not assume it.
 
 ---

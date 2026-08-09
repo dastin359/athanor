@@ -99,7 +99,17 @@ Check, do not assume — `AUTOPILOT.md` has the argv-exact liveness idiom.
 
     python tools/verify_audit_findings.py     # 32 findings, exits 1 if any reopened
     python tools/leak_exposure.py             # preserved streams vs known leak strings
-    python -m pytest tests/ -q                # ~713
+    .venv/bin/pytest -q                       # 1332 passing as of 2026-08-09
+
+**A green suite is not the same as an audited module.** Every module on the run
+path has now been mutation-audited with `tools/mutation_check.py`, including the
+three solver-facing ones done 2026-08-09 (`grids.py`, `rules.py`, `ledger.py`:
+95 mutants, 4 defects, 27 test holes; re-run with
+`tools/mutation_battery_ccarc3.py`). To audit something new, write mutants for
+what the tests *claim* to protect and confirm each one fails the suite — a
+mutant that survives is either a gap or an equivalence, and the two must be told
+apart rather than assumed. Run the battery against **new** tests too: three of
+mine passed against the very mutants they were written to kill.
 
 **Run them. Do not answer from memory** — that produced two wrong answers in one
 session, both of the form "I edited that file" standing in for "I fixed that
@@ -107,14 +117,17 @@ finding".
 
 ## The failure mode this project keeps producing
 
-**A guard that checks a proxy for the thing rather than the thing.** Nine
+**A guard that checks a proxy for the thing rather than the thing.** Eleven
 instances so far: a plaintext grep over a gzipped tree; an exit code read as a
 verdict; a digest presented as a date filter; depth-and-cost used for an RHAE
 maximum; a leak scan over only the files it had just edited; a liveness check
 whose pattern matched its own command line; a median test that read comments and
 strings while the array sat in code; a docstring guard that matched prose near
 the code instead of the code; `session.ASSETS` exporting the unstripped doctrine
-while every check read the stripped workspace copy.
+while every check read the stripped workspace copy; an `np.kron` fixture that
+exercised only the copying half of a function whose other half aliased the
+caller's frame; a nine-of-ten fixture sitting exactly on a 0.9 threshold, so it
+agreed with the mutant it was written to kill.
 
 When adding a check, **mutation-test it**: break the thing, confirm it fires.
 

@@ -165,6 +165,15 @@ def _grids(frame_field: Sequence[Any]) -> list[np.ndarray]:
     return [as_grid(g) for g in frame_field]
 
 
+def _score_of(frame: dict[str, Any]) -> int:
+    """The frame's level count, under either of the two names it goes by."""
+    for key in ("score", "levels_completed"):
+        value = frame.get(key)
+        if value is not None:
+            return int(value)
+    return 0
+
+
 class TraceWriter:
     """Appends one record per action to a JSONL ledger.
 
@@ -197,9 +206,15 @@ class TraceWriter:
             # arcengine 0.9.3 renamed `score` to `levels_completed`; arc_agi_3
             # 0.0.1 still sends `score`. Reading only one of them silently
             # records zero for every frame the other produced.
-            "score": int(
-                frame.get("score", frame.get("levels_completed", 0)) or 0
-            ),
+            #
+            # Keyed on the *value*, not on the key. `frame.get("score", fallback)`
+            # only reaches the fallback when the key is absent, so a frame
+            # carrying `score: None` beside a real `levels_completed` recorded 0
+            # -- the same silent zero the paragraph above is about, through the
+            # third door. A zeroed score is not a small error: `infer_levels`
+            # reads score increments as level boundaries, so every level in the
+            # trace collapses into level 0.
+            "score": int(_score_of(frame)),
             "state": str(frame.get("state", "NOT_PLAYED")),
             "full_reset": bool(frame.get("full_reset", False)),
             "available_actions": [
