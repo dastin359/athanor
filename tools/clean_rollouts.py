@@ -760,7 +760,29 @@ def main() -> int:
     return 0
 
 
-MAX_PASSES = 12
+# **Overridable, because a validation run is not a sweep.** A game cut short by
+# a container replacement is retried, and the bound on that is the only thing
+# between one authorised game and twelve paid-for attempts at it. `bp35`'s prior
+# is 3.9 hours; this box was replaced 2.5 hours ago. Twelve is right for a
+# 25-game sweep that must finish; it is not right for a single smoke test, and
+# the difference belongs to whoever launches it rather than to this file.
+#
+# Same shape as `CCARC3_CONCURRENCY` below, and read the same way.
+def _max_passes() -> int:
+    raw = os.environ.get("CCARC3_MAX_PASSES", "")
+    try:
+        n = int(raw)
+    except ValueError:
+        if raw:
+            print(f"CCARC3_MAX_PASSES={raw!r} is not a number; using 12", flush=True)
+        return 12
+    if n < 1:
+        print(f"CCARC3_MAX_PASSES={n} is below one pass; using 1", flush=True)
+        return 1
+    return n
+
+
+MAX_PASSES = _max_passes()
 
 
 # **Two at a time, not eight, and tunable without a restart.**
