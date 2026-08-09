@@ -170,7 +170,7 @@ reap deadline `>`→`>=`.)
 
 A mutant that survives is either a gap in the tests or a change that cannot alter
 behaviour. Conflating the two is how a suite acquires tests that assert
-coincidences, so the four found so far are written down with the argument for
+coincidences, so the six found so far are written down with the argument for
 each:
 
 | mutation | why it cannot change the answer |
@@ -179,8 +179,10 @@ each:
 | the card-reap deadline `>` → `>=` | same, at a one-second granularity nothing observes |
 | `arc_proxy._allowed` `p.match` → `p.search` | every `ALLOW` pattern is `^…$` and no pattern is `MULTILINE`, so `^` matches only at position 0. The anchoring is now asserted directly, so the equivalence is held rather than assumed. |
 | `clean_rollouts._outstanding` dropping the `GAMES.index` tie-break | the generator yields in `GAMES` order and `sorted` is guaranteed stable, so equal attempt counts already retain it |
+| `grids.collapse` dropping `.copy()` on `arr[:, keep_cols]` | numpy *advanced* indexing always returns a copy, so the call is belt-and-braces; verified with `np.shares_memory` and `.base is None`. Note this does **not** extend to the sibling `arr[::k, ::k]` in `logical`, which is basic slicing and does alias -- the two look alike and behave oppositely. |
+| `grids.cell_boundaries` `r < height` → `r <= height` | a boundary is `j + 1` for `j` at most `height - 2`, so none can reach `height`. **This became equivalent only when the ragged-input guard landed**: with mixed shapes a boundary from a taller frame could equal the shorter frame's height, and the two comparisons differed. It survived as a genuine gap before the fix and as an equivalence after it. |
 
-The last two are the instructive pair: both equivalences are properties of the
+The last two of the original four are the instructive pair: both equivalences are properties of the
 *data* the code runs on, not of the code, so each is only safe while something
 else holds that property. The anchoring is now a test; the `GAMES` ordering is
 stated in the docstring and would have to be broken deliberately.

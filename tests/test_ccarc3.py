@@ -918,6 +918,46 @@ def test_a_level_without_a_published_baseline_is_omitted():
     assert level_pace(ts, [22, 20]) == {}
 
 
+def test_a_zero_baseline_is_omitted_rather_than_divided_by():
+    """A published list can carry a 0; the ratio would be a ZeroDivisionError.
+
+    Dropping the truthiness check on ``baselines[level]`` survived the suite --
+    nothing had ever handed this function a zero.
+    """
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]),
+          _tr(1, 1, "ACTION1", [[0]], [[1]])]
+    assert level_pace(ts, [0, 20]) == {1: (1, 20, 0.05)}
+
+
+def test_a_negative_level_does_not_index_the_baselines_from_the_end():
+    """``level < len(baselines)`` alone is true for -1, which is Python's *last*
+    baseline -- a level would silently borrow another level's denominator."""
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, -1, "ACTION1", [[0]], [[1]])]
+    assert level_pace(ts, [22, 20]) == {}
+
+
+def test_the_cut_is_the_last_full_reset_not_the_first():
+    """Two restarts in one trace: only the final playthrough counts.
+
+    Cutting at the *first* reset still drops the opening attempt, so a
+    single-restart fixture -- the one already here -- cannot tell the two
+    apart. It takes two.
+    """
+    from athanor.ccarc3 import level_pace
+
+    ts = [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(8)]
+    ts.append(_tr(0, 0, "RESET", [[1]], [[0]], full_reset=True))
+    ts += [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(5)]
+    ts.append(_tr(0, 0, "RESET", [[1]], [[0]], full_reset=True))
+    ts += [_tr(0, 0, "ACTION1", [[0]], [[1]]) for _ in range(2)]
+    spent, base, _ = level_pace(ts, [10])[0]
+    assert (spent, base) == (3, 10), "the second restart plus 2, not 9 and not 16"
+
+
 def test_cell_boundaries_rejects_a_single_grid_with_a_useful_message():
     """It takes an iterable of grids; one 2-D array iterates its rows instead.
 
