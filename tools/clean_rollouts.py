@@ -179,6 +179,33 @@ GAMES = [
     "dc22-fdcac232",   # 6 levels, 1228
     "re86-8af5384d",   # 8 levels, 1255
 ]
+
+# **Scoping the sweep to named games, opt-in and loud.** `GAMES` is the full
+# 25-environment benchmark and there was no way to run a subset -- so a sweep
+# interrupted at game 14 could only be resumed by re-running the whole list and
+# leaning on the skip-if-banked guard, and a single-game validation of the
+# harness could not go through this driver at all.
+#
+# `CCARC3_ONLY` takes comma-separated ids or 4-character prefixes. Unset, this
+# is a no-op and `GAMES` is byte-identical to the list above -- that property is
+# asserted in the tests, because a filter that silently narrows the submission
+# sweep is far worse than no filter.
+#
+# An expression that matches NOTHING raises. Running zero games and printing
+# "all 25 have a clean run" is precisely the shape of silent success this
+# project keeps finding, and a typo in a prefix is the likely cause.
+_ONLY = [t.strip() for t in (os.environ.get("CCARC3_ONLY") or "").split(",") if t.strip()]
+if _ONLY:
+    _selected = [g for g in GAMES if g in _ONLY or g.split("-")[0] in _ONLY]
+    if not _selected:
+        raise SystemExit(
+            f"CCARC3_ONLY={os.environ['CCARC3_ONLY']!r} matched none of the "
+            f"{len(GAMES)} games. Ids look like 'bp35-0a0ad940'; a bare 'bp35' "
+            f"also works. Refusing to run an empty sweep."
+        )
+    print(f"CCARC3_ONLY: {len(_selected)} of {len(GAMES)} games "
+          f"({', '.join(g.split('-')[0] for g in _selected)})", flush=True)
+    GAMES = _selected
 BUDGET_MULTIPLE = 5.0
 
 # **Long enough for the longest game, not the default 2 h.** The driver inherited
