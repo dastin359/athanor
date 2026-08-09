@@ -10,13 +10,14 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 ## 0. The sixty-second version
 
-- The harness has had a full mutation audit. 1255 tests pass. Every on-path
-  module has been audited; three solver-facing ones have not (§6).
-- A `bp35` validation run is **in flight** as of 06:07 PDT (§1). It may or may
-  not be alive when you read this.
+- The harness has had a full mutation audit. **1332 tests pass.** Every on-path
+  module has now been audited, including the three solver-facing ones (§3). The
+  battery is re-runnable: `tools/mutation_battery_ccarc3.py`.
+- The `bp35` validation run **finished** and banked nothing — both attempts were
+  discarded by two different guards, both correctly (§1). No run is in flight.
 - Weekly quota is at **0.96** and resets **2026-08-10 21:00 PDT**. Until then
   there is almost nothing to spend.
-- The big outstanding job is **task #35: the 25-game sweep onto one shared
+- The big outstanding job is **the 25-game sweep onto one shared
   scorecard** (§8). It is blocked on quota, not on the code.
 - The single most important habit: **when you think you have finished auditing,
   you have not.** See §4.
@@ -27,8 +28,8 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 | | |
 |---|---|
-| HEAD | `4870465` (plus preserver commits after it) |
-| Tests | 1255 passed, 5 skipped, 1 xfailed |
+| HEAD | `ea0c63c` (plus preserver commits after it) |
+| Tests | 1332 passed, 5 skipped, 1 xfailed |
 | Weekly quota | `util=0.96`, resets **2026-08-10 21:00 PDT** |
 | Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh`, all ppid 1 |
 | Banked | 25/25 games in `clean_rollouts`, one card per game |
@@ -417,7 +418,7 @@ python3 tools/build_trace_audit.py --ingest <run_dir>
 
 ---
 
-## 8. Task #35 — the 25-game sweep onto one shared scorecard
+## 8. The 25-game sweep onto one shared scorecard
 
 The remaining substantive experiment. A leaderboard submission takes one
 `scorecard_url`, so all 25 games must land on one card.

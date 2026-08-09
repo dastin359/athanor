@@ -146,7 +146,7 @@ survivors, all three now closed or explained.
   re-seeded. Nothing tested either half, and its own docstring names the hazard:
   storing them in the jar alone "would make the order of these two calls silently
   load-bearing". Deleting the reset, collapsing the store, or clearing
-  `_card_is_lent` all passed the suite. This is on task #35's path — a shim that
+  `_card_is_lent` all passed the suite. This is on the sweep's path — a shim that
   loses its pinning fails its first RESET with `game <id> not found`, a message
   that names the game and means the session.
 * **The exhaustion refusal must not name the cap.** The cap is the withheld
@@ -274,6 +274,6 @@ stated in the docstring and would have to be broken deliberately.
 
 ## Still open, and not a finding
 
-Task #35, the 25-game sweep onto one shared scorecard, is blocked on quota, not
+The 25-game sweep onto one shared scorecard is blocked on quota, not
 on any of the above. The four sweep-relevant fixes here (3, 7, 15, and the
 `attempt_1` hole) all land before it runs.
