@@ -270,3 +270,53 @@ def test_the_files_explanation_survives_the_refresh(tmp_path):
         f"the refresh ate the file's explanation:\n{body}"
     )
     assert body.count("export https_proxy=") == 1, "the lowercase alias was duplicated"
+
+
+# --- the launch brake -------------------------------------------------------- #
+
+def test_an_engaged_launch_brake_is_reported(tmp_path):
+    """`concurrency` holding 0 means "start nothing", and it reverts with the box.
+
+    A `0` written during a launch freeze on 2026-08-07 was restored by the 02:44
+    replacement on 2026-08-09 and silently held a `bp35` validation run: driver
+    alive at ppid 1, "pass 1/2", no workspace, no solver, no error line. The
+    driver announces it now too, but a replacement recovery is where you find out
+    *before* spending a launch on it.
+    """
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    (scratch / "concurrency").write_text("0", encoding="utf-8")
+
+    out = _rehydrate(scratch)
+
+    assert "LAUNCH BRAKE ENGAGED" in out, f"the brake was not reported:\n{out}"
+    assert str(scratch / "concurrency") in out, "the report did not name the file"
+
+
+def test_the_brake_is_reported_never_cleared(tmp_path):
+    """A brake is an operator decision; this script is not the operator."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    (scratch / "concurrency").write_text("0", encoding="utf-8")
+
+    _rehydrate(scratch)
+
+    assert (scratch / "concurrency").read_text(encoding="utf-8").strip() == "0", (
+        "rehydration released a launch freeze on its own"
+    )
+
+
+def test_a_released_brake_is_not_reported(tmp_path):
+    """An always-on warning is one people stop reading."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    (scratch / "concurrency").write_text("2", encoding="utf-8")
+
+    assert "BRAKE" not in _rehydrate(scratch)
+
+
+def test_no_control_file_is_not_a_brake(tmp_path):
+    """Absent means "use the default", which is 2, not 0."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    assert "BRAKE" not in _rehydrate(scratch)

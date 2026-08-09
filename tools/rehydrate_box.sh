@@ -190,6 +190,24 @@ fi
 # return 1 -- and tests/test_rehydrate_reports_what_it_did.py runs step 2 as a
 # standalone slice and asserts it exits 0. A guard that changes the status of the
 # thing it guards is the same trap as the one this file's step 1 comment is about.
+# 2c. Report an engaged launch brake.
+#
+# `scratchpad/concurrency` holding `0` means "start nothing", and it is honoured
+# exactly. It also lives in the store that reverts, so a freeze set days ago comes
+# back from the dead on a replacement and holds every launch after it. That is not
+# hypothetical: a `0` written on 2026-08-07 during a launch freeze was restored by
+# the 02:44 replacement on 2026-08-09 and silently held a `bp35` validation run --
+# driver alive, "pass 1/2", no workspace, no solver, no error.
+#
+# Deliberately reported, never cleared. A brake is an operator decision and this
+# script is not the operator; what it can do is make sure nobody launches into one
+# without being told.
+brake="$(cat "$SP/concurrency" 2>/dev/null || true)"
+if [ "${brake:-}" = "0" ]; then
+    echo "  rehydrate: LAUNCH BRAKE ENGAGED — $SP/concurrency says 0, so any driver"
+    echo "             started now will hold and play nothing. Raise it to release."
+fi
+
 if [ "${LINKS_ONLY:-0}" = 1 ]; then exit 0; fi
 
 # 3+4. Fingerprint and banked results.

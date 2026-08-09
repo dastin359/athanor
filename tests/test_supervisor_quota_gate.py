@@ -129,10 +129,28 @@ def _extract(func: str) -> str:
 
 
 def _limit() -> str:
-    """The operator's ceiling, read from the script instead of hardcoded here."""
-    m = re.search(r"^LIMIT=([0-9.]+)", SUPERVISOR.read_text(encoding="utf-8"), re.M)
-    assert m, "no LIMIT= in supervisor.sh"
-    return m.group(1)
+    """The operator's ceiling, read from the script instead of hardcoded here.
+
+    **Evaluated, not pattern-matched.** This was `re.search(r"^LIMIT=([0-9.]+)")`,
+    which reads the number only while the number is written literally. The moment
+    the ceiling became a per-run knob -- `LIMIT="${CCARC3_QUOTA_LIMIT:-0.98}"` --
+    the regex matched nothing and four tests failed on an assertion about the
+    file's *spelling* rather than about the ceiling.
+
+    Running the line is the version that survives its form: it yields the real
+    default with no override set, and it would keep working if the default moved
+    into a function or a config file tomorrow. The env is emptied deliberately so
+    a launching shell that happens to export the override cannot change what the
+    suite believes the default is.
+    """
+    line = next((ln for ln in SUPERVISOR.read_text(encoding="utf-8").splitlines()
+                 if ln.startswith("LIMIT=")), "")
+    assert line, "no LIMIT= in supervisor.sh"
+    proc = subprocess.run(["bash", "-c", line + '\nprintf "%s" "$LIMIT"'],
+                          capture_output=True, text=True, check=True,
+                          env={"PATH": "/usr/bin:/bin"})
+    assert proc.stdout.strip(), f"LIMIT line yielded nothing: {line!r}"
+    return proc.stdout.strip()
 
 
 def _clean_env(home: Path) -> dict[str, str]:

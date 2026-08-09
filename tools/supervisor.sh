@@ -67,8 +67,23 @@ esac
 LOG="$SP/$(basename "$RUNNER" .py).log"
 # Repo first: the scratchpad copy is whatever the image snapshot held.
 QUOTA="$REPO/tools/quota.sh"; [ -f "$QUOTA" ] || QUOTA="$SP/quota.sh"
-LIMIT=0.98          # operator's ceiling, raised from 0.95 on 2026-08-03
-RESUME=0.90         # after a *ceiling* stop, wait for util to fall below this
+# **Overridable, because the ceiling is an operator decision taken per run, not a
+# property of the code.** Raised from 0.95 to 0.98 on 2026-08-03 by editing this
+# line, which is how a temporary choice becomes a permanent one -- the next
+# operator inherits a number nobody chose for their situation.
+#
+# The case that forced the knob: on 2026-08-09 a `bp35` validation run was
+# authorised at a reported util of 0.77, and that reading turned out to be 43
+# hours stale -- the true figure was 0.96. `bp35` needs 4.86 hours, so the
+# ceiling would have stopped it partway, and `clean_rollouts` DISCARDS an
+# interrupted attempt rather than scoring it. Stopping at the ceiling there
+# spends the quota and banks nothing, which is the worst of both outcomes.
+#
+# Lifting it is not free, and the log says so at launch: above ~0.98 the brake
+# stops being this loop and becomes the API's own rate limiting, which arrives
+# without a polite stop and interrupts the run anyway.
+LIMIT="${CCARC3_QUOTA_LIMIT:-0.98}"    # operator's ceiling
+RESUME="${CCARC3_QUOTA_RESUME:-0.90}"  # after a *ceiling* stop, wait for util to fall below this
                     # before restarting. Without the hysteresis the loop would
                     # kill the runner at 0.98 and restart it one second later,
                     # churning a game per cycle at the ceiling.
@@ -277,6 +292,14 @@ start() {
     cd "$REPO" || return
     setsid nohup .venv/bin/python "$RUNNER" >> "$LOG" 2>&1 < /dev/null &
 }
+
+# Say the ceiling out loud, once, at start. A raised ceiling must not be
+# discoverable only by reading the process environment.
+if [ "$LIMIT" != "0.98" ] || [ "$RESUME" != "0.90" ]; then
+    echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') CEILING RAISED — stopping at util >= $LIMIT," \
+         "resuming below $RESUME (defaults 0.98/0.90). Above ~0.98 the brake is the" \
+         "API's own rate limiting, which does not stop politely."
+fi
 
 ceiling_stopped=0
 

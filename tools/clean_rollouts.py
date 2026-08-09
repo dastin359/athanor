@@ -837,7 +837,19 @@ def concurrency() -> int:
 
 _slots = threading.Condition()
 _running = 0
-_last_limit = 0
+# **`None`, not 0, and this cost a launch.** The gate reports the limit only when
+# it *changes* from this, so a sentinel of 0 is indistinguishable from a real
+# limit of 0 -- and 0 is the value that means "hold, start nothing". A driver
+# launched against an engaged brake therefore parked in `_take_slot` and printed
+# nothing at all: the one line that says why it is not working is suppressed in
+# exactly the case where it is needed.
+#
+# Measured 2026-08-09. `scratchpad/concurrency` held `0` from a launch freeze on
+# Aug 7, the container was replaced and the snapshot restored it, and a `bp35`
+# validation run sat silent for fifteen minutes looking like a slow start. The
+# file the brake lives in is in the store that reverts, so a freeze set days ago
+# comes back from the dead and holds every launch after it.
+_last_limit: int | None = None
 _waiting: set[int] = set()
 
 # **The abort has to be a flag, because an exception cannot reach a sibling.**
@@ -893,9 +905,13 @@ def _take_slot(gid: str, rank: int) -> None:
                 raise _Aborted()
             limit = concurrency()
             if limit != _last_limit:
-                print(f"    concurrency = {limit}"
-                      f"{' (was ' + str(_last_limit) + ')' if _last_limit else ''}",
-                      flush=True)
+                was = "" if _last_limit is None else f" (was {_last_limit})"
+                # 0 is a brake, not a small number, so it says what it means and
+                # where to release it. A reader who sees "concurrency = 0" and
+                # nothing else has to know this file exists to act on it.
+                held = (f" — holding, nothing will start until "
+                        f"{CONCURRENCY_FILE} says more than 0" if limit == 0 else "")
+                print(f"    concurrency = {limit}{was}{held}", flush=True)
                 _last_limit = limit
             if _running < limit and rank == min(_waiting):
                 _waiting.discard(rank)
