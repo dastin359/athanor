@@ -10,13 +10,14 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 ## 0. The sixty-second version
 
-- The harness has had a full mutation audit. **1332 tests pass.** Every on-path
-  module has now been audited, including the three solver-facing ones (§3). The
-  battery is re-runnable: `tools/mutation_battery_ccarc3.py`.
+- The harness has had a full mutation audit. **1355 tests pass.** Every on-path
+  module has now been audited, including the three solver-facing ones and the
+  card-facing half of `scoring.py` (§3) — 120 mutants. The battery is
+  re-runnable: `tools/mutation_battery_ccarc3.py`.
 - The `bp35` validation run **finished** and banked nothing — both attempts were
   discarded by two different guards, both correctly (§1). No run is in flight.
-- Weekly quota is at **0.96** and resets **2026-08-10 21:00 PDT**. Until then
-  there is almost nothing to spend.
+- Weekly quota is at **0.98** and resets **2026-08-10 21:00 PDT**. Until then
+  there is almost nothing to spend; the supervisor is braked at its 0.98 ceiling.
 - The big outstanding job is **the 25-game sweep onto one shared
   scorecard** (§8). It is blocked on quota, not on the code.
 - The single most important habit: **when you think you have finished auditing,
@@ -28,9 +29,9 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 | | |
 |---|---|
-| HEAD | `ea0c63c` (plus preserver commits after it) |
-| Tests | 1332 passed, 5 skipped, 1 xfailed |
-| Weekly quota | `util=0.96`, resets **2026-08-10 21:00 PDT** |
+| HEAD | `4fa7811` (plus preserver commits after it) |
+| Tests | 1355 passed, 5 skipped, 1 xfailed |
+| Weekly quota | `util=0.98`, resets **2026-08-10 21:00 PDT** |
 | Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh`, all ppid 1 |
 | Banked | 25/25 games in `clean_rollouts`, one card per game |
 
@@ -154,9 +155,10 @@ the mutant that reintroduces the bug is confirmed to fail the new test.
 ### The solver-facing modules — mutation-audited
 
 `grids.py`, `rules.py` and `ledger.py` were the last on-path modules with line
-coverage and no mutation audit. **95 mutants, 4 real defects, 27 test holes, 2
-argued equivalences.** The battery is `tools/mutation_battery_ccarc3.py`; run it
-rather than trusting this paragraph.
+coverage and no mutation audit; the card-facing half of `scoring.py` — the code
+the sweep decides on — turned out to be a fourth. **120 mutants, 4 real defects,
+38 test holes, 4 argued equivalences.** The battery is
+`tools/mutation_battery_ccarc3.py`; run it rather than trusting this paragraph.
 
 The four defects, shortest form:
 
@@ -176,6 +178,16 @@ The four defects, shortest form:
 4. `counts` and `ledger_facts` were missing from their modules' `__all__` —
    the fifth stale enumerated list here. Replaced by a derived rule, not a
    sixth entry.
+
+`scoring.py`'s card-facing half had no code defects either, and eleven of its
+25 mutants survived. The two that matter: `score_run` could be made to score the
+**first** play with nothing failing, even though scoring the *last* play was
+caught — every fixture had its best play first or last, so "best" was only
+pinned from one side — and `card_disagreement` could accept a card one level
+behind the result and stay silent, in the one check that does not read our own
+trace. Two source changes came with it: a non-positive `playthroughs` is now
+refused instead of being used as a slice length, and an unreachable guard's
+comment no longer claims to handle a case it cannot reach.
 
 `rules.py` had **no** code defects, and that is worth reading rather than
 skipping: four of its seven survivors were the exact failure the module exists
