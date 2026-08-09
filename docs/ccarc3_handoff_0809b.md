@@ -33,6 +33,43 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 | Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh`, all ppid 1 |
 | Banked | 25/25 games in `clean_rollouts`, one card per game |
 
+### The validation run — finished, nothing banked
+
+`bp35` was run twice in `clean_rollouts_validate` on shared card
+`ac0e1272-4d0e-4d7e-9f9a-e108044123d5`, and the sweep ended
+`NO clean run after 2 passes`. **$50.29 spent, 4h53m of solver time, nothing
+banked locally.** Both attempts were discarded, by two *different* guards, and
+both discards were correct:
+
+| | levels | actions | duration | cost | why discarded |
+|---|---|---|---|---|---|
+| attempt 1 | 6 / 9 | 641 of 3255 | 154 min | $23.74 | **gave up** with 80% of budget unspent — "not a result" |
+| attempt 2 | 7 / 9 | 639 of 3255 | 139 min | $26.55 | **signal 15**, exit 143 — interrupted |
+
+What it established, which is worth more than the $50:
+
+* **The give-up guard works on a live run.** `c25b93d` had never fired outside a
+  test. It fired, refused to bank a non-result, and re-ran the game.
+* **Level 6 is not a capability wall.** Attempt 1 stopped there; attempt 2
+  cleared it and reached level 7 with 81% of its action budget still unspent. So
+  attempt 1's stop was a genuine §0b failure, cleanly separated from "the game is
+  too hard" — which is exactly the separation `clean_rollouts` exists to make.
+* **A session-worker restart kills a `claude` solver but not a shell daemon.**
+  This is the important one. `preserve_evidence.sh`, `supervisor.sh` and
+  `heartbeat.sh` — all `setsid`, all ppid 1 — survived the restart that killed
+  the solver. The driver survived too, long enough to observe its child die and
+  finish its passes. **`setsid` + ppid 1 is not protection for a solver.** The
+  supervisor was not responsible: its log shows no polite stop, and the lifted
+  ceiling held.
+* **`MAX_PASSES=2` was too tight** to absorb one infrastructure event. For a
+  sweep whose games take hours, the retry bound has to exceed the expected number
+  of worker restarts over the sweep's wall clock, or a single restart ends the
+  game.
+
+**On the card, `bp35` stands at 7 of 9** — `levels_completed [4, 6, 4, 7]`, and
+ARC scores the max. The best play is the one we locally refused to bank. See the
+card-versus-discard trap below; this is that divergence, live.
+
 ### The in-flight run
 
 A single-game validation of the repaired harness, launched on explicit operator
@@ -50,16 +87,9 @@ CCARC3_ONLY=bp35 CCARC3_SWEEP_DIR=clean_rollouts_validate CCARC3_MAX_PASSES=2
   instruction, so the run is not stopped at the 0.98 ceiling. **Above ~0.98 the
   brake is the API's own rate limiting, which does not stop politely.**
 
-**If it finished:** score it, write it up in `docs/ccarc3_results.md`, rebuild the
-audit page (§7).
-
-**If it was interrupted:** `clean_rollouts` discards interrupted attempts rather
-than scoring them, so there is nothing to salvage and nothing was corrupted. The
-card above will be named in the history; a fresh sweep in a *new*
-`CCARC3_SWEEP_DIR` is the clean restart.
-
-**Put the ceiling back.** `CCARC3_QUOTA_LIMIT` was a one-run decision. Relaunch
-the supervisor with no override to restore 0.98.
+**Put the ceiling back.** `CCARC3_QUOTA_LIMIT=0.999` was a one-run decision and
+the run is over. The supervisor still carries it — relaunch with no override to
+restore 0.98 / 0.90.
 
 ---
 
