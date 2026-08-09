@@ -183,7 +183,22 @@ while IFS= read -r stamp; do
           args="$args --ingest $a --as $gid@rerun"; break
         done
       fi ;;
-    clean_rollouts)
+    "$CLEAN_ROOT")
+      # **Matched against the variable, not the literal.** `stamps()` emits keys
+      # prefixed with `$CLEAN_ROOT` (line ~133), so under
+      # `CCARC3_SWEEP_DIR=clean_rollouts_submission` this arm read
+      # `clean_rollouts` and did not match -- the key fell through to the flat
+      # `*)` arm and produced `--ingest $SP/<sweep>/<gid>`, the GAME directory,
+      # which holds only `clean_result.json`. `build_trace_audit --ingest` needs
+      # the attempt workspace, with its `result.json` and `trace.jsonl`.
+      #
+      # This file's own header describes fixing precisely this hazard in
+      # `stamps()` -- "the hourly safety net would have watched an empty finished
+      # sweep and reported nothing new through every game of the 25-game run it
+      # exists to catch" -- and the same literal survived here, 55 lines later.
+      # A rebuild command that ingests nothing is the same silence one step on:
+      # the audit reports new results and the artifact never changes.
+      #
       # Point at the attempt whose workspace holds the clean result.
       for a in "$SP/$CLEAN_ROOT/$gid"/attempt_*/"$gid"; do
         [ -f "$a/result.json" ] || continue
