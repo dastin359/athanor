@@ -401,7 +401,16 @@ def score_run(
         score_environment(baselines, actions_per_level(play, len(baselines)))
         for play in plays(transitions)
     ]
-    if not candidates:                       # an empty ledger still deserves a score
+    if not candidates:
+        # **Unreachable today, and kept deliberately rather than as decoration.**
+        # `plays()` always yields at least one list -- its `starts` begins with a
+        # literal 0 -- so an empty ledger arrives here as `[[]]`, one empty play,
+        # and is scored 0.0 by the live path below. The comment that used to sit
+        # on this line ("an empty ledger still deserves a score") described the
+        # branch as the thing that handles that case, which it is not; a reader
+        # relaxing `plays()` to return `[]` would have believed the empty ledger
+        # was already covered. It is covered, by the line below, for a different
+        # reason. Found by mutation: deleting this branch changes nothing.
         return score_environment(baselines, [None] * len(baselines))
     # Rank by score, then by raw so two capped plays are separated by efficiency,
     # then by fewest actions so the choice is deterministic rather than incidental.
@@ -480,6 +489,14 @@ def card_disagreement(scorecard: dict, game_id: str, result: dict) -> str:
     entry = (scorecard.get("cards") or {}).get(game_id) or {}
     done = list(entry.get("levels_completed") or [])
     plays = int(result.get("playthroughs") or 1)
+    if plays < 1:
+        # `or 1` coerces a missing or zero count, and lets a negative through --
+        # where it becomes a *slice length*, silently choosing a different set of
+        # the card's rows to compare. This function is the one check that does
+        # not read our own trace, so a corrupted `result.json` is exactly what it
+        # may be needed to catch; computing a comparison from the corruption is
+        # the one thing it must not do.
+        return f"result claims {plays} playthrough(s), which is not a count"
 
     # **Where this attempt's rows begin, when the attempt recorded it.** Taking
     # the last `plays` rows is right on a per-game card and wrong on a shared

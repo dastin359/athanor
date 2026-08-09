@@ -251,11 +251,72 @@ tests too, not just against old code.
 with `.venv/bin/python tools/mutation_battery_ccarc3.py`, which exits non-zero
 on any survivor it is not expecting.
 
+## The card-facing scoring path, mutation-audited (2026-08-09)
+
+The RHAE core of `scoring.py` carries mutation evidence in its own docstrings.
+The functions added later for **card corroboration** did not, and they are what
+the 25-game shared-scorecard sweep runs through when deciding whether a run may
+be banked. 25 mutants; **11 survived**.
+
+**No code defects** — every pristine behaviour held up under a live probe. All
+eleven were holes, and two are worth naming because of where they sat:
+
+- **`score_run` could be made to score the *first* play and nothing failed**,
+  even though scoring the *last* play was caught. Every fixture in the suite had
+  its best play first or last, so "best" was only ever pinned from one side. The
+  shape that separates best from first, last and worst simultaneously is
+  *middle-is-best*, and no such fixture existed. There is one now.
+- **`card_disagreement` could accept a card one level behind the result, or read
+  the last of an attempt's plays instead of the best, and stay silent.** That
+  function exists because a frozen card once let a run finish 8/8 against a card
+  stuck at level 3 with no other symptom. A hole in it is a hole in the only
+  check independent of our own trace.
+
+The rest: the opening RESET able to open an empty play; both `score_run`
+tie-breaks (efficiency, then fewest actions) unpinned, so the choice between two
+capped plays was incidental rather than deterministic;
+`server_actions_per_level` defaulting to the *first* play rather than the most
+recent — which under a shared card means reading a possibly-discarded earlier
+attempt; the same function able to return `[]` for a missing card instead of
+raising, which would make `disagreements_with_server` compare nothing and report
+agreement, a missing card reading as a clean one; and
+`disagreements_with_server` able to report only the direction where our count
+came in lower.
+
+### The tie-break fixture had to be searched for
+
+`score_run` breaks a score tie on `raw` and then on fewest actions, and those two
+rules almost always agree — higher efficiency normally means fewer actions. A
+fixture where they agree cannot tell them apart, so it cannot kill the mutant
+that deletes one. Rather than assume the mutant was equivalent, the pair was
+found by search: against baselines `[100, 200]`, a play spending `60 + 95`
+actions and one spending `94 + 60` both cap out at the same score, but efficiency
+prefers the first (raw 1.1500 vs 1.1439) and fewest-actions prefers the second
+(154 vs 155). **"I could not construct a discriminating case" is not the same as
+"no case exists"**, and the difference is a search.
+
+### One small correction, and one guard
+
+`score_run`'s `if not candidates:` branch is unreachable — `plays()` always
+yields at least one list, so an empty ledger arrives as `[[]]` and is scored by
+the live path. The branch is harmless, but its comment claimed it was what
+handled the empty ledger, which would have misled anyone relaxing `plays()`. The
+comment now says what is true.
+
+`card_disagreement` coerced a missing or zero `playthroughs` to 1 with `or 1`,
+which let a **negative** through — where it becomes a slice length and silently
+selects a different set of the card's rows to compare. A non-positive count is
+now refused. This function is the one check that does not read our own trace, so
+a corrupted `result.json` is exactly what it may be needed to catch; computing a
+comparison from the corruption is the one thing it must not do.
+
+**Totals: 25 mutants, 23 caught, 2 equivalent and argued below.**
+
 ## Equivalent mutants, recorded rather than tested around (2026-08-09)
 
 A mutant that survives is either a gap in the tests or a change that cannot alter
 behaviour. Conflating the two is how a suite acquires tests that assert
-coincidences, so the six found so far are written down with the argument for
+coincidences, so the eight found so far are written down with the argument for
 each:
 
 | mutation | why it cannot change the answer |
@@ -265,6 +326,8 @@ each:
 | `arc_proxy._allowed` `p.match` → `p.search` | every `ALLOW` pattern is `^…$` and no pattern is `MULTILINE`, so `^` matches only at position 0. The anchoring is now asserted directly, so the equivalence is held rather than assumed. |
 | `clean_rollouts._outstanding` dropping the `GAMES.index` tie-break | the generator yields in `GAMES` order and `sorted` is guaranteed stable, so equal attempt counts already retain it |
 | `grids.collapse` dropping `.copy()` on `arr[:, keep_cols]` | numpy *advanced* indexing always returns a copy, so the call is belt-and-braces; verified with `np.shares_memory` and `.base is None`. Note this does **not** extend to the sibling `arr[::k, ::k]` in `logical`, which is basic slicing and does alias -- the two look alike and behave oppositely. |
+| `scoring.score_run`'s `if not candidates` branch | `plays()` always yields at least one list — its `starts` begins with a literal `0` — so an empty ledger arrives as `[[]]`, one empty play, and is scored by the live path. The branch is a defensive fallback that cannot fire today. Its old comment claimed it was what handled the empty ledger, which was false and would have misled anyone relaxing `plays()`; the comment now says what is true. |
+| `scoring.card_disagreement`'s `else 0` when the play slice is empty | Both paths return early before reaching it: with a known attempt boundary an empty slice gives `0 < plays` and returns, and without one the `len(done) < plays` check has already returned. **This became equivalent only when the non-positive `playthroughs` guard landed** — a negative count was previously usable as a slice length and could empty the slice. Verified exhaustively over every `(done, playthroughs, boundary)` shape up to length 4: zero combinations reach it. |
 | `grids.cell_boundaries` `r < height` → `r <= height` | a boundary is `j + 1` for `j` at most `height - 2`, so none can reach `height`. **This became equivalent only when the ragged-input guard landed**: with mixed shapes a boundary from a taller frame could equal the shorter frame's height, and the two comparisons differed. It survived as a genuine gap before the fix and as an equivalence after it. |
 
 The last two of the original four are the instructive pair: both equivalences are properties of the

@@ -28,7 +28,7 @@ sys.path.insert(0, "tools")
 import mutation_check as mc  # noqa: E402
 
 # Mutants that cannot change behaviour. Argued in docs/ccarc3_open_findings.md.
-EQUIVALENT = {"collapse_alias", "cb_bounds"}
+EQUIVALENT = {"collapse_alias", "cb_bounds", "run_empty_ledger", "cd_empty_is_zero"}
 
 GRIDS = ("src/athanor/ccarc3/grids.py", [
     ("palette_upper", "accept 16 as a legal colour",
@@ -272,6 +272,64 @@ LEDGER = ("src/athanor/ccarc3/ledger.py", [
      "previous = scores[0] if scores else 0", "previous = 0"),
 ])
 
+SCORING = ("src/athanor/ccarc3/scoring.py", [
+    ("plays_opening_reset", "let the opening RESET start an empty play",
+     "if t.full_reset and i > 0", "if t.full_reset"),
+    ("plays_no_implicit_start", "drop the implicit start at 0",
+     "starts = [0] + [i for i, t in enumerate(kept) if t.full_reset and i > 0]",
+     "starts = [i for i, t in enumerate(kept) if t.full_reset and i > 0]"),
+    ("plays_off_by_one", "start each play one transition late",
+     "return [kept[a:b] for a, b in zip(starts, starts[1:] + [len(kept)])]",
+     "return [kept[a + 1:b] for a, b in zip(starts, starts[1:] + [len(kept)])]"),
+    ("run_last_not_best", "score the last play instead of the best",
+     "    return max(\n        candidates,", "    return candidates[-1] or max(\n        candidates,"),
+    ("run_first_not_best", "score the first play",
+     "    return max(\n        candidates,", "    return candidates[0] or max(\n        candidates,"),
+    ("run_min_not_max", "score the worst play",
+     "    return max(\n        candidates,", "    return min(\n        candidates,"),
+    ("run_tiebreak_raw", "drop the raw-efficiency tie-break between two capped plays",
+     "            s.score,\n            s.raw,", "            s.score,\n            0,"),
+    ("run_tiebreak_actions", "drop the fewest-actions tie-break",
+     "            -sum(level.agent or 0 for level in s.levels),", "            0,"),
+    ("run_select_validation", "accept any select string as 'best'",
+     'if select != "best":', 'if select != "best" and False:'),
+    ("run_empty_ledger", "delete the unreachable empty-candidates guard (EQUIVALENT)",
+     "    if not candidates:", "    if False:"),
+    ("run_cumulative_implies_last", "let cumulative fall through to best-of-plays",
+     'if cumulative or select == "last":', 'if select == "last":'),
+    ("sapl_no_diff", "return the server's cumulative counts undifferenced",
+     "out.append(cumulative - previous)", "out.append(cumulative)"),
+    ("sapl_order_guard", "accept levels arriving out of order",
+     "if level - 1 != len(out):", "if level - 1 != len(out) and False:"),
+    ("sapl_default_play", "default to the FIRST play rather than the most recent",
+     "def server_actions_per_level(scorecard: dict, game_id: str, *, play: int = -1)",
+     "def server_actions_per_level(scorecard: dict, game_id: str, *, play: int = 0)"),
+    ("sapl_missing_card", "return [] for a game with no card instead of raising",
+     'if not card:\n        raise KeyError(f"no card for {game_id} in this scorecard")',
+     "if not card:\n        return []"),
+    ("cd_shared_slice", "take the last N rows even when the attempt boundary is known",
+     "        mine = done[before:]", "        mine = done[-plays:]"),
+    ("cd_boundary_ignored", "ignore card_plays_at_open entirely",
+     "    if before >= 0:", "    if False:"),
+    ("cd_short_card_ok", "let a card holding fewer plays than the trace pass",
+     '        if len(mine) < plays:\n            return (f"card holds',
+     '        if False:\n            return (f"card holds'),
+    ("cd_level_ge", "accept a card one level behind the result",
+     "    if best < reached:", "    if best < reached - 1:"),
+    ("cd_best_is_last", "read the last play's level instead of the best",
+     "    best = max(mine) if mine else 0", "    best = mine[-1] if mine else 0"),
+    ("cd_empty_is_zero", "treat an empty play slice as agreeing (EQUIVALENT: unreachable)",
+     "    best = max(mine) if mine else 0", "    best = max(mine) if mine else 10**6"),
+    ("cd_plays_guard", "use a non-positive playthrough count as a slice length",
+     "    if plays < 1:", "    if False:"),
+    ("cd_plays_zero_refused", "refuse a zero or absent count instead of coercing it to one",
+     "    if plays < 1:", "    if plays < 2:"),
+    ("dws_range", "compare past the levels the server has recorded",
+     "for i in range(min(len(theirs), len(ours)))", "for i in range(len(ours))"),
+    ("dws_direction", "only report levels where ours is lower",
+     "if ours[i] != theirs[i]", "if ours[i] < theirs[i]"),
+])
+
 TESTS = [
     "tests/test_ccarc3.py",
     "tests/test_ccarc3_client.py",
@@ -280,9 +338,17 @@ TESTS = [
     "tests/test_pooling_cell_boundaries_across_boards_is_refused.py",
     "tests/test_a_verdict_earned_by_nothing_is_not_a_verdict.py",
     "tests/test_the_ledger_records_what_the_engine_actually_sent.py",
+    "tests/test_the_card_facing_scoring_path_is_pinned.py",
+    "tests/test_ccarc3_scoring.py",
+    "tests/test_scoring.py",
+    "tests/test_shared_card.py",
+    "tests/test_card_corroboration_scopes_to_the_attempt.py",
+    "tests/test_scoring_zero_actions_never_earns_the_cap.py",
+    "tests/test_build_trace_audit_best_play.py",
+    "tests/test_sweep_split_is_detectable.py",
 ]
 
-MODULES = {"grids": GRIDS, "rules": RULES, "ledger": LEDGER}
+MODULES = {"grids": GRIDS, "rules": RULES, "ledger": LEDGER, "scoring": SCORING}
 
 
 def main(argv: list[str]) -> int:
