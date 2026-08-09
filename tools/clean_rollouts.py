@@ -432,6 +432,70 @@ def completed_attempts(game_dir: pathlib.Path, game_id: str) -> int:
 SHARED_CARD_FILE = SP / "shared_card.json"
 SHARED_CARD_HISTORY = SP / "shared_card_history.jsonl"
 
+# **The durable half of the pin, and deliberately only half.**
+#
+# Everything `sweep_card` uses to decide whether it may mint a card lives in
+# `SP` -- and `SP` is the one store that reverts to an image snapshot when the
+# container is replaced, which on 2026-08-06 happened three times in 45 minutes.
+# When it reverts, the pin and the history vanish *together*, so
+# `SHARED_CARD_FILE.exists()` is False, the entire refusal ladder below is
+# skipped, and a fresh card is minted in silence. Every rung of that ladder --
+# the unreadable-file refusal, the liveness probe, the "N games were scored on
+# it" hard stop -- reads one or both of those two files, so a replacement
+# disarms all of them at once. Confirmed present on 2026-08-09: both files gone
+# after a replacement, and the error text that says "the card_id needed to
+# recover is in the history file" pointing at a file that no longer exists.
+#
+# It is the same defect the `dead` rename below already carries a comment about
+# -- "the next `sweep_card()` finds no card file at all, skips this whole branch,
+# and silently mints a fresh card" -- arriving through a different door. That one
+# was fixed by reordering. This one cannot be, because the trigger is deleted by
+# the platform.
+#
+# **Only the card id and the history go here. Never the cookies.** A pinned card
+# carries `GAMESESSION` and four `AWSALBAPP-*` values, and this directory is
+# committed and pushed to GitHub -- writing them here would publish live
+# credentials. That is not a limitation to work around: the cookies are the only
+# route back to a card, so a replaced container genuinely cannot resume the old
+# one. What it *can* do is know the card existed and refuse to pretend otherwise,
+# which is the whole decision the driver says it will not make for you.
+# Derived from this file's location (`<repo>/tools/`), never written: the
+# hard-coded path is this container's clone location. Same reason as every other
+# derived path in this tree.
+_REPO = pathlib.Path(__file__).resolve().parents[1]
+DURABLE_CARD_DIR = _REPO / "evidence" / "ccarc3" / "sweep_card"
+DURABLE_CARD_HISTORY = DURABLE_CARD_DIR / "history.jsonl"
+
+
+def _remember_card(card_id: str, event: str, **extra) -> None:
+    """Append one line to both histories. Never raises; never writes a cookie."""
+    row = {"card_id": card_id, "event": event, "at": time.time(), **extra}
+    line = json.dumps(row) + "\n"
+    for path in (SHARED_CARD_HISTORY, DURABLE_CARD_HISTORY):
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+        except OSError as exc:                          # noqa: PERF203
+            print(f"    could not record card history in {path} ({exc})", flush=True)
+
+
+def _durable_cards() -> list[str]:
+    """Card ids this sweep has opened, oldest first, from the committed history."""
+    out: list[str] = []
+    try:
+        text = DURABLE_CARD_HISTORY.read_text(encoding="utf-8")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        try:
+            got = json.loads(line).get("card_id")
+        except ValueError:
+            continue
+        if got and got not in out:
+            out.append(got)
+    return out
+
 
 def sweep_card():
     """The one scorecard this sweep plays onto, across driver restarts.
@@ -457,6 +521,44 @@ def sweep_card():
     if os.environ.get("CCARC3_NO_SHARED_CARD"):
         print("shared card DISABLED by env; one card per game", flush=True)
         return None
+
+    # **A missing pin is not the same as a first run, and this is where a
+    # container replacement used to walk straight through.** Every rung of the
+    # ladder below reads `SHARED_CARD_FILE`, so when the scratchpad reverts they
+    # are all skipped at once and the sweep mints a fresh card without a word.
+    # The committed history is what survives, and it answers the only question
+    # that matters: has this sweep already opened a card?
+    #
+    # If it has, and games are banked on it, minting would build a submission
+    # that silently omits them -- the same hard stop the reaped-card branch below
+    # makes, for the same reason, reached by the door that used to be unguarded.
+    # The cookies are not here and cannot be (see DURABLE_CARD_DIR), so resuming
+    # the old card is genuinely impossible; the choice between restarting the
+    # sweep and accepting a partial artifact belongs to an operator.
+    if not SHARED_CARD_FILE.exists() and (prior := _durable_cards()):
+        seen = _cards_seen()
+        stranded = {cid: seen.get(cid, []) for cid in prior if seen.get(cid)}
+        if stranded:
+            detail = "; ".join(
+                f"{cid} carries {len(games)} game(s) "
+                f"({', '.join(g.split('-')[0] for g in games)})"
+                for cid, games in stranded.items())
+            raise SystemExit(
+                f"{SHARED_CARD_FILE} is missing but this sweep has already "
+                f"opened a card: {detail}. The pin lives in the scratchpad, "
+                f"which reverts when the container is replaced, so its absence "
+                f"is not evidence of a fresh sweep. Those games cannot be moved "
+                f"to a new card and their session cookies are not recoverable, "
+                f"so continuing would build a submission that silently omits "
+                f"them. Restart the sweep against a fresh card deliberately "
+                f"(delete {DURABLE_CARD_HISTORY.name}, or set CCARC3_SWEEP_DIR "
+                f"to a new directory), or accept a partial artifact — this "
+                f"driver will not choose for you."
+            )
+        print(f"shared card pin missing; the committed history names "
+              f"{len(prior)} earlier card(s) with no banked games "
+              f"({', '.join(c[:8] for c in prior)}), so nothing is stranded — "
+              f"opening a new one", flush=True)
 
     if SHARED_CARD_FILE.exists():
         # **An unreadable card file is an operator decision, not a crash.**
@@ -521,10 +623,8 @@ def sweep_card():
         # so reminting silently produces a submission missing everything banked
         # so far. That is a decision for an operator, not a default.
         played = _cards_seen().get(card.card_id, [])
-        with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"card_id": card.card_id, "retired": time.time(),
-                                 "games_lost": len(played),
-                                 "reason": str(gone)[-160:]}) + "\n")
+        _remember_card(card.card_id, "retired", games_lost=len(played),
+                       reason=str(gone)[-160:])
         # **Refuse BEFORE retiring the file, or the refusal deletes its own
         # trigger.** This retired `shared_card.json` first and raised second, so
         # the hard stop lasted exactly one process: the supervisor relaunches
@@ -548,8 +648,7 @@ def sweep_card():
 
     card = sc.open_card(tags=("ccarc3", "clean-rollouts"))
     sc.save(card, SHARED_CARD_FILE)
-    with SHARED_CARD_HISTORY.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"card_id": card.card_id, "opened": time.time()}) + "\n")
+    _remember_card(card.card_id, "opened")
     print(f"shared card {card.card_id} — opened, all games will score onto it",
           flush=True)
     return card
