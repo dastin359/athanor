@@ -170,3 +170,56 @@ def test_an_unwritable_durable_store_does_not_kill_the_sweep(replaced, monkeypat
     assert (scratch / "shared_card_history.jsonl").exists(), (
         "a failure writing one history stopped the other being written"
     )
+
+
+# --- the committed history must stay evidence, not test output --------------- #
+
+DURABLE = REPO / "evidence" / "ccarc3" / "sweep_card" / "history.jsonl"
+UUID_RE = __import__("re").compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def test_the_suite_cannot_write_fixture_cards_into_the_evidence_tree():
+    """Within an hour of this history becoming durable it held 27 fixture rows.
+
+    Five test files exercise `sweep_card` and its retire path, and they append to
+    the real committed file on every run -- `C1`, `DEAD`, `FRESH`, `card-A`,
+    `card-B` -- which `preserve_evidence.sh` then pushes. A suite that writes into
+    the evidence tree is bad by itself; the sharper problem is that this file is
+    the *input* to the guard deciding whether a sweep may open a card.
+
+    This asserts the state of the repo, so it fails the moment any test puts a
+    non-card id there, whichever test that is.
+    """
+    if not DURABLE.exists():
+        return                                    # no sweep has opened a card yet
+    bad = [line for line in DURABLE.read_text(encoding="utf-8").splitlines()
+           if line.strip() and not UUID_RE.match(json.loads(line).get("card_id", ""))]
+    assert bad == [], (
+        f"{len(bad)} non-UUID card id(s) in the committed history — a test wrote "
+        f"into the evidence tree:\n" + "\n".join(bad[:5])
+    )
+
+
+def test_a_fixture_card_id_never_reaches_the_durable_store(replaced):
+    scratch, durable = replaced
+    for fake in ("card-A", "DEAD", "FRESH", "", "not-a-uuid"):
+        cr._remember_card(fake, "opened")
+
+    assert not (durable / "history.jsonl").exists(), (
+        f"a fixture id reached the committed history: "
+        f"{(durable / 'history.jsonl').read_text(encoding='utf-8')!r}"
+    )
+    local = (scratch / "shared_card_history.jsonl").read_text(encoding="utf-8")
+    assert local.count("\n") == 5, (
+        "the local history dropped rows too; it is the thing a human reads when "
+        "debugging one box and must stay complete"
+    )
+
+
+def test_a_real_card_id_still_reaches_the_durable_store(replaced):
+    """The positive control, without which the rule above could reject everything."""
+    scratch, durable = replaced
+    cr._remember_card(CARD, "opened")
+    assert (durable / "history.jsonl").exists(), "a real UUID was rejected too"
+    assert CARD in (durable / "history.jsonl").read_text(encoding="utf-8")

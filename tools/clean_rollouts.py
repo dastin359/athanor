@@ -47,6 +47,7 @@ import concurrent.futures
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -467,11 +468,34 @@ DURABLE_CARD_DIR = _REPO / "evidence" / "ccarc3" / "sweep_card"
 DURABLE_CARD_HISTORY = DURABLE_CARD_DIR / "history.jsonl"
 
 
+# An ARC scorecard id is a UUID -- `ebb808ef-0693-4d6e-a7e4-3ef12210e2f2`. Nothing
+# else may reach the committed history; see `_remember_card`.
+_CARD_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
 def _remember_card(card_id: str, event: str, **extra) -> None:
-    """Append one line to both histories. Never raises; never writes a cookie."""
+    """Append one line to both histories. Never raises; never writes a cookie.
+
+    **The durable half takes UUIDs only, and that is not a test accommodation.**
+    Within an hour of this history becoming durable it had 27 rows in it reading
+    `C1`, `DEAD`, `FRESH`, `card-A`, `card-B` -- the fixtures of five test files
+    that exercise `sweep_card` and its retire path, appending to the real
+    committed file on every `pytest` run, which `preserve_evidence.sh` then
+    pushed. A test suite that writes into the evidence tree is bad on its own,
+    but the sharper problem is that this file is the *input* to the guard
+    deciding whether a sweep may open a card: garbage here is garbage in that
+    decision, and a fixture id colliding with a real one would refuse a sweep
+    for no reason.
+
+    The scratchpad copy still takes anything -- it is local, disposable, and the
+    thing a human reads when debugging one box.
+    """
     row = {"card_id": card_id, "event": event, "at": time.time(), **extra}
     line = json.dumps(row) + "\n"
-    for path in (SHARED_CARD_HISTORY, DURABLE_CARD_HISTORY):
+    targets = [SHARED_CARD_HISTORY]
+    if _CARD_ID.match(card_id or ""):
+        targets.append(DURABLE_CARD_HISTORY)
+    for path in targets:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as fh:
