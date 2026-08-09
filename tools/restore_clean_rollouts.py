@@ -38,7 +38,26 @@ import pathlib
 import re
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-EVIDENCE = REPO / "evidence" / "ccarc3" / "clean_rollouts"
+
+# **Both ends follow CCARC3_SWEEP_DIR, because the driver's do.** This restore
+# read `evidence/ccarc3/clean_rollouts` and wrote `$SCRATCH/clean_rollouts`, both
+# hard-coded, while `clean_rollouts.py` computes
+# `OUT = SP / (CCARC3_SWEEP_DIR or "clean_rollouts")` -- and `rehydrate_box.sh`
+# invokes this with no arguments at all.
+#
+# So for the submission sweep (`CCARC3_SWEEP_DIR=clean_rollouts_submission`) a
+# container replacement mid-run would restore banked games into the WRONG
+# directory, the driver would read its own and find nothing, and it would re-run
+# games that are already on the shared scorecard. That costs money twice and
+# corrupts the artifact: a scorecard cannot un-play a game, so the second play
+# lands beside the first and the per-game row count stops matching the result.
+#
+# `preserve_evidence.sh` has always handled this correctly -- it globs
+# `clean_rollouts*` and mirrors `$SP/<dir>` to `$DEST/<dir>`, which is why
+# `evidence/ccarc3/` already holds `clean_rollouts_stale_card` and
+# `clean_rollouts_void`. Only the restore half was pinned to one name.
+SWEEP_DIR = os.environ.get("CCARC3_SWEEP_DIR") or "clean_rollouts"
+EVIDENCE = REPO / "evidence" / "ccarc3" / SWEEP_DIR
 # Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the
 # container is recycled every 10-50 minutes, so a hard-coded copy points at a
 # directory that stops existing. See tools/clean_rollouts.py for the full note.
@@ -139,7 +158,7 @@ def baselines_in(src: pathlib.Path) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default=str(SCRATCH / "clean_rollouts"))
+    ap.add_argument("--out", default=str(SCRATCH / SWEEP_DIR))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     out = pathlib.Path(args.out)
