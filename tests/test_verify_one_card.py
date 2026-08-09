@@ -170,3 +170,53 @@ def test_a_sweep_missing_games_fails_without_being_told_how_many(tmp_path):
 
     assert out.returncode == 1, out.stdout
     assert "INCOMPLETE" in out.stdout
+
+
+def test_a_game_with_no_card_id_is_refused(tmp_path):
+    """A result that records no card cannot be shown to be on the sweep's card.
+
+    Found by mutation: deleting the `if unknown:` branch passed the whole suite.
+    Such a game could be on any card at all -- it predates `_card_facts`, or its
+    state file was removed -- so a sweep containing one is not *provably* single
+    card, which is the only thing this tool exists to establish.
+    """
+    _game(tmp_path, "aa11-x", "CARD")
+    ws = _game(tmp_path, "bb22-y", "CARD")
+    r = json.loads((ws / "result.json").read_text())
+    r.pop("card_id")
+    (ws / "result.json").write_text(json.dumps(r))
+
+    out = _run(tmp_path)
+    assert out.returncode != 0, (
+        f"a game recording no card_id was accepted as on the sweep card:\n"
+        f"{out.stdout}"
+    )
+    assert "no card_id" in out.stdout
+
+
+def test_an_empty_sweep_is_not_submittable(tmp_path):
+    """Zero games must not read as success.
+
+    `return 0 if ok and total else 1` -- dropping `and total` survived every
+    other case here, and the failure is this file's own subject: nothing went
+    wrong, so `ok` stays True, and an empty directory reports submittable. It is
+    the same shape as the bug the module docstring records fixing, one step on:
+    a gate that only counts what arrived cannot see that nothing did.
+    """
+    (tmp_path / "empty_sweep").mkdir()
+    out = _run(tmp_path / "empty_sweep", "--partial")
+    assert out.returncode != 0, (
+        f"an empty sweep reported submittable:\n{out.stdout}"
+    )
+    assert "NOT submittable" in out.stdout
+
+
+def test_a_sweep_of_only_uncarded_games_is_not_submittable(tmp_path):
+    """Both survivors at once: nothing carded, nothing to submit."""
+    ws = _game(tmp_path, "aa11-x", "CARD")
+    r = json.loads((ws / "result.json").read_text())
+    r.pop("card_id")
+    (ws / "result.json").write_text(json.dumps(r))
+    out = _run(tmp_path)
+    assert out.returncode != 0, out.stdout
+    assert "NOT submittable" in out.stdout
