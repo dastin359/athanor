@@ -24,6 +24,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -160,6 +162,21 @@ class Workspace:
     initial_prompt: str = ""
     env: dict[str, str] = field(default_factory=dict)
     resumed: bool = False
+    #: This solver's own Claude Code session id, assigned rather than discovered.
+    #:
+    #: **Every event in a solver's stream carries the *parent's* id.** Measured
+    #: 2026-08-09 on `bp35`: all 5,233 events reported
+    #: `a3375e8f-271e-5133-96a4-a40a6a06a752`, which is the driver's session, and
+    #: the solver's own transcript on disk is literally named after it -- the
+    #: child inherits `CLAUDE_CODE_SESSION_ID` and does not mint its own, so the
+    #: only thing separating one solver's transcript from another's is the
+    #: cwd-keyed directory holding it.
+    #:
+    #: So resuming a solver by an id read out of its stream would resume *the
+    #: driver's own conversation*. Assigning one with `--session-id` removes the
+    #: discovery problem instead of solving it, and is what makes `--resume`
+    #: exact.
+    session_id: str = ""
 
     @property
     def trace_path(self) -> Path:
@@ -402,6 +419,7 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
         config=config,
         info=info,
         initial_prompt=_initial_prompt(info, budget, resumed=resumed),
+        session_id=str(uuid.uuid4()),
         env=env,
         resumed=resumed,
     )
@@ -634,6 +652,13 @@ def build_cli_args(workspace: Workspace) -> list[str]:
         "stream-json",
         "--verbose",
     ]
+    # **Assigned, so the solver owns an id nothing else shares.** Without it the
+    # child inherits `CLAUDE_CODE_SESSION_ID` from the driver and every solver on
+    # the box reports -- and files its transcript under -- the same id. Nothing
+    # downstream can then tell two solvers apart, and `--resume` on that id would
+    # reach the driver's own conversation rather than the solver's.
+    if workspace.session_id and _supports_flag("--session-id"):
+        args += ["--session-id", workspace.session_id]
     if config.model:
         args += ["--model", config.model]
     if config.effort and _supports_flag("--effort"):
@@ -691,6 +716,110 @@ def _signal_group(proc: "subprocess.Popen", sig: int) -> None:
 TERM_GRACE_S = 30
 
 
+NUDGE_PROMPT = """You stopped, and the environment is not finished: you have not
+cleared every level, nothing interrupted you, and you still have actions left to
+spend.
+
+Being stuck with actions in hand is a reason to change technique, not to stop —
+that is DOCTRINE.md §0b, and it applies now. Re-read your own rules.json and
+notes: what you have already worked out about this game is still on disk and
+still true.
+
+Do not restart from scratch and do not re-derive what you already know. Pick up
+where you are, try an approach you have not tried, and keep playing."""
+"""What a solver is told when it quits with its allowance untouched.
+
+**No figure appears in it, and none may be added.** "You still have actions
+left" tells a solver only what it could already infer from not having been
+refused. A count would say considerably more than that, and this module is on the
+solver's own `PYTHONPATH` and reachable by `inspect.getsource` — so the rule
+covers this docstring as well as the prompt, and the same reticence the rest of
+this file keeps applies here. See `tests/test_the_nudge_says_nothing_it_should_not.py`.
+"""
+
+
+def _max_nudges() -> int:
+    """How many times a solver that quits early is told to carry on.
+
+    Distinct from `GIVE_UP_ATTEMPTS`, which counts whole re-runs from scratch in
+    fresh workspaces. A nudge continues the *same conversation*: the solver keeps
+    its context, its rules.json and its place in the game, and the cost is one
+    more turn rather than one more game.
+
+    That is also why this is bounded and why the bound is small. A solver that
+    has been told twice to keep going and has stopped twice anyway is reporting
+    something about the game, and each nudge still bills a full reasoning turn
+    against a run that may not finish.
+
+    **Off unless a caller asks for it, and that default is deliberate.** Nudging
+    changes what `run_game` does for *every* caller: a give-up that used to end
+    one launch now ends three. Defaulting it on rewrote the behaviour of four
+    existing tests without anyone choosing that -- two of which only failed
+    because a glob happened to return the new empty stream first, which is the
+    kind of silent contract change this project keeps paying for.
+
+    `tools/clean_rollouts.py` turns it on for the sweeps that want it, so the
+    driver an operator actually runs gets the behaviour while the library stays
+    predictable. `0` is the previous behaviour exactly: the give-up is marked,
+    the driver discards, and the game is re-run from scratch.
+    """
+    raw = os.environ.get("CCARC3_MAX_NUDGES", "")
+    try:
+        n = int(raw)
+    except ValueError:
+        if raw:
+            print(f"CCARC3_MAX_NUDGES={raw!r} is not a number; nudging disabled",
+                  flush=True)
+        return 0
+    return max(0, n)
+
+
+def _rotate_stream(ws: Workspace) -> None:
+    """Move `stream.jsonl` aside so the next launch cannot overwrite it.
+
+    Every launch is a separate record — the first attempt, and each nudge after
+    it. Losing one loses the only evidence of how that handoff actually went,
+    which is exactly what needs reading when a nudge fails to land.
+    """
+    stream = ws.root / "stream.jsonl"
+    if stream.exists():
+        n = len(list(ws.root.glob("stream.*.jsonl"))) + 1
+        stream.rename(ws.root / f"stream.{n}.jsonl")
+
+
+def _nudge_args(ws: Workspace) -> list[str] | None:
+    """CLI args that resume this solver's own session and tell it to continue.
+
+    `None` when the CLI cannot do it, which is not a failure: the caller then
+    leaves the give-up marked and the driver re-runs the game as before.
+
+    **Resumes an id we assigned, never one read from the stream.** See
+    `Workspace.session_id` — every event a solver emits carries the driver's id,
+    so an id discovered from the stream would resume the wrong conversation.
+    """
+    if not ws.session_id:
+        return None
+    if not (_supports_flag("--resume") and _supports_flag("--session-id")):
+        return None
+    args = [
+        _claude_binary(), "-p", NUDGE_PROMPT,
+        "--resume", ws.session_id,
+        "--output-format", "stream-json", "--verbose",
+    ]
+    config = ws.config
+    if config.model:
+        args += ["--model", config.model]
+    if config.effort and _supports_flag("--effort"):
+        args += ["--effort", config.effort]
+    if config.permission_mode:
+        args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
+    if config.allowed_tools:
+        args += ["--allowedTools", ",".join(config.allowed_tools)]
+    if config.disallowed_tools:
+        args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
+    return args
+
+
 def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, Any]:
     """Build a workspace and run one solver session against one game."""
     ws = build_workspace(config, info)
@@ -712,6 +841,47 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
         n = len(list(ws.root.glob("stream.*.jsonl"))) + 1
         stream.rename(ws.root / f"stream.{n}.jsonl")
 
+    # **One deadline for the whole run, not one per launch.** A nudged run makes
+    # several `claude` invocations, and giving each a fresh
+    # `wall_clock_timeout_s` would let a game run for two or three times the
+    # limit its caller set -- `clean_rollouts` picks that limit so a run fits
+    # inside a container window, so multiplying it silently defeats the choice.
+    deadline = (time.monotonic() + config.wall_clock_timeout_s
+                if config.wall_clock_timeout_s else None)
+    nudges_left = _max_nudges()
+    nudged = 0
+
+    while True:
+        code, timed_out = _launch(ws, args, deadline)
+        outcome = collect_outcome(ws, exit_code=code, timed_out=timed_out)
+        outcome["nudges"] = nudged
+        outcome["session_id"] = ws.session_id
+
+        if not outcome.get("gave_up") or nudges_left <= 0:
+            return outcome
+        if deadline is not None and time.monotonic() >= deadline:
+            return outcome
+        nudge = _nudge_args(ws)
+        if nudge is None:
+            # The CLI cannot resume; leave the give-up marked and let the driver
+            # re-run the game from scratch, which is what happened before nudging
+            # existed.
+            return outcome
+
+        nudges_left -= 1
+        nudged += 1
+        print(f"    {ws.info.game_id}: solver quit with actions in hand — "
+              f"nudge {nudged} of {nudged + nudges_left}, resuming its session",
+              flush=True)
+        _rotate_stream(ws)
+        args = nudge
+
+
+def _launch(ws: Workspace, args: list[str], deadline: float | None) -> tuple[int, bool]:
+    """Run one `claude` invocation to completion. Returns (exit code, timed out)."""
+    config = ws.config
+    stream = ws.root / "stream.jsonl"
+    remaining = None if deadline is None else max(1.0, deadline - time.monotonic())
     with stream.open("w", encoding="utf-8") as fh:
         # **Its own session, so the timeout can reach the whole tree.** Without
         # this the child sits in the driver's process group and a signal to
@@ -730,7 +900,7 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
             start_new_session=True,
         )
         try:
-            code = proc.wait(timeout=config.wall_clock_timeout_s)
+            code = proc.wait(timeout=remaining)
             timed_out = False
         except subprocess.TimeoutExpired:
             # **SIGTERM first, and keep whatever exit status comes back.**
@@ -755,7 +925,7 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
                 code = proc.wait()
             timed_out = True
 
-    return collect_outcome(ws, exit_code=code, timed_out=timed_out)
+    return code, timed_out
 
 
 def _record_resume_state(ws: Workspace) -> None:
@@ -1215,6 +1385,12 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
         budget = _action_budget(ws)
         used = outcome.get("actions_used", 0) or 0
         if budget and used < budget / 2 and _prior_give_ups(ws) < GIVE_UP_ATTEMPTS:
+            # **A flag, not a substring.** The nudge loop in `run_game` has to
+            # recognise this exact condition, and the obvious way -- grepping the
+            # message for "gave up" -- makes the wording load-bearing, so
+            # rephrasing an error string would silently switch the loop off. This
+            # file is full of that shape; it does not need another.
+            outcome["gave_up"] = True
             outcome["error"] = (
                 f"solver stopped at {outcome.get('levels_reached')} of "
                 f"{outcome.get('levels_total')} levels after {used} of {budget} "

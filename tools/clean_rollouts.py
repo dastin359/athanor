@@ -701,7 +701,31 @@ def _outstanding() -> list[str]:
     )
 
 
+def enable_nudging() -> None:
+    """Tell `run_game` to resume a solver that quits with its allowance untouched.
+
+    When a solver stops early, the alternative is discarding the attempt and
+    replaying the game from level zero. Measured on `bp35` (2026-08-09): the
+    discarded give-up cost $23.74 and its from-scratch replacement another
+    $26.55, and neither banked.
+
+    **Called from `main()`, not at import, and that is load-bearing.** This is
+    process-wide state, so setting it at module scope turned nudging on for
+    anything that merely *imported* this driver -- including the test suite,
+    where it silently changed the behaviour of two stream-rotation tests that
+    have nothing to do with nudging. The file already carries this lesson twice:
+    `install_strip` is a function you call for the same reason, and
+    `ablate_baselines._install_patch` says outright that "import side effects
+    that rewrite another module's globals are exactly the kind of thing that is
+    invisible until it produces a wrong number".
+
+    `setdefault`, so an operator who names a value keeps it -- including `0`.
+    """
+    os.environ.setdefault("CCARC3_MAX_NUDGES", "2")
+
+
 def main() -> int:
+    enable_nudging()
     install_strip()
     OUT.mkdir(parents=True, exist_ok=True)
 

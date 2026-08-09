@@ -100,6 +100,27 @@ def test_a_solver_that_ignores_sigterm_is_still_killed(tmp_path):
     assert elapsed < 30, f"the grace period became a hang ({elapsed:.1f}s)"
 
 
+def _run_path_source() -> str:
+    """`run_game` plus the helper it hands the spawn to.
+
+    The spawn and the timeout arm moved out of `run_game` into `_launch` when
+    nudging landed, because a nudged run makes several launches. Both tests below
+    read the source of the run path, so they have to follow it -- otherwise they
+    assert about a function that no longer contains the thing they name, which is
+    how the first version of this failed after the refactor.
+
+    The delegation is asserted rather than assumed: reading `_launch` would
+    "pass" just as well if `run_game` had stopped calling it.
+    """
+    import inspect
+    run = inspect.getsource(S.run_game)
+    assert "_launch(" in run, (
+        "run_game no longer delegates to _launch; this helper is reading a "
+        "function that may not be on the run path at all"
+    )
+    return run + "\n" + inspect.getsource(S._launch)
+
+
 def test_the_run_path_terminates_first_and_keeps_the_status():
     """Pinned against the real function, because the behavioural tests above run
     a COPY of the sequence and cannot see a change to `run_game` itself.
@@ -113,11 +134,11 @@ def test_the_run_path_terminates_first_and_keeps_the_status():
     import ast
     import inspect
 
-    src = textwrap.dedent(inspect.getsource(S.run_game))
-    fn = ast.parse(src).body[0]
-    handlers = [h for n in ast.walk(fn) if isinstance(n, ast.Try) for h in n.handlers
+    src = textwrap.dedent(_run_path_source())
+    tree = ast.parse(src)
+    handlers = [h for n in ast.walk(tree) if isinstance(n, ast.Try) for h in n.handlers
                 if "TimeoutExpired" in ast.dump(h)]
-    assert handlers, "run_game no longer handles TimeoutExpired"
+    assert handlers, "the run path no longer handles TimeoutExpired"
 
     body = "\n".join(ast.unparse(h) for h in handlers)
     assert body.index("SIGTERM") < body.index("SIGKILL"), (
@@ -172,8 +193,7 @@ def test_the_timeout_reaches_grandchildren(tmp_path):
 
 def test_the_run_path_starts_its_own_session_and_signals_the_group():
     """Pinned against the real function, since the behavioural test drives a copy."""
-    import inspect
-    src = inspect.getsource(S.run_game)
+    src = _run_path_source()
     assert "start_new_session=True" in src, (
         "the solver is not a process-group leader, so a kill cannot reach its "
         "descendants"
