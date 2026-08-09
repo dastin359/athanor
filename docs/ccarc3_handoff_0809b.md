@@ -201,6 +201,19 @@ This happened at 02:44 PDT on 2026-08-09 and three times in 45 minutes on
   labels staleness — read the label, and note that utilisation only rises, so a
   stale reading is a *lower bound*.
 
+**A watcher reads `CCARC3_SWEEP_DIR` from its own environment, at launch.**
+`heartbeat.sh` and `refresh_audit.sh` both default to `clean_rollouts`. A daemon
+started before a differently-named sweep exists therefore watches the wrong
+directory and reports *that* one's state — on 2026-08-09 the heartbeat reported
+"25/25 done" every cycle while a `bp35` run in `clean_rollouts_validate` was
+mid-game, and the hourly artifact refresh would not have noticed it finishing.
+
+So: **launch the watchers with the same `CCARC3_SWEEP_DIR` as the sweep**, and
+pass it to `refresh_audit.sh` too. The real fix is for them to *discover* live
+sweeps rather than take one from the environment — the same
+derive-don't-enumerate change made to `rehydrate_box.sh` and `snapshot_results.py`
+— and it is the best-value follow-up after §6's three modules.
+
 **Other traps:**
 
 - `git` in a replaced container may be a clone from an older point. The local
