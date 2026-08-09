@@ -152,6 +152,39 @@ done
 ln -sfn "$REPO/docs/ccarc3_autopilot.md" "$SP/AUTOPILOT.md"
 ln -sfn "$REPO/docs/ccarc3_memory.md"    "$SP/MEMORY.md"
 
+# 2b. The agent proxy's loopback port, which changes when the session worker
+# restarts -- so it is always wrong on a replaced box, and it is the one value
+# only a live session can see.
+#
+# The supervisor validates it before every launch and refuses when it does not
+# answer, which is the guard working; but the refusal repeats every ten minutes
+# until a session writes the new value, and on 2026-08-09 that is exactly what
+# the log showed. Before the guard existed the same staleness was silent: the
+# supervisor exported 127.0.0.1:37827 while the proxy had moved to :41751 and
+# every driver it spawned got `[Errno 111] Connection refused` on its first
+# `list_games()` -- retrospectively also the unexplained incident where seven
+# games churned on Connection refused.
+#
+# This script runs as a child of the session, so it inherits the live value.
+# Writing it here is the one step of a replacement recovery that cannot be
+# automated anywhere else. Skipped, loudly, when there is nothing to inherit --
+# a rehydrate run outside a session must not overwrite a good value with an
+# empty one.
+if [ -n "${HTTPS_PROXY:-}" ]; then
+    if [ "$(sed -n 's/^export HTTPS_PROXY="\(.*\)"$/\1/p' "$SP/proxy_env" 2>/dev/null | tail -1)" \
+         = "$HTTPS_PROXY" ]; then
+        :
+    else
+        { sed '/^export HTTPS_PROXY=/,$d' "$SP/proxy_env" 2>/dev/null
+          echo "export HTTPS_PROXY=\"$HTTPS_PROXY\""
+          echo "export https_proxy=\"$HTTPS_PROXY\""
+        } > "$SP/proxy_env.tmp" && mv "$SP/proxy_env.tmp" "$SP/proxy_env"
+        echo "  rehydrate: proxy_env -> $HTTPS_PROXY (was stale or absent)"
+    fi
+else
+    echo "  rehydrate: HTTPS_PROXY unset in this environment — proxy_env left as it is"
+fi
+
 # An `if`, not `[ ... ] && exit 0`. As the last command of the block that is
 # what sets the exit status, so on the normal path the false test made step 2
 # return 1 -- and tests/test_rehydrate_reports_what_it_did.py runs step 2 as a

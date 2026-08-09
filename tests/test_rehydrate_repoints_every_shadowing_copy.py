@@ -182,3 +182,91 @@ def test_a_symlink_pointing_somewhere_else_is_repointed_but_not_called_a_file(tm
     assert "supervisor.sh was a real file" not in out, (
         f"a stale symlink was reported as a real file:\n{out}"
     )
+
+
+# --- the proxy endpoint ----------------------------------------------------- #
+#
+# Outbound HTTPS leaves this box through an agent proxy on a loopback port, and
+# that port changes when the session worker restarts -- so it is always wrong on
+# a replaced box, and it is the one value only a live session can see. The
+# supervisor validates it before every launch and refuses when it does not
+# answer; before that guard existed the staleness was silent, and every driver
+# the supervisor spawned got `[Errno 111] Connection refused` on its first
+# `list_games()`.
+
+def _proxy_line(scratch: pathlib.Path) -> str:
+    for line in (scratch / "proxy_env").read_text(encoding="utf-8").splitlines():
+        if line.startswith("export HTTPS_PROXY="):
+            return line.split("=", 1)[1].strip('"')
+    return ""
+
+
+def _rehydrate_env(scratch: pathlib.Path, env: dict) -> str:
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), "--links-only"],
+        capture_output=True, text=True, timeout=120,
+        env={"PATH": "/usr/bin:/bin", "HOME": "/root",
+             "CCARC3_SCRATCH": str(scratch), **env},
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    return proc.stdout
+
+
+def _seed_proxy(scratch: pathlib.Path, url: str) -> None:
+    (scratch / "proxy_env").write_text(
+        f'# the header explaining why this file exists\n'
+        f'export HTTPS_PROXY="{url}"\nexport https_proxy="{url}"\n', encoding="utf-8")
+
+
+def test_a_stale_proxy_port_is_refreshed_from_the_session(tmp_path):
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    _seed_proxy(scratch, "http://127.0.0.1:11111")
+
+    out = _rehydrate_env(scratch, {"HTTPS_PROXY": "http://127.0.0.1:40983"})
+
+    assert _proxy_line(scratch) == "http://127.0.0.1:40983", (
+        "the replaced box kept the previous container's port"
+    )
+    assert "proxy_env ->" in out, "the refresh happened silently"
+
+
+def test_an_already_current_proxy_is_left_quiet(tmp_path):
+    """An always-on report is one people stop reading."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    _seed_proxy(scratch, "http://127.0.0.1:40983")
+
+    out = _rehydrate_env(scratch, {"HTTPS_PROXY": "http://127.0.0.1:40983"})
+
+    assert "proxy_env ->" not in out, "a no-op refresh was reported as a repair"
+    assert _proxy_line(scratch) == "http://127.0.0.1:40983"
+
+
+def test_no_proxy_in_the_environment_does_not_clobber_a_good_value(tmp_path):
+    """Run outside a session there is nothing to inherit, and an empty value is worse."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    _seed_proxy(scratch, "http://127.0.0.1:40983")
+
+    out = _rehydrate_env(scratch, {})
+
+    assert _proxy_line(scratch) == "http://127.0.0.1:40983", (
+        "a rehydrate with no proxy to inherit overwrote a working value"
+    )
+    assert "left as it is" in out, "the skip was silent"
+
+
+def test_the_files_explanation_survives_the_refresh(tmp_path):
+    """The header is why the next reader knows not to hard-code the port."""
+    scratch = tmp_path / "scratchpad"
+    scratch.mkdir()
+    _seed_proxy(scratch, "http://127.0.0.1:11111")
+
+    _rehydrate_env(scratch, {"HTTPS_PROXY": "http://127.0.0.1:40983"})
+
+    body = (scratch / "proxy_env").read_text(encoding="utf-8")
+    assert body.startswith("# the header explaining why this file exists"), (
+        f"the refresh ate the file's explanation:\n{body}"
+    )
+    assert body.count("export https_proxy=") == 1, "the lowercase alias was duplicated"
