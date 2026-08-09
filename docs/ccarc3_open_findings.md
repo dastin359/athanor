@@ -166,6 +166,25 @@ survivors, all three now closed or explained.
 (The other two recorded equivalent mutants: `scoring.capped()` `>`→`>=`, and the
 reap deadline `>`→`>=`.)
 
+## Equivalent mutants, recorded rather than tested around (2026-08-09)
+
+A mutant that survives is either a gap in the tests or a change that cannot alter
+behaviour. Conflating the two is how a suite acquires tests that assert
+coincidences, so the four found so far are written down with the argument for
+each:
+
+| mutation | why it cannot change the answer |
+|---|---|
+| `scoring.capped()` `>` → `>=` | the boundary value maps to the same result on both sides |
+| the card-reap deadline `>` → `>=` | same, at a one-second granularity nothing observes |
+| `arc_proxy._allowed` `p.match` → `p.search` | every `ALLOW` pattern is `^…$` and no pattern is `MULTILINE`, so `^` matches only at position 0. The anchoring is now asserted directly, so the equivalence is held rather than assumed. |
+| `clean_rollouts._outstanding` dropping the `GAMES.index` tie-break | the generator yields in `GAMES` order and `sorted` is guaranteed stable, so equal attempt counts already retain it |
+
+The last two are the instructive pair: both equivalences are properties of the
+*data* the code runs on, not of the code, so each is only safe while something
+else holds that property. The anchoring is now a test; the `GAMES` ordering is
+stated in the docstring and would have to be broken deliberately.
+
 ## Still open, and not a finding
 
 Task #35, the 25-game sweep onto one shared scorecard, is blocked on quota, not

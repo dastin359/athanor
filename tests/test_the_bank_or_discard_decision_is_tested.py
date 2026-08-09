@@ -145,3 +145,103 @@ def test_salvage_declines_when_every_attempt_was_interrupted(tmp_path, quiet):
         (ws / "result.json").write_text(
             json.dumps({"game_id": GID, "error": "killed"}), encoding="utf-8")
     assert cr.salvage(game_dir, GID) is None
+
+
+def test_a_finished_sweep_opens_no_scorecard(tmp_path, monkeypatch, capsys):
+    """`main()` opened a card before asking whether it had anything to play on it.
+
+    The supervisor relaunches this driver every ten minutes for as long as the
+    box lives, so once the queue empties that is six abandoned scorecards an hour
+    against the ARC account -- and since the card history became durable, six
+    lines an hour appended to a committed file that `preserve_evidence.sh`
+    pushes. A card is an artifact with a URL a submission points at. Opening one
+    is not bookkeeping.
+    """
+    out = tmp_path / "clean_rollouts"
+    games = ["zz99-deadbeef", "yy88-cafebabe"]
+    for g in games:
+        (out / g).mkdir(parents=True)
+        (out / g / "clean_result.json").write_text('{"won": true}', encoding="utf-8")
+    monkeypatch.setattr(cr, "OUT", out)
+    monkeypatch.setattr(cr, "GAMES", games)
+    monkeypatch.setattr(cr, "install_strip", lambda: None)
+
+    def _no_card():
+        raise AssertionError("main() opened a scorecard for a finished sweep")
+
+    monkeypatch.setattr(cr, "sweep_card", _no_card)
+    monkeypatch.setattr(cr, "list_games",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("main() called the API for a finished sweep")))
+
+    assert cr.main() == 0
+    assert "no card opened" in capsys.readouterr().out
+
+
+def test_an_unfinished_sweep_still_opens_its_card(tmp_path, monkeypatch):
+    """The positive control: one outstanding game must still get a card."""
+    out = tmp_path / "clean_rollouts"
+    games = ["zz99-deadbeef", "yy88-cafebabe"]
+    (out / games[0]).mkdir(parents=True)
+    (out / games[0] / "clean_result.json").write_text('{"won": true}', encoding="utf-8")
+    (out / games[1]).mkdir(parents=True)
+    monkeypatch.setattr(cr, "OUT", out)
+    monkeypatch.setattr(cr, "GAMES", games)
+    monkeypatch.setattr(cr, "install_strip", lambda: None)
+
+    opened = []
+    monkeypatch.setattr(cr, "sweep_card", lambda: opened.append(1))
+    monkeypatch.setattr(cr.ab, "use_shared_card", lambda card: None)
+    monkeypatch.setattr(cr, "list_games", lambda *a, **k: [])
+    monkeypatch.setattr(cr, "kill_orphan_solvers", lambda: 0)
+    monkeypatch.setattr(cr, "one_pass", lambda outstanding, infos: None)
+    monkeypatch.setattr(cr, "MAX_PASSES", 1)
+
+    cr.main()
+
+    assert opened, "a sweep with an outstanding game did not open its card"
+
+
+def test_the_queue_puts_the_least_tried_game_first(tmp_path, monkeypatch):
+    """Anti-starvation, and the reason it exists is on the record.
+
+    The driver dies with its container. On relaunch a plain GAMES walk starts
+    again at the first outstanding game, so a game that cannot finish inside one
+    window takes every window and nothing behind it is ever tried -- which is how
+    a fixed order turned a three-game experiment into a one-game one in
+    `rerun_losses.py`. `sp80` took every window for three consecutive cycles,
+    sitting at 365 actions on level 5 of 6, while `tn36` and `sk48` were never
+    attempted once.
+
+    Nothing tested it: dropping the attempt count from the sort key passed the
+    whole suite.
+    """
+    out = tmp_path / "clean_rollouts"
+    games = ["aa11-11111111", "bb22-22222222", "cc33-33333333"]
+    for g in games:
+        (out / g).mkdir(parents=True)
+    monkeypatch.setattr(cr, "OUT", out)
+    monkeypatch.setattr(cr, "GAMES", games)
+
+    # The head of GAMES has burned three windows; the tail has had none.
+    tries = {"aa11-11111111": 3, "bb22-22222222": 0, "cc33-33333333": 1}
+    monkeypatch.setattr(cr, "completed_attempts",
+                        lambda game_dir, gid: tries[game_dir.name])
+
+    assert cr._outstanding() == ["bb22-22222222", "cc33-33333333", "aa11-11111111"], (
+        "the game that has already taken three windows is still at the head of "
+        "the queue; a stalled game starves everything behind it"
+    )
+
+
+def test_with_no_attempts_yet_the_queue_is_games_order(tmp_path, monkeypatch):
+    """The tie-break, so the curated priority survives a fresh start."""
+    out = tmp_path / "clean_rollouts"
+    games = ["aa11-11111111", "bb22-22222222", "cc33-33333333"]
+    for g in games:
+        (out / g).mkdir(parents=True)
+    monkeypatch.setattr(cr, "OUT", out)
+    monkeypatch.setattr(cr, "GAMES", games)
+    monkeypatch.setattr(cr, "completed_attempts", lambda game_dir, gid: 0)
+
+    assert cr._outstanding() == games

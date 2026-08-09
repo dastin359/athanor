@@ -654,9 +654,46 @@ def sweep_card():
     return card
 
 
+def _outstanding() -> list[str]:
+    """Games with no banked clean run, fewest attempts first, GAMES order to break ties.
+
+    **Fewest attempts first.** A plain GAMES walk starves the tail: the driver dies
+    with its container, and on relaunch it starts again at the first outstanding
+    game, so a game that can never finish in one window takes every window and
+    nothing behind it is ever tried. That is exactly how a fixed order once turned
+    a three-game experiment into a one-game one in `rerun_losses.py`. With all
+    counts at zero this is identical to GAMES order.
+
+    **The `GAMES.index` tie-break is provably redundant, and kept anyway.** The
+    generator yields in `GAMES` order and `sorted` is guaranteed stable, so equal
+    attempt counts already retain that order; dropping the second key is an
+    equivalent mutant, and it survives the tests below because it must. It stays
+    because the rule it states is the load-bearing one -- an input that stopped
+    being `GAMES`-ordered would change the answer silently otherwise.
+    """
+    return sorted(
+        (g for g in GAMES if not (OUT / g / "clean_result.json").exists()),
+        key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
+    )
+
+
 def main() -> int:
     install_strip()
     OUT.mkdir(parents=True, exist_ok=True)
+
+    # **Nothing to do means no card.** `sweep_card()` ran first and opened a
+    # scorecard unconditionally, so a driver relaunched onto a finished sweep --
+    # which is what the supervisor does every ten minutes, forever, once the
+    # queue empties -- minted a fresh card, played nothing onto it, and exited.
+    # Six abandoned cards an hour against the ARC account, and since the card
+    # history became durable each one also appends a line to a committed file
+    # that `preserve_evidence.sh` pushes. A card is an artifact with a URL a
+    # submission points at; opening one is not free and is not bookkeeping.
+    if not _outstanding():
+        print(f"all {len(GAMES)} have a clean run — no card opened, nothing to do",
+              flush=True)
+        return 0
+
     ab.use_shared_card(sweep_card())
     infos = {g.game_id: g for g in list_games()}
     print("CLEAN ONE-SHOT ROLLOUTS — fresh every time, interrupted attempts discarded",
@@ -675,18 +712,10 @@ def main() -> int:
     # visible in the log rather than implicit in whoever stops watching.
     _aborted.clear()
     for pass_no in range(1, MAX_PASSES + 1):
-        # **Fewest attempts first, GAMES order as the tie-break.** A plain GAMES
-        # walk starves the tail: the driver dies with its container, and on
-        # relaunch it starts again at the first outstanding game, so a game that
-        # can never finish in one window takes every window and nothing behind it
-        # is ever tried. That is exactly how a fixed order once converted a
-        # three-game experiment into a one-game one in rerun_losses.py. With all
-        # counts at zero this is identical to GAMES order, so the five keep their
-        # priority until one of them starts failing repeatedly.
-        outstanding = sorted(
-            (g for g in GAMES if not (OUT / g / "clean_result.json").exists()),
-            key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
-        )
+        # Ordering rationale lives in `_outstanding`, which is now the only
+        # place that computes this -- it was open-coded here and again in
+        # `main`'s preamble, two copies of one rule that can drift apart.
+        outstanding = _outstanding()
         if not outstanding:
             # Was "all five have a clean run", hardcoded when GAMES held five.
             # It kept printing after the queue grew to eight and then to 25, so
