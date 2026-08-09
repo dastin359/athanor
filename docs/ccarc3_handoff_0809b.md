@@ -150,6 +150,45 @@ the mutant that reintroduces the bug is confirmed to fail the new test.
 - **`653a945`** — `CCARC3_MAX_PASSES`.
 - **`4870465`** — the launch brake (§5), `CCARC3_QUOTA_LIMIT`.
 
+### The solver-facing modules — mutation-audited
+
+`grids.py`, `rules.py` and `ledger.py` were the last on-path modules with line
+coverage and no mutation audit. **95 mutants, 4 real defects, 27 test holes, 2
+argued equivalences.** The battery is `tools/mutation_battery_ccarc3.py`; run it
+rather than trusting this paragraph.
+
+The four defects, shortest form:
+
+1. `grids.logical()` returned the caller's own array when it declined to
+   reduce, and a copy when it did. Editing the result edited the ledger's
+   frame. The aliasing branch is the one real 64×64 frames take; the copying
+   branch is the one an `np.kron` fixture takes. `collapse()` had the same
+   split on its empty branch. Both now always copy.
+2. `grids.cell_boundaries()` pooled frames of different shapes silently and
+   bounded the answer by whichever came last — and it is documented to take a
+   whole trace, across which ARC-AGI-3 changes board shape. Now refuses, for
+   the reason `diff()` already refuses a shape change.
+3. `ledger.TraceWriter.append()` recorded score 0 for a frame carrying
+   `score: None` beside a real `levels_completed`, because the two-name
+   fallback keyed on key-absence. `infer_levels` reads score increments as
+   level boundaries, so that collapses a whole trace into level 0.
+4. `counts` and `ledger_facts` were missing from their modules' `__all__` —
+   the fifth stale enumerated list here. Replaced by a derived rule, not a
+   sixth entry.
+
+`rules.py` had **no** code defects, and that is worth reading rather than
+skipping: four of its seven survivors were the exact failure the module exists
+to prevent (`vacuous` able to relabel a refuted rule "never applicable",
+`perfect` able to crown a model that declined every transition, `regressions`
+able to fire on a mechanic that is *working*). A correct module with nothing
+checking it is one edit from an incorrect one.
+
+**Three of my own new tests survived the mutants they were written to kill.**
+The instructive one: `monotone_rows` defaults to a 0.9 threshold, and a
+nine-of-ten fixture sits exactly on it, so the test passed whether or not the
+skipped pair was counted. The fixture agreed with the mutant. Run the battery
+against new tests too, not only against old code.
+
 ### Container replacement recovery
 - **`fceee6f`** — `rehydrate_box.sh` re-pointed three of five shadowing
   scratchpad copies and reported success, leaving a **pre-fix baseline strip**
@@ -303,8 +342,8 @@ derive-don't-enumerate change made to `rehydrate_box.sh` and `snapshot_results.p
    **Done 2026-08-09** — `grids.py`, `rules.py` and `ledger.py` are audited:
    95 mutants, 4 code defects fixed, 27 test holes closed, 2 equivalent mutants
    argued. The battery is committed as `tools/mutation_battery_ccarc3.py` and
-   re-runs in about five minutes. See §3 "The solver-facing modules" below and the commits
-   `89f31a4`, `55c6990`, `dfe0be6`. Nothing solver-facing in `ccarc3/` is now
+   re-runs in about five minutes. See §3 "The solver-facing modules" and the
+   commits `89f31a4`, `55c6990`, `5cc5be0`. Nothing solver-facing in `ccarc3/` is now
    unaudited. The remaining unaudited surface is `client.py` and `scoring.py`,
    which were audited earlier by a different route (the network gate and the
    card-scoring probes) but never with a full mutant battery — a reasonable
