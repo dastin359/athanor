@@ -83,7 +83,16 @@ pids_of() {
     local d
     for d in /proc/[0-9]*; do
         [ -r "$d/cmdline" ] || continue
-        tr '\0' '\n' < "$d/cmdline" 2>/dev/null | grep -qx "$1" && echo "${d#/proc/}"
+# **`2>/dev/null` on `tr` does not silence the redirection.** `< "$d/cmdline"` is
+# opened by the SHELL before `tr` exists, so when the process exits between the
+# glob and the read -- which it does, `/proc` is a live directory -- the failure is
+# reported on the shell's stderr and the `2>/dev/null` never sees it. Measured
+# 2026-08-09: `bash: line 43: /proc/19946/cmdline: No such file or directory`
+# reached the heartbeat's output and the Monitor forwarded it as an alert. An
+# alarm channel that emits noise is one people stop reading, which is the same
+# reason the daemon report is not always-on. Braces put the redirection inside the
+# group, so the group's stderr covers it.
+        { tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null | grep -qx "$1" && echo "${d#/proc/}"
     done
 }
 

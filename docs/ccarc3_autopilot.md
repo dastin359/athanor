@@ -404,7 +404,7 @@ So: **do NOT relaunch `batch6.py`.** It builds workspaces that hand the solver
 for exactly that reason — `bp35` was killed 18 actions in and its workspace moved
 to `runs3/.bp35-abandoned-with-baselines`.
 
-The only sanctioned runner is **`scratchpad/ablate_baselines.py`**, which strips
+The only sanctioned runner is **`tools/ablate_baselines.py`**, which strips
 `baseline_actions`, the CLAUDE.md rows and doctrine §6/§6a from every workspace
 it builds, and verifies the strip before launching. Relaunch verbatim:
 
@@ -417,9 +417,23 @@ scratchpad path until 2026-08-07, and following it started the Aug-3 copy: no
 proxy validation at all, and it starts `ablate_baselines.py` rather than
 `clean_rollouts.py`, so it launches the wrong experiment into a proxy it never
 checks. That is the configuration behind the never-explained incident where seven
-games churned on `Connection refused`. The stale copy is renamed
+games churned on `Connection refused`. The stale copy was renamed
 `supervisor.sh.STALE-DO-NOT-RUN`; the maintained one is in the repo, where it is
 version-controlled and gets the fixes.
+
+**That rename did not survive, and could not.** It was made in the scratchpad,
+which reverts to an image snapshot when the container is replaced -- so the
+02:44 PDT replacement of 2026-08-09 restored a plain `scratchpad/supervisor.sh`,
+5,464 bytes against 16,369 in the repo, alongside a 21,367-byte
+`ablate_baselines.py` (the repo's is 36,205). That second one is the baseline
+strip, and a copy that size predates `install()` and `assert_installed()` -- the
+fix for the defect that shipped real per-level medians into eight rollouts.
+
+Renaming the bad copy is not a defence against a store that restores it.
+`tools/rehydrate_box.sh` now makes **every** scratchpad entry sharing a basename
+with a file in `tools/` a symlink to it, derived from the directory rather than
+from a list, so the scratchpad path and the repo path are the same file no matter
+which one an instruction names.
 ```
 
 **Launch `supervisor.sh`, not the runner directly, and not `quota_guard.sh`.**

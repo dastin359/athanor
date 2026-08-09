@@ -28,7 +28,21 @@ BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
 SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
 cd "$REPO" || exit 1
 
-echo "box $(cat /proc/sys/kernel/random/boot_id) up $(cut -d' ' -f1 /proc/uptime)s"
+# `--links-only` runs step 2 and stops: no fetch, no fingerprint, no restore, no
+# network. Step 2 is the part that decides which copy of the baseline strip and
+# the launcher a replaced box will run, and until this flag existed there was no
+# way to exercise it without a git fetch and two restores. Same lesson as
+# `clean_rollouts.verdict`, whose own comment explains that it was made
+# importable so it could be tested and then never was: **logic that decides what
+# is admissible has to be reachable without launching anything.**
+# Referenced as `${LINKS_ONLY:-0}` below, never bare: step 1 is extracted and run
+# as a standalone slice by tests/test_rehydrate_reports_what_it_did.py under
+# `set -u`, where an unbound variable kills the block before it narrates.
+LINKS_ONLY=0
+[ "${1:-}" = "--links-only" ] && LINKS_ONLY=1
+
+[ "${LINKS_ONLY:-0}" = 1 ] || \
+    echo "box $(cat /proc/sys/kernel/random/boot_id) up $(cut -d' ' -f1 /proc/uptime)s"
 
 # 1. Repo. Retry the fetch: a replaced box often races container networking.
 #
@@ -41,14 +55,18 @@ echo "box $(cat /proc/sys/kernel/random/boot_id) up $(cut -d' ' -f1 /proc/uptime
 # "already current" in all three, and the recovery step that this script's own
 # header calls the load-bearing one reported success for having done nothing.
 fetched=0
+if [ "${LINKS_ONLY:-0}" = 1 ]; then fetched=skip; fi
 for delay in 0 2 4 8 16; do
+  if [ "$fetched" = skip ]; then break; fi
   [ "$delay" = 0 ] || sleep "$delay"
   git fetch origin "$BRANCH" -q 2>/dev/null && { fetched=1; break; }
 done
-[ "$fetched" = 1 ] || echo "repo   FETCH FAILED after 5 tries — origin unreachable; the tree is NOT known current"
+[ "$fetched" != 0 ] || echo "repo   FETCH FAILED after 5 tries — origin unreachable; the tree is NOT known current"
 
 before="$(git rev-parse --short HEAD)"
-if git merge --ff-only "origin/$BRANCH" -q 2>/dev/null; then
+if [ "${LINKS_ONLY:-0}" = 1 ]; then
+  :
+elif git merge --ff-only "origin/$BRANCH" -q 2>/dev/null; then
   after="$(git rev-parse --short HEAD)"
   if [ "$before" = "$after" ]; then
     [ "$fetched" = 1 ] && echo "repo   $after (already current)"
@@ -72,10 +90,54 @@ fi
 # CLAUDE.md records that as the reason a rule kept only there is a rule that
 # expires -- and the same is true of a script. A symlink cannot drift.
 mkdir -p "$SP"
-# `snapshot_results.py` joined this list on 2026-08-09. It had lived ONLY in
-# the scratchpad -- the one store that reverts -- which is the worst possible
-# home for the script whose whole purpose is surviving data loss.
-for tool in refresh_audit.sh heartbeat.sh snapshot_results.py; do
+# **Derived, not enumerated.** This was the literal list
+# `refresh_audit.sh heartbeat.sh snapshot_results.py`, and a hand-maintained list
+# of the tools of the day goes stale without a symptom -- the same defect as
+# `snapshot_results.py`'s batch list, which silently omitted 25 banked games, and
+# the live panel's arm allowlist, which rendered "nothing running" rather than "I
+# cannot see it". Both were fixed by replacing an enumeration with a rule; this
+# one was not, and it cost exactly what that costs.
+#
+# Measured on the 02:44 PDT replacement of 2026-08-09, immediately after this
+# script reported success: three of the five shadowing copies were re-pointed and
+# two were left as pre-fix files, because nobody had added them to the list.
+#
+#     supervisor.sh          5,464 bytes   vs  16,369 in the repo
+#     ablate_baselines.py   21,367 bytes   vs  36,205 in the repo
+#
+# The second is the **baseline strip**. A 21 kB copy predates `install()` and
+# `assert_installed()` -- the fix for the defect that shipped real per-level
+# medians into eight rollouts and three re-runs -- and the first is the launcher,
+# without its key guard, its argv-exact orphan sweep or its sweep-directory
+# awareness. AUTOPILOT.md's own launch block still says `bash
+# scratchpad/supervisor.sh`, so following the standing instruction verbatim on a
+# replaced box starts the pre-fix launcher.
+#
+# The rule: **any scratchpad entry sharing a basename with a file in `tools/`
+# must be a symlink to it.** A tool added to the repo tomorrow is covered without
+# anyone remembering, and a shadowing copy is repaired the first time this runs.
+# Names that do not match a repo tool -- `batch6.py`, `ablate_baselines.py.pre-guard`
+# -- are left alone, which is the whole discrimination.
+#
+# Repairs are printed with the size delta rather than done silently: a scratchpad
+# copy that had drifted far enough to matter is evidence about the box, and the
+# one thing worse than the drift is fixing it where nobody sees.
+for src in "$REPO"/tools/*; do
+    tool="$(basename "$src")"
+    dst="$SP/$tool"
+    [ -e "$dst" ] || [ -L "$dst" ] || continue      # only shadowing copies
+    if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$(readlink -f "$src")" ]; then
+        continue                                    # already pointing at the repo
+    fi
+    if [ -f "$dst" ] && ! [ -L "$dst" ]; then
+        echo "  rehydrate: $tool was a real file ($(wc -c <"$dst") bytes vs" \
+             "$(wc -c <"$src") in the repo) — re-pointing at the repo"
+    fi
+    ln -sfn "$src" "$dst"
+done
+# These three are named because the scratchpad calls them something else, so no
+# rule over basenames can find them.
+for tool in refresh_audit.sh heartbeat.sh snapshot_results.py quota.sh; do
     ln -sfn "$REPO/tools/$tool" "$SP/$tool"
 done
 
@@ -89,7 +151,13 @@ done
 # work that finished days ago.
 ln -sfn "$REPO/docs/ccarc3_autopilot.md" "$SP/AUTOPILOT.md"
 ln -sfn "$REPO/docs/ccarc3_memory.md"    "$SP/MEMORY.md"
-ln -sfn "$REPO/tools/quota.sh"           "$SP/quota.sh"
+
+# An `if`, not `[ ... ] && exit 0`. As the last command of the block that is
+# what sets the exit status, so on the normal path the false test made step 2
+# return 1 -- and tests/test_rehydrate_reports_what_it_did.py runs step 2 as a
+# standalone slice and asserts it exits 0. A guard that changes the status of the
+# thing it guards is the same trap as the one this file's step 1 comment is about.
+if [ "${LINKS_ONLY:-0}" = 1 ]; then exit 0; fi
 
 # 3+4. Fingerprint and banked results.
 #
@@ -131,7 +199,16 @@ for name in clean_rollouts.py ablate_baselines.py rerun_losses.py preserve_evide
   n=0
   for d in /proc/[0-9]*; do
     [ -r "$d/cmdline" ] || continue
-    tr '\0' '\n' < "$d/cmdline" 2>/dev/null | grep -qx ".*/${name}\|.*${name}" && n=$((n+1))
+# **`2>/dev/null` on `tr` does not silence the redirection.** `< "$d/cmdline"` is
+# opened by the SHELL before `tr` exists, so when the process exits between the
+# glob and the read -- which it does, `/proc` is a live directory -- the failure is
+# reported on the shell's stderr and the `2>/dev/null` never sees it. Measured
+# 2026-08-09: `bash: line 43: /proc/19946/cmdline: No such file or directory`
+# reached the heartbeat's output and the Monitor forwarded it as an alert. An
+# alarm channel that emits noise is one people stop reading, which is the same
+# reason the daemon report is not always-on. Braces put the redirection inside the
+# group, so the group's stderr covers it.
+    { tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null | grep -qx ".*/${name}\|.*${name}" && n=$((n+1))
   done
   [ "$n" -gt 0 ] && echo "running: $name ($n)"
 done
