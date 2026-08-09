@@ -475,15 +475,29 @@ def mark_contaminated(data: dict, runs: list) -> list[str]:
     Needs the live `/api/games` to know the arrays. Without it nothing is marked,
     and the page says so rather than quietly downgrading the check.
     """
+    # **Only the value scan needs the network, so only the value scan is skipped
+    # when it is unreachable.** This used to `return []` here, which took three
+    # other things down with it: the provenance void below -- pure arithmetic on
+    # two hard-coded timestamps -- plus `mark_generation` and `mark_clean` at the
+    # end of this function. So a build made without a key, or during an ARC
+    # outage, published contaminated runs as clean, left every tier stale, and
+    # never recomputed the `clean` flag the page's filter reads. It said
+    # "tiers left as they were", which is true and describes about a quarter of
+    # what it did.
+    #
+    # A check that needs nothing must not be gated behind a dependency it does
+    # not use. Same shape as everything else here: it passes by not running.
+    base: dict[str, list[int]] = {}
     try:
         sys.path.insert(0, str(REPO / "src"))
         from athanor.ccarc3 import list_games  # noqa: PLC0415
 
         base = {g.game_id: list(g.baseline_actions) for g in list_games()}
     except Exception as exc:  # noqa: BLE001
-        print(f"    contamination check SKIPPED ({exc.__class__.__name__}): "
-              f"baselines unreachable, tiers left as they were", file=sys.stderr)
-        return []
+        print(f"    value scan SKIPPED ({exc.__class__.__name__}): baselines "
+              f"unreachable, so no run is voided for carrying an array. The "
+              f"provenance void, tiering and the clean flag below still run.",
+              file=sys.stderr)
 
     voided = []
     for rid, entry in data.items():
