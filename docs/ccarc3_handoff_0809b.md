@@ -87,9 +87,10 @@ CCARC3_ONLY=bp35 CCARC3_SWEEP_DIR=clean_rollouts_validate CCARC3_MAX_PASSES=2
   instruction, so the run is not stopped at the 0.98 ceiling. **Above ~0.98 the
   brake is the API's own rate limiting, which does not stop politely.**
 
-**Put the ceiling back.** `CCARC3_QUOTA_LIMIT=0.999` was a one-run decision and
-the run is over. The supervisor still carries it — relaunch with no override to
-restore 0.98 / 0.90.
+**The ceiling has been put back.** `CCARC3_QUOTA_LIMIT=0.999` was a one-run
+decision; the supervisor was relaunched at 10:53 PDT with no override and is at
+the default 0.98 / 0.90 again (pid 28063, ppid 1). Nothing to do here — recorded
+so nobody goes looking for a lifted ceiling that is no longer set.
 
 ---
 
