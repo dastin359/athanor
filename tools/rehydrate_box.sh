@@ -22,7 +22,9 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
-BRANCH=claude/athanor-cc-harness-variant-jpqw7t
+# Overridable via `CCARC3_BRANCH`; a session on another account works on
+# another branch. Not derived from HEAD -- see preserve_evidence.sh.
+BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
 SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
 cd "$REPO" || exit 1
 

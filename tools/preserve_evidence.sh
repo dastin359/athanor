@@ -44,7 +44,17 @@ SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a
 # derivation still holds if this script is reached through a symlink.
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 DEST="$REPO/evidence/ccarc3"
-BRANCH="claude/athanor-cc-harness-variant-jpqw7t"
+# **Overridable, because the branch is not a property of the code.** It was
+# written as a literal in four tools. A session on a different account works
+# on a different branch, and the HEAD-vs-BRANCH guard below then refuses
+# every cycle: safe, but it means nothing is preserved and the only symptom
+# is a line in a log nobody reads.
+#
+# Deliberately NOT derived from `git rev-parse --abbrev-ref HEAD`. That would
+# make the guard vacuous -- it exists precisely to catch "HEAD moved and the
+# push would go somewhere unintended", and a branch read from HEAD always
+# agrees with HEAD.
+BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
 TICK=300
 
 # **Source the key rather than inherit it.** `key_is_clean` refuses to commit

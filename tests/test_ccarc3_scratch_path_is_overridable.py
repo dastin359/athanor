@@ -287,3 +287,70 @@ def test_no_tool_hardcodes_the_repo_path() -> None:
                     continue                      # documented override default
                 offenders.append(f"{path.relative_to(REPO)}:{n}")
     assert not offenders, "hardcoded repo path: " + ", ".join(offenders)
+
+
+# ==========================================================================
+# part three -- the branch
+#
+# The branch is not a property of the code. It was a literal in four tools, and
+# a session on a different account works on a different branch:
+# preserve_evidence.sh's HEAD-vs-BRANCH guard then refuses every cycle, so
+# nothing is preserved and the only symptom is a line in a log nobody reads.
+#
+# Deliberately NOT derived from `git rev-parse --abbrev-ref HEAD`. That guard
+# exists to catch "HEAD moved and the push would go somewhere unintended", and a
+# branch read from HEAD always agrees with HEAD -- deriving it would leave the
+# check passing by construction, which is the defect class this suite is about.
+# ==========================================================================
+
+BRANCH_TOOLS = [
+    "preserve_evidence.sh",
+    "box_fingerprint.sh",
+    "rehydrate_bootstrap.sh",
+    "rehydrate_box.sh",
+]
+DEFAULT_BRANCH = "claude/athanor-cc-harness-variant-jpqw7t"
+
+
+def _branch_line(tool: str) -> str:
+    proc = subprocess.run(
+        ["grep", "-m1", "-E", "^BRANCH=", str(TOOLS / tool)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, f"{tool}: no BRANCH assignment"
+    return proc.stdout.strip()
+
+
+@pytest.mark.parametrize("tool", BRANCH_TOOLS)
+def test_branch_honours_the_override(tool: str) -> None:
+    got = subprocess.run(
+        ["bash", "-c", _branch_line(tool) + '\nprintf "%s" "$BRANCH"'],
+        capture_output=True, text=True, check=True,
+        env={**os.environ, "CCARC3_BRANCH": "feature/somewhere-else"},
+    ).stdout.strip()
+    assert got == "feature/somewhere-else"
+
+
+@pytest.mark.parametrize("tool", BRANCH_TOOLS)
+def test_branch_falls_back_to_the_working_branch(tool: str) -> None:
+    env = {k: v for k, v in os.environ.items() if k != "CCARC3_BRANCH"}
+    got = subprocess.run(
+        ["bash", "-c", _branch_line(tool) + '\nprintf "%s" "$BRANCH"'],
+        capture_output=True, text=True, check=True, env=env,
+    ).stdout.strip()
+    assert got == DEFAULT_BRANCH, f"{tool} defaults to {got!r}"
+
+
+def test_the_branch_is_not_read_from_head() -> None:
+    """Deriving it would make preserve_evidence's own guard vacuous.
+
+    That guard compares HEAD against BRANCH to catch a push aimed somewhere
+    unintended. A BRANCH read from HEAD always matches HEAD, so the comparison
+    could never fail -- a check that passes by construction.
+    """
+    for tool in BRANCH_TOOLS:
+        line = _branch_line(tool)
+        assert "rev-parse" not in line and "symbolic-ref" not in line, (
+            f"{tool} derives BRANCH from git state: {line!r} -- this disarms "
+            f"the HEAD-vs-BRANCH guard in preserve_evidence.sh"
+        )

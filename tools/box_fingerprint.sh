@@ -31,7 +31,9 @@ set -u
 # derivation still holds if this script is reached through a symlink.
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LOG="$REPO/evidence/box_fingerprint.tsv"
-BRANCH="claude/athanor-cc-harness-variant-jpqw7t"
+# Overridable via `CCARC3_BRANCH`; a session on another account works on
+# another branch. Not derived from HEAD -- see preserve_evidence.sh.
+BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
 # Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the
 # container is recycled every 10-50 minutes, so a hard-coded copy points at a
 # directory that stops existing. See tools/clean_rollouts.py for the full note.

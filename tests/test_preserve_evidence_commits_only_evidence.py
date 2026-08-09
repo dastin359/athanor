@@ -148,9 +148,23 @@ def bare_rev(bare: Path, ref: str, env: dict) -> str:
 
 
 def script_branch_name() -> str:
-    m = re.search(r'^BRANCH="([^"]+)"', SCRIPT, re.M)
+    """The branch the script actually resolves, not the text of its assignment.
+
+    This used to regex the value out from between the quotes. Once BRANCH became
+    `${CCARC3_BRANCH:-...}` that returned the expansion verbatim -- a "branch
+    name" of `${CCARC3_BRANCH:-claude/...}`. Evaluating the real line in a real
+    shell is both correct and immune to the next change of shape.
+
+    CCARC3_BRANCH is stripped so this reports the default, which is what the
+    sandbox checks out.
+    """
+    m = re.search(r"^BRANCH=.*$", SCRIPT, re.M)
     assert m, "preserve_evidence.sh no longer defines BRANCH= at top level"
-    return m.group(1)
+    env = {k: v for k, v in os.environ.items() if k != "CCARC3_BRANCH"}
+    return subprocess.run(
+        ["bash", "-c", m.group(0) + '\nprintf "%s" "$BRANCH"'],
+        capture_output=True, text=True, check=True, env=env,
+    ).stdout.strip()
 
 
 def change_gate_bounds():

@@ -208,12 +208,47 @@ refresh_proxy() {
     return 0
 }
 
+# **A missing key must stop the launch, and it did not.** `. "$SP/arc3/.env"`
+# ran unchecked in a file with no `set -e`: a missing or empty env file printed
+# one "No such file or directory" into the log and the runner started anyway,
+# with no `ARC_API_KEY`. Every action then 401s. That is the GUARANTEED state of
+# a fresh container -- the scratchpad reverts to an image snapshot and the key
+# is deliberately not in the repo -- so the first thing a replacement box would
+# do is launch a sweep that cannot play a single game, and keep relaunching it
+# every ten minutes.
+#
+# Shaped like `refresh_proxy` above: check the precondition, say what is wrong
+# and where to fix it, return 1. The caller retries in ten minutes, so dropping
+# the .env in place is enough to recover -- no restart needed.
+#
+# The check is on the VALUE, not on the file: an .env that exists but sets
+# nothing (a truncated write, a copy that lost its contents) reads as present
+# and would otherwise pass. And it runs BEFORE the "starting" line, because a
+# log that announces a launch it then abandons is worse than one that says
+# nothing.
+key_ok() {
+    local envf="$SP/arc3/.env"
+    if [ ! -r "$envf" ]; then
+        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SKIPPING LAUNCH — no readable"\
+             "$envf. Every ARC call would 401. Recreate it (mode 600) with"\
+             "ARC_API_KEY=... ; the key is deliberately not in the repo."
+        return 1
+    fi
+    set -a
+    . "$envf"
+    set +a
+    if [ -z "${ARC_API_KEY:-}" ]; then
+        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SKIPPING LAUNCH — $envf"\
+             "exists but sets no ARC_API_KEY. Every ARC call would 401."
+        return 1
+    fi
+    return 0
+}
+
 start() {
     refresh_proxy || return 1
+    key_ok || return 1
     echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') util=$1 < $RESUME — starting $(basename "$RUNNER")"
-    set -a
-    . "$SP/arc3/.env"
-    set +a
     cd "$REPO" || return
     setsid nohup .venv/bin/python "$RUNNER" >> "$LOG" 2>&1 < /dev/null &
 }
