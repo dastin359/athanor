@@ -39,6 +39,7 @@ one that covers everything.
 import json
 import os
 import pathlib
+import re
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -63,7 +64,22 @@ LEDGER = SP / "results.jsonl"
 # different experiments into one headline number. The `batch` field is the
 # discriminator -- every reader must filter on it. `clean_rollouts` and the
 # submission sweep are baseline-free too, and are likewise their own batches.
-BATCHES = ["runs", "runs2", "runs3", "ablate_nobaseline", "clean_rollouts"]
+BATCHES = [
+    "runs", "runs2", "runs3", "ablate_nobaseline", "clean_rollouts",
+    # **Added 2026-08-09 after the structural check surfaced them.** All hold
+    # real ARC-AGI-3 runs whose figures exist nowhere else once the scratchpad
+    # reverts, which is the one thing this file is for. They are RECORDED rather
+    # than silenced: `batch` is the discriminator and every reader must filter on
+    # it, so preserving a voided or quarantined run under its own name loses
+    # nothing and keeps the evidence.
+    #
+    # `clean_rollouts_void` and `clean_rollouts_stale_card` are sweeps that were
+    # deliberately voided -- their batch names say so. `quarantine` is one
+    # quarantined run. `rerun_bp35_fixed` is the bp35 re-run. `repro_report`,
+    # `rev_old` and `rev_runs` are single ls20 reproductions.
+    "clean_rollouts_void", "clean_rollouts_stale_card", "quarantine",
+    "rerun_bp35_fixed", "repro_report", "rev_old", "rev_runs",
+]
 _sweep = os.environ.get("CCARC3_SWEEP_DIR")
 if _sweep and _sweep not in BATCHES:
     BATCHES.append(_sweep)
@@ -78,8 +94,17 @@ if _sweep and _sweep not in BATCHES:
 RESULT_PATTERNS = ("*/result.json", "*/attempt_*/*/result.json")
 
 
+#: A real ARC-AGI-3 game id: four lowercase alphanumerics, a dash, eight hex.
+#: Used to decide whether an unlisted directory is even a candidate arm.
+GAME_ID = re.compile(r"^[a-z0-9]{4}-[0-9a-f]{8}$")
+
+#: ccarc3 probes already adjudicated as not-arms. These DO hold real game ids --
+#: they are genuine ARC-AGI-3 runs -- so only a decision can exclude them.
+NOT_ARMS = frozenset({"smoke", "strat_easy", "strat_hard", "verify", "runs4"})
+
+
 def _known_batch_dirs() -> set[str]:
-    return set(BATCHES)
+    return set(BATCHES) | set(NOT_ARMS)
 
 
 def unlisted_result_dirs() -> list[str]:
@@ -89,6 +114,10 @@ def unlisted_result_dirs() -> list[str]:
     arms of the day and nothing made its omissions visible. This is the cheap
     half of the fix -- the reader still decides what is real, but a new arm
     cannot go unrecorded in silence.
+
+    ``NOT_ARMS`` is the other half: directories already adjudicated as probes
+    stay quiet, so a name appearing here means something new has arrived rather
+    than that the warning exists.
     """
     known = _known_batch_dirs()
     out = []
@@ -97,11 +126,35 @@ def unlisted_result_dirs() -> list[str]:
     for child in sorted(SP.iterdir()):
         if not child.is_dir() or child.name in known:
             continue
-        for pattern in (*RESULT_PATTERNS, "*/clean_result.json"):
-            if next(child.glob(pattern), None) is not None:
-                out.append(child.name)
-                break
+        if _holds_arc3_results(child):
+            out.append(child.name)
     return out
+
+
+def _holds_arc3_results(root: pathlib.Path) -> bool:
+    """Does this directory hold results from THIS benchmark?
+
+    **Structural, because a name list could not stop growing.** The first
+    version reported any directory containing a `result.json`, which on the live
+    scratchpad meant `round6`/`round7`/`round8` (cc_harness, i.e. ARC-AGI-2 --
+    they carry `task_id` and `hypothesis`, not `game_id`), `runs4` (synthetic
+    fixtures whose ids are `g01`-style), and a tail of `rev_runs*` probes. Each
+    one I named made the next one appear; enumerating them is the same
+    stale-list defect this warning was added to fix, one level up.
+
+    A directory qualifies only if some result carries a game id of the real
+    shape. That excludes another benchmark's output and fabricated fixtures by
+    construction rather than by memory.
+    """
+    for pattern in (*RESULT_PATTERNS, "*/clean_result.json"):
+        for f in root.glob(pattern):
+            try:
+                gid = json.loads(f.read_text()).get("game_id")
+            except Exception:                      # noqa: BLE001
+                continue
+            if isinstance(gid, str) and GAME_ID.match(gid):
+                return True
+    return False
 
 
 def main() -> int:
