@@ -29,6 +29,7 @@ import argparse
 import datetime as dt
 import gzip
 import json
+import os
 import time
 import pathlib
 import re
@@ -893,6 +894,23 @@ def _built_at() -> str:
     return stamp.strftime("%Y-%m-%d %H:%M %Z")
 
 
+def _scratchpad() -> pathlib.Path:
+    """Where runs live. Overridable, because the path encodes a session UUID."""
+    return pathlib.Path(
+        os.environ.get("CCARC3_SCRATCH")
+        or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    )
+
+
+def _under_scratchpad(path: pathlib.Path) -> bool:
+    root = _scratchpad().resolve()
+    try:
+        path.resolve().relative_to(root)
+    except (ValueError, OSError):
+        return False
+    return True
+
+
 def live_games() -> list[dict]:
     """Games with a solver running *right now*, for the page's live panel.
 
@@ -915,7 +933,21 @@ def live_games() -> list[dict]:
             continue
         if not any(a.endswith("/claude") for a in argv):
             continue
-        if "clean_rollouts" not in str(cwd) and "scratchpad/runs" not in str(cwd):
+        # **The arm names were a stale allowlist.** This read
+        # `"clean_rollouts" not in cwd and "scratchpad/runs" not in cwd`, so a
+        # solver working in `ablate_nobaseline/` -- or in any arm named later --
+        # was invisible, and the panel then rendered "nothing running" rather
+        # than "I cannot see it". Same shape as the batch list in
+        # snapshot_results.py, which silently omitted 25 banked games: a literal
+        # list of the arms of the day, going stale without a symptom. The
+        # operator instruction this panel exists to satisfy is *show all
+        # currently running games*, which an allowlist cannot honour.
+        #
+        # The discriminator is below and was always the stronger one: a `claude`
+        # process whose cwd holds a `trace.jsonl` IS a solver mid-game, whatever
+        # the arm is called. Requiring the cwd to sit under the scratchpad keeps
+        # it tight without naming anything that can go out of date.
+        if not _under_scratchpad(cwd):
             continue
         trace = cwd / "trace.jsonl"
         if not trace.exists():
