@@ -79,9 +79,43 @@ def test_the_strip_scans_the_whole_workspace_not_just_what_it_edited(workspace):
 
 
 def test_the_strip_does_not_trip_over_its_own_blanking(workspace):
-    """`baseline_actions=()` is what the strip produces; it must not self-flag."""
+    """`baseline_actions=()` is what the strip produces; it must not self-flag.
+
+    **This asserted nothing.** It called the strip twice and relied on "no
+    exception", which passes if the strip becomes a no-op, if its guard is
+    deleted, or if the second call quietly corrupts the file. The property has
+    three parts and each is now stated: the first call strips, the second
+    changes nothing, and the guard it must not trip is still armed.
+    """
+    sp = workspace.root / "session.py"
+    assert "baseline_actions=()" not in sp.read_text(), (
+        "the fixture is already stripped, so this test would pass vacuously"
+    )
+
     ab.strip_baselines(workspace.root)
-    ab.strip_baselines(workspace.root)      # idempotent, and still clean
+    after_first = sp.read_text()
+    assert "baseline_actions=()" in after_first, "the first call did not strip"
+
+    ab.strip_baselines(workspace.root)
+    assert sp.read_text() == after_first, (
+        "the second call changed the file -- the strip is not idempotent"
+    )
+
+
+def test_the_strip_still_raises_when_it_finds_nothing_to_strip(workspace):
+    """The guard the idempotence above must not trip -- proven still armed.
+
+    `strip_baselines` raises when it finds neither a populated
+    `baseline_actions=(...)` nor the blanked `baseline_actions=()`, because that
+    means the template moved and the strip silently did nothing. Without this
+    case, "the second call does not raise" is satisfied just as well by a guard
+    that never raises at all.
+    """
+    sp = workspace.root / "session.py"
+    sp.write_text(sp.read_text().replace("baseline_actions=", "baselines_removed="),
+                  encoding="utf-8")
+    with pytest.raises(RuntimeError, match="baseline_actions not found"):
+        ab.strip_baselines(workspace.root)
 
 
 def test_the_strip_removes_prose_by_the_paragraph_not_by_the_line(workspace):

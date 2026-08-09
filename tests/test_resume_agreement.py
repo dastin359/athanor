@@ -134,6 +134,38 @@ def test_a_game_idle_past_the_reap_deadline_refuses(tmp_path):
         c.open()
 
 
+def _open_and_prove_it_resumed(c) -> None:
+    """`open()` must succeed AND actually do the resume.
+
+    **"must not raise" was the whole assertion in two of these**, which passes
+    just as well if `open()` short-circuits, if the agreement check is deleted,
+    or if the reap guard never runs -- every one of those raises nothing either.
+    A test whose only claim is the absence of an exception cannot tell a working
+    guard from a removed one.
+
+    So: the card is consulted (the agreement check ran) and the level survives
+    (the resume kept its place rather than restarting the game).
+    """
+    calls = []
+    inner = c.scorecard
+
+    def counted():
+        calls.append(1)
+        return inner()
+
+    c.scorecard = counted            # type: ignore[method-assign]
+    level_before = c.level
+    c.open()
+    assert calls, (
+        "open() never consulted the scorecard -- the resume-agreement check did "
+        "not run, so nothing here exercised the guard"
+    )
+    assert c.level == level_before, (
+        f"open() moved the client from level {level_before} to {c.level}; a "
+        f"resume must keep its place"
+    )
+
+
 def test_a_gap_the_record_says_survived_still_resumes(tmp_path):
     """The deadline is the UPPER edge of the measured bracket, deliberately.
 
@@ -143,7 +175,7 @@ def test_a_gap_the_record_says_survived_still_resumes(tmp_path):
     agreeing = {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}}
     c = _client(tmp_path, 6, agreeing)
     c.last_touched = time.time() - (13.7 * 60)
-    c.open()                                  # must not raise
+    _open_and_prove_it_resumed(c)
 
 
 def test_a_state_file_without_the_stamp_resumes_as_before(tmp_path):
@@ -152,7 +184,7 @@ def test_a_state_file_without_the_stamp_resumes_as_before(tmp_path):
     agreeing = {"cards": {"zz99-deadbeef": {"levels_completed": [6]}}}
     c = _client(tmp_path, 6, agreeing)
     c.last_touched = 0.0                      # the legacy shape
-    c.open()                                  # must not raise
+    _open_and_prove_it_resumed(c)
 
 
 def test_the_stamp_advances_only_when_the_server_answered(tmp_path):

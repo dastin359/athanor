@@ -346,7 +346,18 @@ def test_a_stub_card_never_reaches_the_network(monkeypatch, tmp_path):
 
     c = ArcClient("g", trace_path=tmp_path / "run" / "t.jsonl")
     c.card_id = "card-1"
+    assert c.level == 0
     c.act(1)
+
+    # **The guard is only exercised on a level advance**, which is what fires the
+    # GET this test forbids. Without asserting the advance happened, an `act`
+    # that short-circuited would take the same path as a passing run: no request
+    # is issued either way, and `boom` never gets the chance to fire.
+    assert c.level == 1, (
+        f"the stub reported levels_completed=1 but the client sits at level "
+        f"{c.level} -- the level-advance path never ran, so nothing here tested "
+        f"the no-network guard"
+    )
 
 
 def test_closing_keeps_the_server_scorecard(monkeypatch, tmp_path):
