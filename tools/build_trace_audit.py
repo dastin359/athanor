@@ -1052,7 +1052,6 @@ def fit(data: dict, runs: list, template: str, excluded: int = 0) -> tuple[str, 
     The hand-written ones went stale the moment the page grew past the build they
     were computed on, and nothing in the page said so.
     """
-    stats = summarise(data)
     # **A run on the current harness is never trimmed.** Trimming is a size
     # concession, and it should be paid by the runs nobody is going to read
     # closely -- superseded and void ones are kept for the record, not for
@@ -1072,12 +1071,25 @@ def fit(data: dict, runs: list, template: str, excluded: int = 0) -> tuple[str, 
     # was already at 500 chars with four of them, one rung from failing outright.
     drop_spans = {r["id"] for r in runs if r.get("tier") == "void"}
 
+    # **Everything below counts `shown`, not `data`.** `summarise` says it derives
+    # "the spans actually on the page", and it was handed `data` -- which still
+    # holds every void run whose spans are dropped three lines above. The two
+    # agree whenever `current_generation_only` has already removed the void runs,
+    # which is the default path and the only one anybody builds by hand; they
+    # part company under `--all-generations`, where the headline bash count,
+    # median and LLM share silently absorb ten contaminated runs that no reader
+    # can find on the page. Same for the trimmed-payload note, which counted
+    # payloads inside dropped runs as "trimmed to N chars" when they were not
+    # trimmed at all, they were removed.
+    shown = {k: v for k, v in data.items() if k not in drop_spans}
+    stats = summarise(shown)
+
     # Read once, outside `render`, so the two size-fitting passes cannot disagree
     # about what was running.
     live = live_games()
 
     def render(cap: int | None) -> str:
-        payload = {k: v for k, v in data.items() if k not in drop_spans}
+        payload = shown
         if cap is not None:
             payload = json.loads(json.dumps(payload))
             for rid, entry in payload.items():
@@ -1108,7 +1120,7 @@ def fit(data: dict, runs: list, template: str, excluded: int = 0) -> tuple[str, 
         page = render(cap)
         if len(page.encode()) <= TARGET:
             trimmed = sum(
-                1 for rid, e in data.items() if rid not in keep_whole
+                1 for rid, e in shown.items() if rid not in keep_whole
                 for a in e["attempts"] for s in a["spans"]
                 for f in ("out", "input", "text")
                 if isinstance(s.get(f), str) and len(s[f]) > cap

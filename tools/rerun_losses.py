@@ -134,7 +134,13 @@ def restore(game_id: str) -> bool:
     return bool(restored)
 
 
-OUT.mkdir(exist_ok=True)
+# `parents=True`, because `SP` is not guaranteed to exist. It did on the box this
+# was written on -- the scratchpad root was already full of earlier arms -- so the
+# missing flag never showed. On a fresh container, or under a `CCARC3_SCRATCH`
+# pointing anywhere new, this raised `FileNotFoundError: .../rerun_losses` before
+# the first game was even looked up. Demonstrated 2026-08-09 against a scratchpad
+# root that does not exist: no-parents raises, parents=True creates.
+OUT.mkdir(parents=True, exist_ok=True)
 infos = {g.game_id: g for g in list_games()}
 
 print("RE-RUN OF THE THREE LOSSES — doctrine 0b active, baselines withheld",
