@@ -83,17 +83,28 @@ ANNOUNCED_COMPLETE=0
 # -- a container restart killed the supervisor once, 22 minutes before a quota
 # reset -- and nothing else notices. Checked argv-element-exact for the reason
 # given above: a substring match finds this script, which names all three.
+# **`context_watch.py` is NOT in this list, and used to be.** It is a one-shot
+# alarm, not a daemon: it polls the transcript and EXITS on its first threshold
+# crossing, because a background job that ends is what raises a notification.
+# Listing it here turned every correct firing into `DAEMON DOWN`, which then
+# repeated every poll -- it fired at 22:32, 22:40, 22:48 and 22:56 PDT on
+# 2026-08-08, all of them describing a watcher that had done its job. A latched
+# alarm is one you learn to ignore, and this one shares a channel with the loss
+# of the supervisor.
+#
+# Its absence is not unmonitored: the crossing itself is the report, and the
+# handoff protocol says to re-arm it after handling one.
 daemon_check() {
     local d name argv
     local -A seen=()
     for d in /proc/[0-9]*; do
         [ -r "$d/cmdline" ] || continue
         argv=$(tr '\0' '\n' < "$d/cmdline" 2>/dev/null)
-        for name in supervisor.sh preserve_evidence.sh context_watch.py; do
+        for name in supervisor.sh preserve_evidence.sh; do
             grep -qx ".*/${name//./\\.}" <<< "$argv" && seen[$name]=1
         done
     done
-    for name in supervisor.sh preserve_evidence.sh context_watch.py; do
+    for name in supervisor.sh preserve_evidence.sh; do
         [ -n "${seen[$name]}" ] || \
             echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') DAEMON DOWN: $name"
     done

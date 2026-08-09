@@ -102,7 +102,10 @@ def _daemon_check_fn() -> str:
 def _work_pending_fn() -> str:
     return _extract(r"^work_pending\(\) \{.*?^\}$", "work_pending()")
 
-DAEMON_LIST = "for name in supervisor.sh preserve_evidence.sh context_watch.py"
+#: `context_watch.py` is deliberately absent: it is a one-shot alarm that EXITS
+#: on its threshold crossing, so listing it made every correct firing report
+#: `DAEMON DOWN` on every poll thereafter.
+DAEMON_LIST = "for name in supervisor.sh preserve_evidence.sh"
 
 
 def _sub(text: str, needle: str, repl: str, expect: int) -> str:
@@ -632,7 +635,7 @@ def test_daemon_check_agrees_with_the_real_process_table():
     than against whatever the box happens to be doing -- so this neither passes
     by luck nor fails when a daemon legitimately restarts.  That daemon_check
     can speak at all is established by the controlled test above."""
-    names = ["supervisor.sh", "preserve_evidence.sh", "context_watch.py"]
+    names = ["supervisor.sh", "preserve_evidence.sh"]
     assert SRC.count(DAEMON_LIST) == 2, (
         "daemon_check no longer watches exactly those three daemons"
     )
