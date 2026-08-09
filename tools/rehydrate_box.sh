@@ -72,7 +72,10 @@ fi
 # CLAUDE.md records that as the reason a rule kept only there is a rule that
 # expires -- and the same is true of a script. A symlink cannot drift.
 mkdir -p "$SP"
-for tool in refresh_audit.sh heartbeat.sh; do
+# `snapshot_results.py` joined this list on 2026-08-09. It had lived ONLY in
+# the scratchpad -- the one store that reverts -- which is the worst possible
+# home for the script whose whole purpose is surviving data loss.
+for tool in refresh_audit.sh heartbeat.sh snapshot_results.py; do
     ln -sfn "$REPO/tools/$tool" "$SP/$tool"
 done
 
@@ -119,8 +122,11 @@ done
 # `clean_rollouts.py` is the driver actually in use and was missing from this
 # list, so a wake-up after a replacement could not see whether it had survived.
 # `supervisor.sh` stays: it is the quota duty-cycle loop and the first thing the
-# autopilot check asks about. (It is not in the repo -- it lives in the
-# scratchpad, which is a hazard of its own, hence tools/supervisor.sh.)
+# autopilot check asks about. (It lives in `tools/` now -- this parenthesis used
+# to say it did not, which was true when written and stopped being true without
+# the line changing. A comment that contradicts the tree beside it is the same
+# defect as a check that reads a proxy: both keep answering after the thing they
+# describe has moved.)
 for name in clean_rollouts.py ablate_baselines.py rerun_losses.py preserve_evidence.sh supervisor.sh; do
   n=0
   for d in /proc/[0-9]*; do
