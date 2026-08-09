@@ -201,6 +201,31 @@ This happened at 02:44 PDT on 2026-08-09 and three times in 45 minutes on
   labels staleness — read the label, and note that utilisation only rises, so a
   stale reading is a *lower bound*.
 
+**Discarding an attempt is local bookkeeping. ARC's card does not forget it.**
+`clean_rollouts` throws away an interrupted or gave-up attempt and re-runs the
+game, which is the right basis for a claim about *single-attempt* performance.
+The scorecard is the opposite: every play ever made on it stays, and **ARC scores
+the best play**.
+
+Measured on 2026-08-09, `bp35` on card `ac0e1272-…`:
+
+| | plays | guids | levels | actions |
+|---|---|---|---|---|
+| after attempt 1 (discarded) | 2 | `4be429b4` ×2 | 4, 6 | 241, 357 |
+| during attempt 2 | 3 | `4be429b4` ×2, `7fa4724f` | 4, 6, 3 | 241, 400, 201 |
+
+The guid is what marks a run: attempt 1's two plays share one, because the solver
+full-reset once inside a single session; attempt 2 opened a fresh guid. And
+241 + 400 = 641, exactly the `actions_used` on the discarded `result.json`.
+
+So a retried game's card number is a best-of-N across attempts including the ones
+we refused to bank, while its `clean_result.json` describes one attempt. Both are
+correct; they are answers to different questions. For a leaderboard submission the
+best-of is fine and probably intended. **Do not put a card figure and a banked
+figure side by side and call them the same measurement.** `uncorroborated()`
+compares the two and will flag a genuine disagreement — see `df5aec6`, where the
+corroboration check had been reading a discarded attempt's rows.
+
 **A watcher reads `CCARC3_SWEEP_DIR` from its own environment, at launch.**
 `heartbeat.sh` and `refresh_audit.sh` both default to `clean_rollouts`. A daemon
 started before a differently-named sweep exists therefore watches the wrong
