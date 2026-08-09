@@ -46,6 +46,7 @@ __all__ = [
     "collect_outcome",
     "snapshot_scorecard",
     "redact_self_reference",
+    "ledger_facts",
 ]
 
 ASSETS = Path(__file__).parent / "assets"

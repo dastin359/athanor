@@ -69,6 +69,7 @@ __all__ = [
     "png",
     "PALETTE",
     "objects",
+    "counts",
 ]
 
 
@@ -161,6 +162,14 @@ def logical(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
     Exact and safe: it only divides by a factor :func:`block_size` has proved,
     and is idempotent on grids that are already logical.
 
+    Always returns a fresh array, so writing to the result never reaches back
+    into the frame it came from. That is not free politeness -- it used to copy
+    on the reducing branch and alias on the ``k == 1`` branch, and per the note
+    below ``k == 1`` is the *usual* outcome on a real frame, so the aliasing
+    case was the common one. A solver that edited a "collapsed" board was
+    editing the ledger's own record of the frame, on real games and not on the
+    synthetic ones any test would reach for.
+
     **It is usually not the function you want on a real frame.** ARC-AGI-3
     renders into a fixed 64x64 viewport, and a board whose side does not divide
     64 is scaled non-uniformly -- a 10-wide board gives cells 6 or 7 pixels
@@ -169,7 +178,7 @@ def logical(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
     """
     arr = as_grid(grid)
     k = block_size(arr)
-    return arr if k == 1 else arr[::k, ::k].copy()
+    return arr.copy() if k == 1 else arr[::k, ::k].copy()
 
 
 def collapse(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
@@ -188,7 +197,7 @@ def collapse(grid: Sequence[Sequence[int]] | np.ndarray) -> np.ndarray:
     """
     arr = as_grid(grid)
     if arr.size == 0:
-        return arr
+        return arr.copy()
     keep_rows = np.ones(arr.shape[0], dtype=bool)
     keep_rows[1:] = (arr[1:] != arr[:-1]).any(axis=1)
     arr = arr[keep_rows]
@@ -309,6 +318,16 @@ def cell_boundaries(
     always a subset of the true cell grid -- it under-reports rather than
     inventing splits. Cross-check ``len(row_starts)`` against a board size you
     have independent reason to believe before trusting it as complete.
+
+    **Every grid must have the same shape, and a mismatch is refused.** Pooling
+    is defined over one board; frames from two boards pool two different cell
+    grids into one answer and report it as indices into whichever frame came
+    last. ARC-AGI-3 changes board shape at a level boundary, and this function
+    exists to be handed a whole trace, so that is the ordinary case rather than
+    an exotic one -- the same reasoning that makes :func:`diff` refuse a shape
+    change instead of burying it. Filter first::
+
+        arc.cell_boundaries([t.after for t in ts if t.level == client.level])
     """
     if isinstance(grids, np.ndarray) and grids.ndim == 2:
         raise ValueError(
@@ -324,6 +343,13 @@ def cell_boundaries(
         arr = as_grid(g)
         if arr.size == 0:
             continue
+        if height and arr.shape != (height, width):
+            raise ValueError(
+                f"cell_boundaries pools one board: got {(height, width)} then "
+                f"{arr.shape}. A board changes shape at a level boundary, and "
+                "boundaries pooled across two of them index neither. Pass one "
+                "level's frames: [t.after for t in ts if t.level == lvl]."
+            )
         height, width = arr.shape
         changed_rows = (arr[1:] != arr[:-1]).any(axis=1)
         rows.update(int(i) + 1 for i in np.nonzero(changed_rows)[0])

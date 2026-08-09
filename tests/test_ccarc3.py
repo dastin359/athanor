@@ -157,6 +157,87 @@ def test_objects_respects_connectivity():
     assert len(objects(grid, background=0, connectivity=8)) == 1
 
 
+def test_as_grid_rejects_negative_values():
+    """The lower palette bound, which no test read until a mutant removed it."""
+    with pytest.raises(ValueError, match=r"\[0, 16\)"):
+        as_grid([[0, -1]])
+
+
+def test_diff_reports_changes_in_row_major_order():
+    """The docstring promises an order, so something has to hold it to it.
+
+    A solver taking ``diff(...)[0]`` as "the first cell that changed" is reading
+    that promise, and reversing the list passed the whole suite.
+    """
+    before = [[0, 0, 0], [0, 0, 0]]
+    after = [[0, 1, 0], [2, 0, 3]]
+    positions = [(c.y, c.x) for c in diff(before, after)]
+    assert positions == [(0, 1), (1, 0), (1, 2)]
+    assert positions == sorted(positions)
+
+
+def test_block_size_is_always_safe_to_divide_by():
+    """``logical`` slices by whatever this returns, including on an empty grid."""
+    assert block_size(np.zeros((0, 4), dtype=int)) == 1
+    assert block_size(np.zeros((4, 0), dtype=int)) == 1
+    assert logical(np.zeros((0, 4), dtype=int)).shape == (0, 4)
+
+
+def test_counts_reports_every_colour_present_and_no_others():
+    from athanor.ccarc3 import counts
+
+    assert counts([[5, 5, 2], [5, 3, 3]]) == {5: 3, 2: 1, 3: 2}
+    assert counts([[5]]) == {5: 1}
+    assert counts(np.zeros((0, 0), dtype=int)) == {}
+
+
+def test_everything_the_package_exports_is_exported_by_its_own_module():
+    """A derived rule, because an enumerated list has gone stale here four times.
+
+    Two ``__all__`` lists had already drifted when this was written: ``counts``
+    was absent from ``grids.__all__`` and ``ledger_facts`` from
+    ``session.__all__``. Both were harmless only by luck -- ``ccarc3/__init__``
+    imports by name, which ignores ``__all__`` entirely -- so nothing failed, and
+    a ``from .grids import *`` anywhere would have started losing symbols
+    silently.
+
+    The invariant is not "every public function must be exported" (plenty are
+    deliberately internal to the package). It is the narrower, checkable one:
+    anything the *package* publishes must be published by the module that
+    defines it.
+    """
+    import importlib
+
+    import athanor.ccarc3 as pkg
+
+    drift = []
+    for name in pkg.__all__:
+        obj = getattr(pkg, name)
+        home = getattr(obj, "__module__", None)
+        if not home or not home.startswith("athanor.ccarc3."):
+            continue                       # a constant, or re-exported from afar
+        mod = importlib.import_module(home)
+        if hasattr(mod, "__all__") and name not in mod.__all__:
+            drift.append(f"{home}.__all__ is missing {name!r}")
+    assert not drift, "; ".join(drift)
+
+
+def test_no_module_promises_a_name_it_does_not_have():
+    import importlib
+
+    import athanor.ccarc3 as pkg
+
+    ghosts = []
+    for name in pkg.__all__:
+        obj = getattr(pkg, name)
+        home = getattr(obj, "__module__", None)
+        if not home or not home.startswith("athanor.ccarc3."):
+            continue
+        mod = importlib.import_module(home)
+        ghosts += [f"{home}.{n}" for n in getattr(mod, "__all__", ()) if not hasattr(mod, n)]
+    assert not ghosts, "; ".join(sorted(set(ghosts)))
+
+
 # --------------------------------------------------------------------------- #
 # ledger
 # --------------------------------------------------------------------------- #
@@ -669,6 +750,64 @@ def test_monotone_rows_on_nothing_is_empty():
     from athanor.ccarc3 import monotone_rows
 
     assert monotone_rows([]) == []
+
+
+def test_monotone_rows_counts_the_threshold_as_met():
+    """``>=``, not ``>``. A row that ticks on exactly 90% of actions qualifies.
+
+    The default threshold is a documented number, so its boundary is part of
+    the contract; ``>`` passed every test there was.
+    """
+    from athanor.ccarc3 import monotone_rows
+
+    a = np.zeros((4, 4), dtype=int)
+    pairs = []
+    for i in range(10):
+        b = a.copy()
+        if i != 0:                         # changes on 9 of 10 -- exactly 0.9
+            b[2, 2] = 7
+        pairs.append((a.copy(), b))
+    assert monotone_rows(pairs) == [2]
+    assert monotone_rows(pairs, threshold=0.95) == []
+
+
+def test_monotone_rows_does_not_count_a_pair_it_skipped():
+    """A shape mismatch is skipped, so it must not dilute the denominator.
+
+    Counting it lowers every row's ratio and can hide the display this function
+    exists to find -- a level boundary in the input would be enough.
+    """
+    from athanor.ccarc3 import monotone_rows
+
+    a = np.zeros((4, 4), dtype=int)
+    pairs = []
+    for _ in range(5):
+        b = a.copy()
+        b[2, 2] = 7
+        pairs.append((a.copy(), b))
+    pairs.append((np.zeros((4, 4), dtype=int), np.zeros((5, 5), dtype=int)))
+    # 5/5 clears 0.9; counting the skipped pair makes it 5/6 = 0.83 and hides
+    # the row. Nine-and-one does NOT discriminate -- 9/10 is exactly 0.9 and
+    # passes either way, which is how the first draft of this test passed
+    # against the mutant it was written to kill.
+    assert monotone_rows(pairs) == [2]
+
+
+def test_monotone_rows_comes_back_sorted():
+    from athanor.ccarc3 import monotone_rows
+
+    # np.nonzero already returns ascending indices, so rows first seen in one
+    # pair arrive sorted and Counter order matches sorted order by accident. A
+    # LATER pair has to introduce a SMALLER row for the two to diverge.
+    a = np.zeros((6, 6), dtype=int)
+    pairs = []
+    for i in range(4):
+        b = a.copy()
+        b[5, 0] = 7                        # row 5 changes on every pair
+        if i >= 2:
+            b[2, 0] = 7                    # row 2 shows up only later
+        pairs.append((a.copy(), b))
+    assert monotone_rows(pairs, threshold=0.5) == [2, 5]
 
 
 # --------------------------------------------------------------------------- #
