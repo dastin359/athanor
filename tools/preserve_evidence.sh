@@ -106,10 +106,22 @@ key_is_clean() {
         log "REFUSING TO COMMIT — ARC_API_KEY unset, so the key check cannot run"
         return 1
     fi
+    # **Resolve against $REPO, not against the cwd.** The file list comes from
+    # `git -C "$REPO"`, which is cwd-independent, and the paths it prints are
+    # repo-relative -- but the reads below used them as-is. The two agree only
+    # because the daemon happens to `cd "$REPO"` before its main loop, so this
+    # guard was correct by ambient coincidence rather than by construction.
+    #
+    # That is not a theoretical objection here. When the cwd does not match,
+    # `[ -f "$f" ]` is false for every entry, the loop `continue`s through all of
+    # them, `hits` stays empty and the function returns CLEAN -- which is
+    # verbatim the bug this guard was rewritten for, when it ran one line before
+    # `git add` and iterated an empty index. The same silent-pass, one cause
+    # along. Absolute paths make it independent of who calls it and from where.
     hits=""
     while IFS= read -r f; do
-        [ -f "$f" ] || continue
-        body=$(gzip -cd -- "$f" 2>/dev/null || cat -- "$f" 2>/dev/null)
+        [ -f "$REPO/$f" ] || continue
+        body=$(gzip -cd -- "$REPO/$f" 2>/dev/null || cat -- "$REPO/$f" 2>/dev/null)
         case "$body" in
             *"$ARC_API_KEY"*) hits="$hits $f";;
         esac
