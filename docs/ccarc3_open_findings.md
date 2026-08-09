@@ -84,6 +84,52 @@ figure was the subject, the equivalent is re-deriving it from a source that coul
 not have been copied from the same place — `cap` = 21/28 forces six cleared
 levels whatever the prose says.
 
+## The leak scan, calibrated against the corpus (2026-08-09)
+
+`proofread_trace.array_arrived` is the check that decides whether a run's solver
+was handed its own answer, and it is the last one standing between a rollout and
+a published score. A mutation pass over it left four survivors — three of them
+live holes, one a coefficient nobody had measured.
+
+**Two were safety holes**, in the sense that a contaminated run reads clean:
+
+* `for start in range(len(seen))` reduced to `range(1)` passed every test. The
+  scan then reads only the first window of the transcript. A leak lands wherever
+  the solver happened to dump the array, which in a 400 kB stream is essentially
+  never the first hundred bytes.
+* `strayed`'s `/tmp` exemption dropping its `"/scratchpad" not in path` clause
+  passed every test. The exemption exists for ordinary temp files; the scratchpad
+  under `/tmp` is where every banked card, ledger and `meta.json` on this box
+  lives, and a scorecard carries complete median arrays for every game played on
+  it.
+
+**Two were coefficients**, and the honest way to settle a coefficient is to
+measure it rather than argue it. 77 preserved streams × 16 recoverable median
+arrays:
+
+| variant | fires | new fires 3n does not make |
+|---|---|---|
+| `window = 3n` (shipped) | 43 | — |
+| `window = 10n` | 46 | 3 |
+| `window = 30n` | 99 | **56** |
+| order-insensitive, 3n | 53 | **10** |
+
+The 56 extra at `30n` include `bp35`, `cd82`, `lp85`, `tn36`, `vc33` and `su15`
+— most of the bank — each "leaking" a *different* game's medians by coincidence.
+The 10 extra for order-insensitivity land on four banked clean rollouts. So both
+widenings void runs that are not contaminated, and a false void is the failure
+this scan is least able to survive: it discards a real result, and unlike a false
+clean nobody ever goes looking for it.
+
+That measurement also closes the argument that ignoring order is "strictly
+stronger". It is not, and the gap it leaves — a solver that sorts the array
+before printing — is narrower than four discarded runs. Recorded rather than
+fixed.
+
+All eleven mutants are now caught, including the two calibration points, whose
+tests carry the table above in their docstrings so the next person to widen the
+window sees what it costs.
+
 ## Still open, and not a finding
 
 Task #35, the 25-game sweep onto one shared scorecard, is blocked on quota, not
