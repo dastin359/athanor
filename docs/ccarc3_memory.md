@@ -1,9 +1,19 @@
 # START HERE — read the handoff in full before acting
 
-**`docs/ccarc3_handoff_0809.md`** (in this repo, ~20 KB / ~5k tokens) — open it
-NOW, in full, before acting on anything else. This index is a **routing table,
-not the handoff**: a hook is a reason to open a file, never a substitute for
-having opened it.
+**`docs/ccarc3_handoff_0809b.md`** (in this repo, ~17 KB / ~4k tokens) — open it
+NOW, in full, before acting on anything else. It is the CURRENT handoff, written
+for a session whose only context is this repository. This index is a **routing
+table, not the handoff**: a hook is a reason to open a file, never a substitute
+for having opened it.
+
+Its **§5 TRAPS** is the section that saves a session. The scratchpad reverts to
+an image snapshot on container replacement, and what came back on 2026-08-09
+included a launch brake set two days earlier (a driver that runs, spends nothing
+and says nothing) and a **pre-fix copy of the baseline strip**. Its **§4** says
+why "the audit is complete" was wrong the first three times it was said here.
+
+`docs/ccarc3_handoff_0809.md` is **superseded** by the above but still worth
+reading for its own §A retractions.
 
 Its **§A RETRACTIONS** lists four claims made confidently on 2026-08-09 and later
 disproved — including a cost basis that was wrong in both directions at once, and
@@ -18,11 +28,15 @@ own §A (eight further retractions from 08-08). Its §F daemon table was correct
 in `51e876c` — the uncorrected version told the reader to re-arm the Monitor over
 `heartbeat.sh`, which is exactly the coupling that killed it.
 
-**Open decision, blocking nothing:** a one-game bp35 validation run (~$60–80).
-Two shapes in §C; nothing has been launched, and the operator asked to be asked.
+**A bp35 validation run was launched 2026-08-09 05:35 PDT** on explicit operator
+instruction, on shared card `ac0e1272-4d0e-4d7e-9f9a-e108044123d5` in
+`clean_rollouts_validate`, with the supervisor ceiling lifted to
+`CCARC3_QUOTA_LIMIT=0.999` for that one run. **Put the ceiling back** when it
+ends. See handoff §1 for how to tell whether it finished.
 
-**Next action, when the clock allows** (seven-day util 0.84, hard reset
-**Aug 10 21:00 PDT** — the window is FIXED, utilization only rises, see §A2): the
+**Next action, when the clock allows** (seven-day util **0.96** as of 06:07 PDT
+2026-08-09 — the earlier 0.84/0.77 readings were badly stale; hard reset
+**Aug 10 21:00 PDT**, the window is FIXED and utilization only rises): the
 25-game sweep onto one card — `CCARC3_SWEEP_DIR=clean_rollouts_submission
 tools/clean_rollouts.py`. Nothing banked can be retro-fitted onto a shared card.
 §D lists the three defects found on 08-09 aimed squarely at that run.
@@ -141,4 +155,4 @@ corpus.
 * Do not touch `b6f77b65`.
 * Pacific time in reports.
 
-<!-- INDEX-END-SENTINEL bytes=7902 — if this comment is absent from your auto-loaded copy, the index truncated: re-read it with Read offset/limit before trusting anything above, and say so. Count BYTES (len(text.encode()) / wc -c), not characters — this file is full of em-dashes. -->
+<!-- INDEX-END-SENTINEL bytes=8767 — if this comment is absent from your auto-loaded copy, the index truncated: re-read it with Read offset/limit before trusting anything above, and say so. Count BYTES (len(text.encode()) / wc -c), not characters — this file is full of em-dashes. -->
