@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import os
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -197,11 +198,25 @@ def save(card: SharedCard, path: str | Path) -> Path:
     Deliberately NOT written into a workspace: the cookies are the credential
     half of the card, and the workspace is the one directory the solver is told
     to read.
+
+    **Written atomically, like the run state in client.py.** A plain
+    ``write_text`` leaves a window in which the file exists and is truncated,
+    and this container is reaped every 10-50 minutes. The cost of landing in
+    that window is not one lost write: ``sweep_card`` sees the file exists,
+    ``load`` raises on the partial JSON, and the driver dies -- then the
+    supervisor relaunches it ten minutes later into the same crash, forever,
+    with the card carrying the banked games stranded and unreachable.
+
+    The mode is set on the temporary file BEFORE the rename, so the card is
+    never briefly world-readable at its final path. The cookies in it are the
+    credential half of the card.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(card.to_json(), encoding="utf-8")
-    path.chmod(0o600)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(card.to_json(), encoding="utf-8")
+    tmp.chmod(0o600)
+    os.replace(tmp, path)                     # atomic on POSIX
     return path
 
 

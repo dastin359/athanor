@@ -416,7 +416,40 @@ def sweep_card():
         return None
 
     if SHARED_CARD_FILE.exists():
-        card = sc.load(SHARED_CARD_FILE)
+        # **An unreadable card file is an operator decision, not a crash.**
+        # `sc.load` raised straight out of here on truncated JSON: the driver
+        # died, the supervisor relaunched it ten minutes later into the same
+        # crash, and the loop never advanced -- with the card carrying the
+        # banked games stranded behind a file nobody was going to look at,
+        # because from the outside a crash-looping driver and a busy one both
+        # just look like "not finished yet".
+        #
+        # `save` is atomic now, so this should not arise from our own writes.
+        # It is still reachable: a file restored by hand, a truncated copy, a
+        # partial rsync. Deliberately NOT auto-reminting -- that is the same
+        # decision the `played` branch below refuses to make for you, and the
+        # card_id needed to recover is in the history file.
+        try:
+            card = sc.load(SHARED_CARD_FILE)
+        except Exception as exc:                       # noqa: BLE001
+            last = ""
+            try:
+                for line in SHARED_CARD_HISTORY.read_text().splitlines():
+                    got = json.loads(line).get("card_id")
+                    if got:
+                        last = got
+            except Exception:                          # noqa: BLE001
+                pass
+            raise SystemExit(
+                f"{SHARED_CARD_FILE} exists but cannot be read ({exc!r}). "
+                f"Refusing to mint a fresh card: any games already scored onto "
+                f"the old one cannot be moved, so continuing would build a "
+                f"submission that silently omits them."
+                + (f" The last card opened was {last} (per "
+                   f"{SHARED_CARD_HISTORY.name})." if last else "")
+                + " Restore the file, or delete it to mint a new card"
+                  " deliberately — this driver will not choose for you."
+            )
         # **Retry before declaring death.** This caught every exception and
         # treated all of them as "the card is gone" -- so one refused connection
         # or a proxy blip would retire a live card carrying finished games. A
