@@ -214,7 +214,7 @@ start() {
     set -a
     . "$SP/arc3/.env"
     set +a
-    cd /home/user/athanor || return
+    cd "$REPO" || return
     setsid nohup .venv/bin/python "$RUNNER" >> "$LOG" 2>&1 < /dev/null &
 }
 

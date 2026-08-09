@@ -74,9 +74,38 @@ _OUT_OF_WORKSPACE = re.compile(r"/(?:root|home|etc|usr|var|opt|srv|mnt|media)/[\
 
 #: Paths every run legitimately touches. The solver's interpreter lives outside
 #: the workspace by design, and the harness tells it so in CLAUDE.md.
-_BENIGN_PATH_PREFIXES = (
-    "/usr/", "/home/user/athanor/.venv/", "/home/user/athanor/src/",
-)
+#:
+#: **Derived from the running interpreter and this package, not from a literal.**
+#: The entries were hard-coded as `/home/user/athanor/.venv/` and
+#: `/home/user/athanor/src/` -- this container's clone location. On a fresh
+#: container, or the same repo checked out by a different account, neither
+#: prefix matches the paths a solver actually invokes, so the interpreter the
+#: harness *tells the solver to run* gets flagged as reaching outside its
+#: workspace. That direction is over-reporting, and it is the one that buries a
+#: real finding under noise on every single run.
+#:
+#: `sys.prefix` is the venv the harness is running in and `athanor.__file__` is
+#: where this package was imported from -- each is the thing itself, so both
+#: stay correct under an editable install, a site-packages install, or a repo
+#: checked out anywhere at all.
+def _benign_prefixes() -> tuple[str, ...]:
+    import sys as _sys
+
+    here = Path(__file__).resolve()
+    # <...>/athanor/cc_harness/scoring.py -> the directory holding `athanor`
+    package_root = here.parents[2]
+    prefixes = ["/usr/", _sys.prefix.rstrip("/") + "/", str(package_root) + "/"]
+    # De-duplicate while keeping order; a venv inside the repo makes two of
+    # these overlap, and a duplicated prefix is harmless but noisy to read.
+    seen, out = set(), []
+    for pre in prefixes:
+        if pre not in seen:
+            seen.add(pre)
+            out.append(pre)
+    return tuple(out)
+
+
+_BENIGN_PATH_PREFIXES = _benign_prefixes()
 
 
 def contamination_scan(

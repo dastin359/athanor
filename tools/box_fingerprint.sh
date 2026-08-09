@@ -25,7 +25,11 @@
 # survives the very event it measures.
 set -u
 
-REPO="/home/user/athanor"
+# **Derived, not written.** The hard-coded `/home/user/athanor` is this
+# container's clone location; a fresh container, or the same repo checked out
+# by a different account, gets a different one. `readlink -f` first, so the
+# derivation still holds if this script is reached through a symlink.
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LOG="$REPO/evidence/box_fingerprint.tsv"
 BRANCH="claude/athanor-cc-harness-variant-jpqw7t"
 # Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the

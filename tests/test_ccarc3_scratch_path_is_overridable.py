@@ -1,4 +1,10 @@
-"""Every autopilot tool must resolve its scratchpad from ``CCARC3_SCRATCH``.
+"""Every autopilot tool must resolve its roots from where it actually is.
+
+Two roots, the same defect: the scratchpad (``CCARC3_SCRATCH``) and the repo
+(derived from the script's own location). Both were hard-coded copies of
+this container's paths.
+
+Part one -- the scratchpad.
 
 The default path encodes a session UUID and the container is recycled every
 10-50 minutes, so a hard-coded copy points at a directory that stops existing.
@@ -165,3 +171,119 @@ def test_no_tool_hardcodes_the_path_without_the_override() -> None:
                 continue                       # defaulted, wrapped over lines
             offenders.append(f"{path.name}:{n}")
     assert not offenders, "hardcoded scratchpad path: " + ", ".join(offenders)
+
+
+# ==========================================================================
+# part two -- the repo path
+#
+# `/home/user/athanor` is this container's clone location. A fresh container, or
+# the same repo checked out by a different account, gets a different one, and a
+# hard-coded copy then names a directory that does not exist. In heartbeat.sh
+# every consequence was silent by construction: `2>/dev/null` on the python
+# calls, `|| true` on the snapshot, a default for RUNNER_NAME. It would have
+# gone on printing tidy status lines having executed none of its checks.
+#
+# These relocate the tool and read what it resolves THERE. Asserting the value
+# in place cannot work -- a frozen literal is correct here, which is the whole
+# reason the bug was invisible.
+# ==========================================================================
+
+DERIVING_SHELL_TOOLS = [
+    "heartbeat.sh",
+    "heartbeat_watch.sh",
+    "supervisor.sh",
+    "preserve_evidence.sh",
+    "box_fingerprint.sh",
+]
+
+
+@pytest.mark.parametrize("tool", DERIVING_SHELL_TOOLS)
+def test_shell_tool_derives_repo_from_its_own_location(
+    tool: str, tmp_path: pathlib.Path
+) -> None:
+    """Copy the tool to a new repo root; its derived path must follow.
+
+    The probe is a FILE in the copy's `tools/`, never `bash -c`: the derivation
+    reads `${BASH_SOURCE[0]}`, which is empty under `-c` and silently resolves
+    against the caller's cwd instead.
+    """
+    dest_tools = tmp_path / "relocated" / "tools"
+    dest_tools.mkdir(parents=True)
+    src = (TOOLS / tool).read_text(encoding="utf-8")
+    (dest_tools / tool).write_text(src, encoding="utf-8")
+
+    # heartbeat_watch.sh derives the heartbeat's path rather than a REPO var.
+    var = "HB" if tool == "heartbeat_watch.sh" else "REPO"
+    line = next(ln for ln in src.splitlines() if ln.startswith(f"{var}="))
+    probe = dest_tools / "_probe.sh"
+    probe.write_text(f'{line}\nprintf "%s" "${var}"\n', encoding="utf-8")
+
+    got = subprocess.run(
+        ["/bin/bash", str(probe)], capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    expected = (str(dest_tools / "heartbeat.sh") if var == "HB"
+                else str(tmp_path / "relocated"))
+    assert got == expected, (
+        f"{tool} relocated to {tmp_path / 'relocated'} still resolves {var} to "
+        f"{got!r} -- it is a frozen literal and names a directory that will not "
+        f"exist on a fresh container"
+    )
+
+
+def test_python_tool_derives_repo_from_its_own_location(
+    tmp_path: pathlib.Path
+) -> None:
+    """`leak_exposure` stands in for the Python tools that import cleanly.
+
+    `rerun_losses` and `ablate_baselines` cannot be imported from a copy --
+    they pull in siblings and the `athanor` package at import time -- so the
+    whole-surface case below is what guards those two. Naming that here rather
+    than quietly covering four tools with one that happens to be importable.
+    """
+    dest_tools = tmp_path / "relocated" / "tools"
+    dest_tools.mkdir(parents=True)
+    (dest_tools / "leak_exposure.py").write_text(
+        (TOOLS / "leak_exposure.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    code = (
+        "import sys; "
+        f"sys.path.insert(0, {str(dest_tools)!r}); "
+        "import leak_exposure as m; print(m.REPO)"
+    )
+    out = subprocess.run(
+        [str(REPO / ".venv" / "bin" / "python"), "-c", code],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip() == str(tmp_path / "relocated")
+
+
+def test_no_tool_hardcodes_the_repo_path() -> None:
+    """The repo literal may appear only in prose, or as a documented default.
+
+    This is what guards the tools the relocation cases cannot reach, and what
+    catches a new tool pasting the path in.
+
+    `rehydrate_bootstrap.sh` is the one legitimate exception: it exists to be
+    COPIED into the scratchpad, so deriving from `${BASH_SOURCE[0]}` would
+    resolve to wherever the copy sits rather than to the repo. It takes an
+    explicit `CCARC3_REPO` override instead.
+    """
+    literal = "/home/user/athanor"
+    offenders = []
+    for base in (TOOLS, REPO / "src"):
+        for path in sorted(base.rglob("*")):
+            if not path.is_file() or path.suffix not in (".sh", ".py"):
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for n, line in enumerate(text.splitlines(), 1):
+                stripped = line.lstrip()
+                if literal not in line:
+                    continue
+                if stripped.startswith("#"):
+                    continue                      # prose
+                if "CCARC3_REPO" in line:
+                    continue                      # documented override default
+                offenders.append(f"{path.relative_to(REPO)}:{n}")
+    assert not offenders, "hardcoded repo path: " + ", ".join(offenders)

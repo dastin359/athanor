@@ -43,7 +43,10 @@ SP = pathlib.Path(
     os.environ.get("CCARC3_SCRATCH")
     or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
 )
-REPO = pathlib.Path("/home/user/athanor")
+# Derived from this file's location (`<repo>/tools/`), not written: the
+# hard-coded path is this container's clone location, and a fresh container
+# or a different account gets a different one.
+REPO = pathlib.Path(__file__).resolve().parents[1]
 EVIDENCE = REPO / "evidence" / "ccarc3" / "rerun_losses"
 OUT = SP / "rerun_losses"
 

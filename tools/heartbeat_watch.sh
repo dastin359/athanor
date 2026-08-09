@@ -22,7 +22,7 @@
 # itself for the thing it watches.
 SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
 LOG="$SP/heartbeat.log"
-HB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/heartbeat.sh"
+HB="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/heartbeat.sh"
 
 hb_alive() {
     local d argv

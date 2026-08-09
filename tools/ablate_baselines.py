@@ -52,7 +52,10 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, "/home/user/athanor/src")
+# Derived from this file's location (`<repo>/tools/`), not written: the
+# hard-coded path is this container's clone location, and a fresh container
+# or a different account gets a different one.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
 from athanor.ccarc3 import Ccarc3Config, arc_proxy, list_games, run_game
 from athanor.ccarc3.client import HIDE_BASELINES_ENV

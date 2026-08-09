@@ -62,7 +62,13 @@ ESCAPES = (
     (re.compile(r"/api/games|scorecard/"), "ARC endpoint by hand"),
     (re.compile(r"ARC_API_KEY|ARCPRIZE_API_KEY|X-API-Key"), "API key"),
     (re.compile(r"list_games|baselines_for"), "baseline accessor"),
-    (re.compile(r"/home/user/athanor|\bgit\b|site-packages"), "outside the workspace"),
+    # **The repo path is derived, not written.** As a literal it was this
+    # container's clone location, so on a fresh container -- or the same repo
+    # checked out by a different account -- this rule stops matching the repo
+    # entirely. That direction is UNDER-reporting: the proofread pass keeps
+    # returning clean while the one route it was written to catch is open.
+    (re.compile(re.escape(str(pathlib.Path(__file__).resolve().parents[1]))
+                + r"|\bgit\b|site-packages"), "outside the workspace"),
 )
 
 # **Keyword escapes miss whole directories, and one of them holds the key.**

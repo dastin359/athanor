@@ -54,6 +54,7 @@ def _tool(name: str) -> Path:
 HEARTBEAT = _tool("heartbeat.sh")
 SUPERVISOR = _tool("supervisor.sh")
 TOOLS = HEARTBEAT.parent
+REPO_ROOT = TOOLS.parent
 
 #: Read once, absolutely, before any test touches a sandbox directory.
 SRC = HEARTBEAT.read_text(encoding="utf-8")
@@ -260,7 +261,10 @@ def _sandbox(
     )
 
     text = SRC
-    text = _sub(text, str(TOOLS), str(tools), expect=4)
+    # The tools directory is NOT patched in either. The script derives
+    # `REPO` from `${BASH_SOURCE[0]}`, so writing it into the sandbox's own
+    # `tools/` makes that derivation resolve to the sandbox for real --
+    # testing the mechanism instead of a rewritten copy of its output.
     # The scratchpad is NOT patched into the script any more -- it is handed in
     # through `CCARC3_SCRATCH` by `_run`, so this exercises the real override
     # rather than a rewritten copy of the line. Proven below, because a broken
@@ -268,23 +272,58 @@ def _sandbox(
     # test that runs against the real tree is the exact defect this file warns
     # about in its own docstring.
     text = _sub(text, "sleep 420", "sleep 0.2", expect=3)
-    script = root / "heartbeat_under_test.sh"
+    script = tools / "heartbeat_under_test.sh"
     script.write_text(text, encoding="utf-8")
 
-    # Prove the sandbox owns the scratchpad before anything runs in it.
-    resolved = subprocess.run(
-        ["/bin/bash", "-c",
-         f'CCARC3_SCRATCH={sp}\n'
-         + subprocess.run(["grep", "-m1", "-E", "^SP=", str(script)],
-                          capture_output=True, text=True, check=True).stdout.strip()
-         + '\nprintf "%s" "$SP"'],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    assert resolved == str(sp), (
-        f"sandboxed heartbeat resolved SP to {resolved!r}, not the sandbox "
-        f"{str(sp)!r} -- CCARC3_SCRATCH is not being honoured and this test "
-        f"would have run against the live scratchpad"
+    # `PY_BIN` is "$REPO/.venv/bin/python", so the sandbox repo needs one -- and
+    # it must be DISTINGUISHABLE from the live interpreter, not a symlink to it.
+    # A symlink made a hardcoded `PY_BIN=/home/user/athanor/.venv/bin/python`
+    # behave identically to the derived one, so that mutant survived the whole
+    # suite. It is not a cosmetic mutant: on a fresh container that path does not
+    # exist, and every python call in the loop is swallowed by `2>/dev/null` or
+    # `|| true`, leaving the heartbeat printing tidy status lines having computed
+    # nothing. The wrapper records each use so a test can prove whose python ran.
+    venv_bin = root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True, exist_ok=True)
+    shim = venv_bin / "python"
+    shim.write_text(
+        "#!/bin/bash\n"
+        f'echo used >> {str(root / "pybin_used.txt")!r}\n'
+        f'exec {str(REPO_ROOT / ".venv" / "bin" / "python")!r} "$@"\n',
+        encoding="utf-8",
     )
+    shim.chmod(0o755)
+
+    # Prove the sandbox owns both roots before anything runs in it.
+    #
+    # The probe is a FILE in the same directory as the script under test, not a
+    # `bash -c` string: `REPO` derives from `${BASH_SOURCE[0]}`, which is empty
+    # under `-c`, so evaluating the line that way resolves it against the
+    # pytest process's cwd and "proves" something about /home/user. Reading a
+    # proxy for the thing is the defect this whole file is about, and the first
+    # draft of this guard committed it.
+    probe = tools / "_probe_roots.sh"
+    probe.write_text(
+        "\n".join(
+            [line for line in text.splitlines()
+             if line.startswith("REPO=") or line.startswith("SP=")
+             or line.startswith("PY_BIN=")]
+        )
+        + '\nprintf "%s\\n%s" "$REPO" "$SP"\n',
+        encoding="utf-8",
+    )
+    seen = subprocess.run(
+        ["/bin/bash", str(probe)],
+        capture_output=True, text=True, check=True,
+        env={**_ENV, "CCARC3_SCRATCH": str(sp)},
+    ).stdout.splitlines()
+    probe.unlink()
+    assert seen == [str(root), str(sp)], (
+        f"sandboxed heartbeat resolved (REPO, SP) to {seen!r}, not "
+        f"{[str(root), str(sp)]!r} -- it would have read the LIVE supervisor, "
+        f"driver and scratchpad while claiming to describe a fixture"
+    )
+
     return Sandbox(root, script, sp, tools, out)
 
 
@@ -323,6 +362,18 @@ def _run(box: Sandbox, *, until_polls: int, timeout: float = 120.0):
     return out, still_running, box.polls
 
 
+def _context(repo) -> str:
+    """The two definitions the full script provides to any block extracted from it.
+
+    An extracted function is a fragment: `REPO` and `PY_BIN` are set near the top
+    of heartbeat.sh, outside every function body. Supplying them here is how the
+    fragment gets its real environment -- and passing `repo` is how a test aims
+    the SAME derivation at a fixture, instead of rewriting a path into the text
+    and testing the rewrite.
+    """
+    return f'REPO={repo}\nPY_BIN={REPO_ROOT / ".venv" / "bin" / "python"}\n'
+
+
 def _bash(script_text: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["/bin/bash", "-c", script_text],
@@ -349,7 +400,7 @@ def test_runner_name_is_read_out_of_supervisor_sh(tmp_path):
     real_runner = m.group(1)
 
     block = _runner_name_block()
-    live = _bash(block + '\nprintf "%s" "$RUNNER_NAME"\n')
+    live = _bash(_context(REPO_ROOT) + block + '\nprintf "%s" "$RUNNER_NAME"\n')
     assert live.stdout == real_runner, (
         f"heartbeat derived {live.stdout!r} but supervisor.sh launches "
         f"{real_runner!r}"
@@ -363,8 +414,8 @@ def test_runner_name_is_read_out_of_supervisor_sh(tmp_path):
         '#!/bin/bash\nRUNNER="${1:-$REPO/tools/zz_other_runner.py}"\n',
         encoding="utf-8",
     )
-    block = _sub(block, str(TOOLS), str(fake_tools), expect=1)
-    moved = _bash(block + '\nprintf "%s" "$RUNNER_NAME"\n')
+    # Same block, same derivation -- only REPO moves.
+    moved = _bash(_context(tmp_path) + block + '\nprintf "%s" "$RUNNER_NAME"\n')
     assert moved.stdout == "zz_other_runner.py", (
         "RUNNER_NAME did not follow supervisor.sh -- it is hardcoded, or the "
         f"fallback is answering (got {moved.stdout!r})"
@@ -463,8 +514,8 @@ def test_work_pending_asks_the_driver_for_out(tmp_path):
     for label, banked in (("pending", 1), ("complete", 3)):
         box = _sandbox(tmp_path / label, banked=banked, games=3)
         assert not list((box.sp / "clean_rollouts").iterdir()), "decoy must be empty"
-        fn = _sub(_work_pending_fn(), str(TOOLS), str(box.tools), expect=1)
-        cp = _bash(fn + '\nwork_pending; echo "rc=$?"\n')
+        fn = _work_pending_fn()
+        cp = _bash(_context(box.root) + fn + '\nwork_pending; echo "rc=$?"\n')
         results[label] = cp.stdout.strip()
 
     assert results["pending"] == "rc=0", (
@@ -627,13 +678,12 @@ def test_work_pending_assumes_work_when_it_cannot_tell(tmp_path):
     fn = _work_pending_fn()
     broken = tmp_path / "no_driver"
     broken.mkdir()
-    # A python that cannot import anything from the real tree: the sys.path
-    # entries the function inserts are replaced with an empty directory.
-    patched = fn.replace('"/home/user/athanor/tools", "/home/user/athanor/src"',
-                         f'"{broken}", "{broken}"')
-    assert patched != fn, "work_pending no longer names the paths it imports from"
-
-    r = subprocess.run(["bash", "-c", f"{patched}\nwork_pending && echo PENDING || echo COMPLETE"],
+    # A repo with no tools/ and no src/: the sys.path entries the function
+    # derives from REPO exist nowhere, so `import clean_rollouts` fails. Aiming
+    # REPO at it beats rewriting the paths into the text -- the function is left
+    # exactly as shipped.
+    script = _context(broken) + fn
+    r = subprocess.run(["bash", "-c", f"{script}\nwork_pending && echo PENDING || echo COMPLETE"],
                        capture_output=True, text=True, timeout=60,
                        env={"PATH": os.environ["PATH"]})
     assert "PENDING" in r.stdout, (
@@ -775,4 +825,26 @@ def test_sweep_completion_can_be_announced_again_after_new_work(tmp_path):
     assert out.count("SWEEP COMPLETE") >= 2, (
         "completion was announced once and never again after new work arrived, "
         f"so the announcement's own promise is not kept:\n{out}"
+    )
+
+
+def test_py_bin_follows_repo(tmp_path):
+    """The interpreter must come from the sandbox repo, not the live one.
+
+    `PY_BIN` is `$REPO/.venv/bin/python`. Hardcode it and every python call in
+    the loop points at this container's clone -- which on a fresh container does
+    not exist, and whose absence is silent: the calls are wrapped in
+    `2>/dev/null` and `|| true`, so `work_pending`, the progress counts and the
+    snapshot all fail without a word while the status line keeps printing.
+
+    The sandbox's python is a wrapper that records every invocation, so this
+    asserts whose interpreter actually ran rather than that the script mentions
+    a variable.
+    """
+    box = _sandbox(tmp_path, banked=1, games=3)
+    _run(box, until_polls=2)
+    marker = box.root / "pybin_used.txt"
+    assert marker.exists() and marker.read_text().strip(), (
+        "the sandbox interpreter was never invoked -- PY_BIN is not derived "
+        "from REPO, so the heartbeat ran the live tree's python (or none at all)"
     )

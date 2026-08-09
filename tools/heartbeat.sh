@@ -16,6 +16,20 @@
 # ending in batch6.py fixes it: this script's own command line is one big `-c`
 # string, which can never equal such a path. Verified: the substring form matched
 # 3 pids (including a transient shell of the monitor's own), this form matched 1.
+# **The repo path is derived, not written.** It was hard-coded as
+# `/home/user/athanor` in eight places here and in four other tools. That path is
+# this container's clone location; a fresh container -- or the same repo checked
+# out by a different account -- gets a different one, and every one of those
+# eight lines then names a directory that does not exist. The failures are
+# silent by construction: `2>/dev/null` on the python calls, `|| true` on the
+# snapshot, and `RUNNER_NAME` falling back to a default. The heartbeat would keep
+# printing tidy status lines having executed none of its checks.
+#
+# `${BASH_SOURCE[0]}` is this file, which lives in `<repo>/tools/`, so the repo
+# is one level up. It is the thing itself rather than a copy of it.
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+PY_BIN="$REPO/.venv/bin/python"
+
 # **The scratchpad path is overridable, because it is not stable.** It encodes a
 # session UUID, and the container is recycled every 10-50 minutes -- a new one
 # gets a new path, and every tool that hard-coded this string pointed at a
@@ -40,7 +54,7 @@ SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a
 # batch6 survives below only as the name of the argv-matching bug, which is worth
 # keeping because it is the bug, not the batch.
 RUNNER_NAME=$(grep -oE 'RUNNER="\$\{1:-\$REPO/tools/[a-z_]+\.py\}"' \
-                   /home/user/athanor/tools/supervisor.sh 2>/dev/null \
+                   "$REPO/tools/supervisor.sh" 2>/dev/null \
               | grep -oE '[a-z_]+\.py' | head -1)
 RUNNER_NAME="${RUNNER_NAME:-clean_rollouts.py}"
 
@@ -93,9 +107,11 @@ daemon_check() {
 # one this file is being fixed for: a value that agrees with the truth in the
 # environment you happen to test it in.
 work_pending() {
-    /home/user/athanor/.venv/bin/python - <<'EOF' 2>/dev/null
+    REPO="$REPO" "$PY_BIN" - <<'EOF' 2>/dev/null
 import sys
-sys.path[:0] = ["/home/user/athanor/tools", "/home/user/athanor/src"]
+import os
+R = os.environ["REPO"]
+sys.path[:0] = [R + "/tools", R + "/src"]
 try:
     import clean_rollouts as cr
 except Exception:
@@ -106,7 +122,7 @@ EOF
 }
 
 while true; do
-    ARC_API_KEY=dummy /home/user/athanor/.venv/bin/python "$SP/snapshot_results.py" \
+    ARC_API_KEY=dummy "$PY_BIN" "$SP/snapshot_results.py" \
         >/dev/null 2>&1 || true
 
     if ! runner_alive; then
@@ -171,9 +187,11 @@ while true; do
     # The formats clean_rollouts.py actually writes (:509 and :787).
     arm=$(grep -E '^(=== |--- pass )' "$LOG" 2>/dev/null | tail -1)
 
-    read -r done_n total < <(/home/user/athanor/.venv/bin/python - <<'EOF' 2>/dev/null
+    read -r done_n total < <(REPO="$REPO" "$PY_BIN" - <<'EOF' 2>/dev/null
 import sys
-sys.path[:0] = ["/home/user/athanor/tools", "/home/user/athanor/src"]
+import os
+R = os.environ["REPO"]
+sys.path[:0] = [R + "/tools", R + "/src"]
 try:
     import clean_rollouts as cr
     print(len(list(cr.OUT.glob("*/clean_result.json"))), len(cr.GAMES))
@@ -183,8 +201,10 @@ EOF
 )
     done_n=${done_n:-?}; total=${total:-?}
 
-    d=$(/home/user/athanor/.venv/bin/python -c '
-import sys; sys.path[:0]=["/home/user/athanor/tools","/home/user/athanor/src"]
+    d=$(REPO="$REPO" "$PY_BIN" -c '
+import sys, os
+R = os.environ["REPO"]
+sys.path[:0] = [R + "/tools", R + "/src"]
 try:
     import clean_rollouts as cr
     ws=sorted(cr.OUT.glob("*/attempt_*/*/trace.jsonl"), key=lambda p: p.stat().st_mtime)

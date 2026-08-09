@@ -22,7 +22,12 @@
 # Deliberately minimal: fetch, fast-forward, hand off. Everything else belongs
 # in tools/rehydrate_box.sh where it is version-controlled.
 set -uo pipefail
-REPO=/home/user/athanor
+# **Not derived from `${BASH_SOURCE[0]}` here, unlike every other tool.**
+# This file exists to be COPIED into the scratchpad, so the derivation would
+# resolve to wherever the copy sits. An explicit default with an env override
+# is the honest form for a script whose whole purpose is to run from outside
+# the tree it is repairing.
+REPO="${CCARC3_REPO:-/home/user/athanor}"
 BRANCH=claude/athanor-cc-harness-variant-jpqw7t
 cd "$REPO" || exit 1
 for delay in 0 2 4 8 16; do

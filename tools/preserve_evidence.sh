@@ -38,7 +38,11 @@ set -u
 # wrong tree. Same defect class as the rest of this file: a value that agrees
 # with the truth only in the environment you happen to test it in.
 SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
-REPO="/home/user/athanor"
+# **Derived, not written.** The hard-coded `/home/user/athanor` is this
+# container's clone location; a fresh container, or the same repo checked out
+# by a different account, gets a different one. `readlink -f` first, so the
+# derivation still holds if this script is reached through a symlink.
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 DEST="$REPO/evidence/ccarc3"
 BRANCH="claude/athanor-cc-harness-variant-jpqw7t"
 TICK=300

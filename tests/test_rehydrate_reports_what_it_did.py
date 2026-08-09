@@ -370,7 +370,14 @@ def _sandbox_fingerprint(dest: Path, repo: Path, scratch: Path) -> Path:
     for i, (old, new) in enumerate(zip(lines, out_lines)):
         if i not in changed:
             assert old == new
-    assert "/home/user/athanor" not in "\n".join(out_lines), "copy still points at the real repo"
+    # Comments are excluded: `box_fingerprint.sh` now DERIVES its repo path and
+    # the comment explaining why names the old literal. Prose that mentions a
+    # path is not a script pointing at one, and asserting over both made this
+    # case fail on a change that fixed the very thing it guards.
+    code_lines = [ln for ln in out_lines if not ln.lstrip().startswith("#")]
+    assert "/home/user/athanor" not in "\n".join(code_lines), (
+        "copy still points at the real repo"
+    )
     # the log path must still hang off $REPO, or the sandbox would be writing
     # into the real evidence file
     assert any(line.startswith("LOG=") and "$REPO" in line for line in out_lines)

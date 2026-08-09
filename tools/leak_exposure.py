@@ -24,7 +24,10 @@ import re
 import subprocess
 import sys
 
-REPO = pathlib.Path("/home/user/athanor")
+# Derived from this file's location (`<repo>/tools/`), not written: the
+# hard-coded path is this container's clone location, and a fresh container
+# or a different account gets a different one.
+REPO = pathlib.Path(__file__).resolve().parents[1]
 EV = REPO / "evidence" / "ccarc3" / "clean_rollouts"
 
 # The exact leaked text, per file, as of the commit before the purge.
