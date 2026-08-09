@@ -9,12 +9,24 @@
 # itself, so the one daemon that could not report its own death was the one that
 # died. Same defect this project keeps hitting: the check passes by not running.
 #
-# So the heartbeat is now detached (setsid, own log) and this script only WATCHES
-# it. A Monitor timeout now costs an event feed, not the daemon; and when the
-# daemon does die, the relaunch below both fixes it and says so. Verified both
-# ways before arming: against a dead heartbeat it relaunched and emitted one
-# line, and the relaunched heartbeat outlived the watchdog's own death; against a
-# live one it stayed silent and spawned no duplicate.
+# So the heartbeat is now launched detached (own session, own log, reparented to
+# init) and this script only WATCHES it.
+#
+# **`setsid` alone was not enough, and the first version of this comment claimed
+# it was.** It said the relaunched heartbeat "outlived the watchdog's own death",
+# which was a true observation of the wrong thing: that instance had been started
+# from a shell that exited, so it was already an orphan with ppid 1. A heartbeat
+# started BY this watchdog is a live child of it, and `setsid` changes the
+# session, not the parent -- whatever reaps a finished Monitor walks descendants,
+# so it took the heartbeat with it every time. Measured: relaunch lines at 16:26,
+# 16:58 and 17:28 PDT, one per 30-minute Monitor cycle, while supervisor.sh and
+# preserve_evidence.sh (ppid 1) sailed through all three.
+#
+# Hence the double fork below: the subshell backgrounds the heartbeat and exits
+# immediately, orphaning it to init, which is what the surviving daemons look
+# like. The watchdog remains the safety net -- if the heartbeat dies for any
+# other reason it is relaunched within one poll and the loss is announced --
+# but it is no longer the thing keeping it alive.
 #
 # Liveness is argv-element-exact, never a substring -- the trap that has bitten
 # this project three times. This file's own path ends in `heartbeat_watch.sh`,
@@ -40,7 +52,10 @@ POS=$(wc -l < "$LOG")
 while true; do
     if ! hb_alive; then
         echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') heartbeat.sh DOWN — relaunching detached"
-        setsid nohup bash "$HB" >> "$LOG" 2>&1 < /dev/null &
+        # Double fork: the subshell exits at once, so the heartbeat reparents
+        # to init instead of hanging off this watchdog. `setsid` gives it its
+        # own session; only the orphaning survives a descendant sweep.
+        ( setsid bash "$HB" >> "$LOG" 2>&1 < /dev/null & )
         sleep 3
     fi
     # Drain only what is new. POS starts at the log's current length so a re-arm

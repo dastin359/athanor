@@ -278,9 +278,31 @@ that: the Monitor expired and took heartbeat.sh (pid 3196) down with it, with
 nothing reporting the loss — `daemon_check` lists supervisor.sh,
 preserve_evidence.sh and context_watch.py, so the one daemon that could not
 report its own death was the one that died. Arm the Monitor over
-`tools/heartbeat_watch.sh` instead: it relaunches the heartbeat detached
-(`setsid`, appending to `scratchpad/heartbeat.log`) and forwards only the lines
-worth waking for. A Monitor timeout then costs an event feed, not a daemon.
+`tools/heartbeat_watch.sh` instead: it relaunches the heartbeat and forwards
+only the lines worth waking for.
+
+**RETRACTED, same day — "a Monitor timeout then costs an event feed, not a
+daemon."** It cost the daemon too, for another two cycles, because `setsid`
+alone does not detach a process from a descendant sweep: it gives the child its
+own SESSION, not a new PARENT. A heartbeat started by the watchdog stayed a live
+child of it, so whatever reaps a finished Monitor still walked down to it.
+Measured in `scratchpad/heartbeat.log`: relaunch lines at 16:26, 16:58 and 17:28
+PDT — one per 30-minute Monitor cycle — while `supervisor.sh` and
+`preserve_evidence.sh` sailed through all three. The difference is visible in
+one field: the survivors have **ppid 1**, the heartbeat had ppid `<watchdog>`.
+
+The evidence that misled me was real and pointed the wrong way: the first
+relaunched heartbeat *did* outlive a watchdog. That instance had been started
+from a Bash tool call whose shell exited, so it was already an orphan — I
+credited the decoupling for a property it did not have. **`setsid` in a launch
+line is not evidence of detachment; `ppid 1` is.**
+
+The launcher now double-forks — `( setsid bash "$HB" … & )`, subshell exits
+at once, child reparents to init — and `tests/test_heartbeat_relaunch_is_orphaned.py`
+asserts the resulting ppid rather than grepping the source for `setsid`, which
+would have passed the entire time the bug was live. What the watchdog genuinely
+buys is the other half: if the heartbeat dies for any reason it is relaunched
+within one poll and the loss is announced, where before it stayed dead silently.
 
 **`persistent: true` does not mean "no timeout" — measured, twice.** Arming with
 `persistent: true` and `timeout_ms: 3600000` returned `timeout 1800000ms`: the
