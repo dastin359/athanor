@@ -236,17 +236,33 @@ def kill_orphan_solvers() -> int:
     so the driver can never match its own live child.
     """
     killed = 0
+    root = OUT.resolve()
     for entry in pathlib.Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
         try:
             cwd = (entry / "cwd").resolve()
-            stat = (entry / "stat").read_text().split()
+            raw = (entry / "stat").read_text()
         except (OSError, PermissionError):
             continue
-        if str(OUT) not in str(cwd):
+        # **Containment, not a substring.** This read `str(OUT) not in str(cwd)`,
+        # and `clean_rollouts` is a prefix of `clean_rollouts_validate` and of
+        # `clean_rollouts_submission`. A driver on the default sweep therefore
+        # matched -- and would SIGTERM the process group of -- an orphan belonging
+        # to a differently-named sweep running beside it, which is the one
+        # arrangement `CCARC3_SWEEP_DIR` exists to make safe.
+        if cwd != root and root not in cwd.parents:
             continue
-        ppid, pgid = stat[3], stat[4]
+        # **Fields split after the last `)`, not across the line.** `comm` is
+        # field 2, it is arbitrary bytes chosen by the process, and node sets it
+        # from `process.title`. One space in it shifts every field right, so
+        # `stat[3]` reads a fragment of the name instead of the ppid, the `!= "1"`
+        # test never matches, and the orphan is silently left running -- the
+        # cleanup fails by finding nothing, which looks exactly like a clean box.
+        # Same defect as `build_trace_audit._process_started` carried until today,
+        # and here the neighbouring field is the pgid handed to `killpg`.
+        fields = raw[raw.rindex(")") + 2:].split()
+        ppid, pgid = fields[1], fields[2]
         if ppid != "1" or entry.name == str(os.getpid()):
             continue
         try:
