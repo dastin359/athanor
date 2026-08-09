@@ -1,16 +1,31 @@
 # START HERE — read the handoff in full before acting
 
-**`docs/ccarc3_handoff_0808.md`** (in this repo, ~11 KB) — open it NOW, in full,
-before acting on anything else. Its **§A RETRACTIONS** lists eight claims made
-confidently on 2026-08-08 and later disproved, including a quota reading that
-would have launched a $652 run on fabricated numbers. A session that skips it
-inherits the confident wrong version and re-derives nothing, because nothing
-looks broken.
+**`docs/ccarc3_handoff_0809.md`** (in this repo, ~20 KB / ~5k tokens) — open it
+NOW, in full, before acting on anything else. This index is a **routing table,
+not the handoff**: a hook is a reason to open a file, never a substitute for
+having opened it.
 
-**Next action, when quota allows** (seven-day was 0.84, resets ~08-11 21:00 PDT):
-the 25-game sweep onto one card — `CCARC3_SWEEP_DIR=clean_rollouts_submission
+Its **§A RETRACTIONS** lists four claims made confidently on 2026-08-09 and later
+disproved — including a cost basis that was wrong in both directions at once, and
+a quota-window claim that would have justified starting a $652 run two days
+early. All four had one shape: reaching for a mechanism that explains the
+observation instead of asking what record distinguishes it from the alternative,
+when the deciding artifact was already on disk. A session that skips §A inherits
+the confident wrong version and re-derives nothing, because nothing looks broken.
+
+`docs/ccarc3_handoff_0808.md` is **superseded** but still worth reading for its
+own §A (eight further retractions from 08-08). Its §F daemon table was corrected
+in `51e876c` — the uncorrected version told the reader to re-arm the Monitor over
+`heartbeat.sh`, which is exactly the coupling that killed it.
+
+**Open decision, blocking nothing:** a one-game bp35 validation run (~$60–80).
+Two shapes in §C; nothing has been launched, and the operator asked to be asked.
+
+**Next action, when the clock allows** (seven-day util 0.84, hard reset
+**Aug 10 21:00 PDT** — the window is FIXED, utilization only rises, see §A2): the
+25-game sweep onto one card — `CCARC3_SWEEP_DIR=clean_rollouts_submission
 tools/clean_rollouts.py`. Nothing banked can be retro-fitted onto a shared card.
-See §C for the eight guards fixed on 08-08 that this run depends on.
+§D lists the three defects found on 08-09 aimed squarely at that run.
 
 **The standing agenda is `docs/ccarc3_autopilot.md`** (symlinked as
 `scratchpad/AUTOPILOT.md`). The ARC-AGI-2 items the wake-up prompt recites all
@@ -125,3 +140,5 @@ corpus.
 * Opus 5 only, high effort. No control arm. All runs baseline-free.
 * Do not touch `b6f77b65`.
 * Pacific time in reports.
+
+<!-- INDEX-END-SENTINEL bytes=7902 — if this comment is absent from your auto-loaded copy, the index truncated: re-read it with Read offset/limit before trusting anything above, and say so. Count BYTES (len(text.encode()) / wc -c), not characters — this file is full of em-dashes. -->
