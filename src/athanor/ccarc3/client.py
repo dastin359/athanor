@@ -790,6 +790,12 @@ class ArcClient:
         # resume as they always did rather than break on deploy.
         if self.last_touched:
             idle = time.time() - self.last_touched
+            # Strictly greater. A mutation pass flags `>` -> `>=` as surviving;
+            # it is an equivalent mutant. `idle` is the difference of two
+            # `time.time()` floats, so landing exactly on 1092.0 has measure
+            # zero and no input distinguishes the two forms. The deadline is the
+            # UPPER edge of the measured bracket, so `>` is the right spelling:
+            # at exactly the edge the game is not yet known to be gone.
             if idle > self.REAP_DEADLINE_S:
                 raise RuntimeError(
                     f"resume: {idle / 60:.1f} minutes since the server last "
