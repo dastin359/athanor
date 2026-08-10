@@ -739,6 +739,38 @@ then and the supervisor is the thing that decides.
 
 ### >>> NEXT WAKE-UP: THE ONE THING TO CHECK <<<
 
+> **Superseded 2026-08-09 17:xx PDT — read this box before the block below.**
+>
+> The block that follows tells you to relaunch `scratchpad/batch6.py` and
+> `scratchpad/quota_guard.sh`. **Do not.** Those belong to the ARC-AGI-2 batch
+> era, which is parked; `batch6.py` lives in the scratchpad, which reverts to an
+> image snapshot when the container is replaced, so on a fresh box the command
+> would fail anyway. The current runner is `tools/clean_rollouts.py`, started by
+> `tools/supervisor.sh`, and **the supervisor starts it on its own** when quota
+> is under the ceiling — there is nothing to relaunch by hand.
+>
+> The heartbeat re-arm advice is also superseded. `Monitor` is clamped to thirty
+> minutes whatever lifetime is requested, so a monitor-based watch lapses roughly
+> every half hour and only gets re-armed if somebody notices. Daemon liveness is
+> now `tools/daemon_watchdog.sh`, detached at ppid 1 like the daemons it watches,
+> so it survives both the clamp and a session-worker restart. Check it with
+> `bash tools/daemon_watchdog.sh --check`, and relaunch with
+> `setsid bash "$PWD/tools/daemon_watchdog.sh" >/dev/null 2>&1 </dev/null &`
+> only if that reports "no other watchdog". A `Monitor` over
+> `/tmp/ccarc3_watchdog.log` is still useful for *notification*, but it is no
+> longer what keeps the daemons alive.
+>
+> **The actual standing state:** the weekly window sits at util 0.98 against a
+> 0.98 ceiling and resets **2026-08-10 21:00 PDT**, so the correct action on most
+> wake-ups is to launch nothing and say so. The one outstanding job is the
+> 25-game sweep onto a shared scorecard (`CCARC3_SWEEP_DIR=clean_rollouts_submission`),
+> and it is blocked on quota, not on code.
+>
+> (Recorded here rather than in the scratchpad for the reason this file keeps
+> re-learning: a standing agenda that overstates remaining work is one that gets
+> acted on, and a standing agenda naming files that no longer exist is worse.)
+
+
 **Operator raised the pause threshold twice on 2026-08-03: first to 0.95, then
 to 0.98.** Run until the seven-day window exceeds **0.98**, not 0.75. *"Don't worry about the weekly limit. You don't
 have to pause until that becomes >0.95"* and *"If one game is still running when
