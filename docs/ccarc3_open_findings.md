@@ -378,6 +378,38 @@ instance, or read the result knowing the tool is the thing under mutation.
 
 **Totals: 8 mutants, 7 caught, 1 equivalent and argued below.**
 
+## `client.py`, the least-tested module on the path (2026-08-09)
+
+Every action a solver plays goes through `ArcClient`, and it had no mutant
+battery. 26 mutants against the semantics that decide whether a run is valid;
+**10 survived**, plus one that needed a sharper anchor. **No code defects** — all
+of them holes.
+
+Two are worth stating plainly: **`done` could be made to return True on
+`GAME_OVER`, and `dead` True on `WIN`, with nothing failing.** Both are
+solver-facing, and the client's own docstring shows `while not c.done` as the
+play loop — so a loss reading as a win ends the loop on a dead game and banks
+it. Four states, two properties, and not one test.
+
+The withholding invariant was next. `level_budget` reads
+`_baseline_here_enforced` rather than the solver-visible `baseline_here`
+specifically so that hiding a number does not switch a limit off; swapping it to
+the visible one passed. That is the whole point of the enforced/visible split,
+untested.
+
+The rest are RHAE arithmetic and the per-level effect tally: a level credited
+without an action of its own scoring 0 instead of the cap (and, one step
+further, `cost < 0` instead of `cost <= 0`, which divides by zero on a real
+multi-level advance); the completion cap not applied to `score_now`, so a play
+that cleared one level of three reports what clearing all three would; a
+baseline list shorter than the level count scoring anyway rather than declining;
+the level weights dropped, so late levels stop counting for more; a stale waste
+tally carried across a board that no longer exists; a no-op counted as a
+revisit, double-reporting what `level_dead` already covers; and every `ACTION6`
+click keyed as the same action regardless of coordinates.
+
+**Totals: 26 mutants, 25 caught, 1 equivalent and argued below.**
+
 ## Equivalent mutants, recorded rather than tested around (2026-08-09)
 
 A mutant that survives is either a gap in the tests or a change that cannot alter
@@ -394,6 +426,7 @@ each:
 | `grids.collapse` dropping `.copy()` on `arr[:, keep_cols]` | numpy *advanced* indexing always returns a copy, so the call is belt-and-braces; verified with `np.shares_memory` and `.base is None`. Note this does **not** extend to the sibling `arr[::k, ::k]` in `logical`, which is basic slicing and does alias -- the two look alike and behave oppositely. |
 | `scoring.score_run`'s `if not candidates` branch | `plays()` always yields at least one list — its `starts` begins with a literal `0` — so an empty ledger arrives as `[[]]`, one empty play, and is scored by the live path. The branch is a defensive fallback that cannot fire today. Its old comment claimed it was what handled the empty ledger, which was false and would have misled anyone relaxing `plays()`; the comment now says what is true. |
 | `scoring.card_disagreement`'s `else 0` when the play slice is empty | Both paths return early before reaching it: with a known attempt boundary an empty slice gives `0 < plays` and returns, and without one the `len(done) < plays` check has already returned. **This became equivalent only when the non-positive `playthroughs` guard landed** — a negative count was previously usable as a slice length and could empty the slice. Verified exhaustively over every `(done, playthroughs, boundary)` shape up to length 4: zero combinations reach it. |
+| `client.level_budget` dropping the `not self.level_budget_multiple` guard | A falsy multiple is `0` or `0.0`, and `int(base * 0)` is `0` — exactly what the guard returns. The two forms agree on every input including a negative multiple, where both return the same negative value. An equivalence of the arithmetic, not of the data. |
 | `daemon_watchdog.pgid_of` reading field 4 (session) instead of field 3 (process group) | Both are compared against our own field 3, and every process this code sees is launched under `setsid`, which sets pgid **and** sid equal to the pid; a forked subshell inherits both. So the two fields discriminate identically here. **This is an equivalence of the environment, not of the code**: launch a watchdog without `setsid` and the two diverge. It holds only while the documented launch does. |
 | `grids.cell_boundaries` `r < height` → `r <= height` | a boundary is `j + 1` for `j` at most `height - 2`, so none can reach `height`. **This became equivalent only when the ragged-input guard landed**: with mixed shapes a boundary from a taller frame could equal the shorter frame's height, and the two comparisons differed. It survived as a genuine gap before the fix and as an equivalence after it. |
 

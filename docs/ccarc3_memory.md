@@ -99,13 +99,13 @@ Check, do not assume — `AUTOPILOT.md` has the argv-exact liveness idiom.
 
     python tools/verify_audit_findings.py     # 32 findings, exits 1 if any reopened
     python tools/leak_exposure.py             # preserved streams vs known leak strings
-    .venv/bin/pytest -q                       # 1366 passing as of 2026-08-09
+    .venv/bin/pytest -q                       # 1383 passing as of 2026-08-09
 
 **A green suite is not the same as an audited module.** Every module on the run
 path has now been mutation-audited with `tools/mutation_check.py`, including the
-three solver-facing ones and the card-facing half of `scoring.py`, done
-2026-08-09 (`grids.py`, `rules.py`, `ledger.py`, `scoring.py`: **120 mutants**,
-4 defects, 38 test holes; re-run with `tools/mutation_battery_ccarc3.py`). To audit something new, write mutants for
+three solver-facing ones, the card-facing half of `scoring.py` and all of
+`client.py`, done 2026-08-09 (**147 mutants** across five modules, 4 defects,
+61 test holes; re-run with `tools/mutation_battery_ccarc3.py`). To audit something new, write mutants for
 what the tests *claim* to protect and confirm each one fails the suite — a
 mutant that survives is either a gap or an equivalence, and the two must be told
 apart rather than assumed. Run the battery against **new** tests too: three of

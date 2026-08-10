@@ -28,7 +28,8 @@ sys.path.insert(0, "tools")
 import mutation_check as mc  # noqa: E402
 
 # Mutants that cannot change behaviour. Argued in docs/ccarc3_open_findings.md.
-EQUIVALENT = {"collapse_alias", "cb_bounds", "run_empty_ledger", "cd_empty_is_zero"}
+EQUIVALENT = {"collapse_alias", "cb_bounds", "run_empty_ledger", "cd_empty_is_zero",
+              "budget_zero_means_none", "reap_ge"}
 
 GRIDS = ("src/athanor/ccarc3/grids.py", [
     ("palette_upper", "accept 16 as a legal colour",
@@ -330,6 +331,73 @@ SCORING = ("src/athanor/ccarc3/scoring.py", [
      "if ours[i] != theirs[i]", "if ours[i] < theirs[i]"),
 ])
 
+CLIENT = ("src/athanor/ccarc3/client.py", [
+    ("done_is_gameover", "read a loss as a win",
+     'return self.state == "WIN"', 'return self.state in ("WIN", "GAME_OVER")'),
+    ("dead_is_win", "read a win as a loss",
+     'return self.state == "GAME_OVER"', 'return self.state in ("GAME_OVER", "WIN")'),
+    ("budget_reads_visible", "compute the level budget from the solver-visible baseline",
+     "        base = self._baseline_here_enforced\n        if not base",
+     "        base = self.baseline_here\n        if not base"),
+    ("baseline_leaks", "show the baseline even when pace is withheld",
+     "return None if self.quiet_pace else self._baseline_here_enforced",
+     "return self._baseline_here_enforced"),
+    ("score_leaks", "score the play even when baselines are withheld",
+     "        if self.quiet_pace:\n            return None",
+     "        if False:\n            return None"),
+    ("budget_zero_means_none", "drop the zero-multiple guard (EQUIVALENT: int(base*0) is 0)",
+     "if not base or not self.level_budget_multiple:", "if not base:"),
+    ("free_level_scores_zero", "a level credited without an action scores 0, not the cap",
+     "                    LEVEL_SCORE_CAP if cost <= 0", "                    0.0 if cost <= 0"),
+    ("free_level_threshold", "only a negative cost counts as free, so zero divides",
+     "if cost <= 0\n", "if cost < 0\n"),
+    ("uncleared_scores_cap", "an uncleared level scores the cap even pessimistically",
+     "            else:\n                score = 0.0",
+     "            else:\n                score = LEVEL_SCORE_CAP"),
+    ("optimistic_pessimistic", "the ceiling scores unreached levels at zero",
+     "            elif optimistic:\n                score = LEVEL_SCORE_CAP",
+     "            elif optimistic:\n                score = 0.0"),
+    ("cap_not_applied", "ignore the completion cap in the current score",
+     "        cap = 1.0 if optimistic else self.completion_cap", "        cap = 1.0"),
+    ("ceiling_uses_cap", "hold the ceiling down with the completion cap",
+     "        cap = 1.0 if optimistic else self.completion_cap",
+     "        cap = self.completion_cap"),
+    ("score_max_not_min", "take the larger of raw and cap",
+     "        return min(raw, cap)", "        return max(raw, cap)"),
+    ("weights_unweighted", "weight every level equally instead of by index",
+     "            weighted += index * score", "            weighted += score"),
+    ("weight_denominator", "divide by the level count rather than the weight sum",
+     "        raw = weighted / sum(range(1, n + 1))", "        raw = weighted / n"),
+    ("levels_missing_ok", "score with fewer baselines than levels",
+     "if not baselines or len(baselines) < n or not n:", "if not baselines or not n:"),
+    ("reap_ge", "reap exactly at the deadline (EQUIVALENT: argued in the source)",
+     "            if idle > self.REAP_DEADLINE_S:", "            if idle >= self.REAP_DEADLINE_S:"),
+    ("reap_disabled", "never refuse a stale resume",
+     "            if idle > self.REAP_DEADLINE_S:", "            if False:"),
+    ("reap_no_clock", "skip the reap check when the clock was never wound",
+     "        if self.last_touched:", "        if False:"),
+    ("card_behind_ok", "resume when the card is behind the ledger",
+     "        if int(done) < self.level:", "        if False:"),
+    ("card_behind_strict", "refuse when the card merely equals the ledger",
+     "        if int(done) < self.level:", "        if int(done) <= self.level:"),
+    ("card_none_refuses", "refuse when the card says nothing",
+     "        if done is None:\n            return", "        if done is None:\n            pass"),
+    ("wasted_keeps_tally", "keep a stale tally across a board replacement",
+     "            if board_replaced:\n                self.level_tried = self.level_dead = self.level_repeats = 0",
+     "            if False:\n                self.level_tried = self.level_dead = self.level_repeats = 0"),
+    ("revisit_counts_noop", "count a no-op as a revisit",
+     "        if key != previous:\n            if key in self._seen_keys:",
+     "        if True:\n            if key in self._seen_keys:"),
+    ("dead_is_change", "count a board that moved as a dead action",
+     "        if key != previous:\n            return\n        self.level_dead += 1",
+     "        if key == previous:\n            return\n        self.level_dead += 1"),
+    ("repeat_keys_ignore_xy", "treat every ACTION6 click as the same action",
+     'what = f"{name}:{payload.get(\'x\')},{payload.get(\'y\')}" if name == "ACTION6" else name',
+     'what = name'),
+    ("tried_not_counted", "never count an action as tried",
+     "        self.level_tried += 1", "        pass"),
+])
+
 TESTS = [
     "tests/test_ccarc3.py",
     "tests/test_ccarc3_client.py",
@@ -346,12 +414,37 @@ TESTS = [
     "tests/test_scoring_zero_actions_never_earns_the_cap.py",
     "tests/test_build_trace_audit_best_play.py",
     "tests/test_sweep_split_is_detectable.py",
+    "tests/test_the_client_knows_a_win_from_a_loss.py",
+    "tests/test_ccarc3_client.py",
+    "tests/test_ccarc3_gate.py",
+    "tests/test_resume_agreement.py",
+    "tests/test_reap_clock_is_actually_wound.py",
+    "tests/test_ccarc3_solver_reachable_docs.py",
+    "tests/test_gave_up_is_not_a_result.py",
 ]
 
-MODULES = {"grids": GRIDS, "rules": RULES, "ledger": LEDGER, "scoring": SCORING}
+MODULES = {"grids": GRIDS, "rules": RULES, "ledger": LEDGER, "scoring": SCORING,
+           "client": CLIENT}
+
+
+def _check_equivalent_names_exist() -> None:
+    """Every name in EQUIVALENT must be a mutant this battery actually runs.
+
+    A set of names beside a list of mutants is two enumerated lists, and this
+    repo has watched that shape go stale six times. `reap_ge` sat in EQUIVALENT
+    with no matching mutant the moment its entry was dropped from the client
+    list -- silent, because a name that matches nothing simply never fires. The
+    check is cheap and turns the second list into a derived one.
+    """
+    defined = {name for _, muts in MODULES.values() for name, *_ in muts}
+    orphans = sorted(EQUIVALENT - defined)
+    if orphans:
+        sys.exit(f"EQUIVALENT names with no matching mutant: {orphans}. "
+                 "Either the mutant was renamed or removed; fix one or the other.")
 
 
 def main(argv: list[str]) -> int:
+    _check_equivalent_names_exist()
     wanted = argv[1:] or list(MODULES)
     unknown = [n for n in wanted if n not in MODULES]
     if unknown:
