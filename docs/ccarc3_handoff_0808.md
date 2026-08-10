@@ -1,5 +1,12 @@
 # CCARC3 handoff — 2026-08-08, written at 708k context
 
+> **SUPERSEDED — do not act on this file.** The current handoff is
+> `docs/ccarc3_handoff_0809b.md`; `docs/ccarc3_handoff_0809.md` sits between
+> them. Numbers here were true on 2026-08-08 and several were later retracted —
+> see §A of `_0809.md` and §10 of `_0809b.md`. Kept because its defect write-ups
+> are still the fullest record of that day, not because its state is current.
+
+
 Read this in full before acting. It is the state of the project at the end of a
 day in which **30 defects were found and fixed across three passes**, and the
 single open task is a $652 run that is blocked on quota until ~08-11.

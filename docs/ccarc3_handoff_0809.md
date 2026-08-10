@@ -1,5 +1,10 @@
 # CCARC3 handoff — 2026-08-09 (supersedes ccarc3_handoff_0808.md)
 
+> **SUPERSEDED — do not act on this file.** The current handoff is
+> `docs/ccarc3_handoff_0809b.md`. Read this one only for its §A retractions,
+> which `_0809b.md` §10 continues rather than repeats.
+
+
 Written at 22:34 PDT with context at 733,461 of a 784,134 auto-compact trigger.
 Read §A before trusting any number anywhere, including in the older handoff.
 

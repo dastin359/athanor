@@ -1,6 +1,6 @@
 # START HERE — read the handoff in full before acting
 
-**`docs/ccarc3_handoff_0809b.md`** (in this repo, ~17 KB / ~4k tokens) — open it
+**`docs/ccarc3_handoff_0809b.md`** (in this repo, ~25 KB / ~6k tokens) — open it
 NOW, in full, before acting on anything else. It is the CURRENT handoff, written
 for a session whose only context is this repository. This index is a **routing
 table, not the handoff**: a hook is a reason to open a file, never a substitute
