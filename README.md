@@ -134,6 +134,31 @@ to answer, and [docs/cc_harness_results.md](docs/cc_harness_results.md) for the
 running experiment log — including the negative results, of which there are
 several.
 
+## ARC-AGI-3: an agent as the player (CCARC3)
+
+A separate line of work in this repository. ARC-AGI-3 is not the
+grid-transduction task — it is a set of small interactive games played over an
+HTTP API, one action at a time, where the player must infer the mechanics from
+what the board does. `src/athanor/ccarc3/` is a harness for running an agent as
+that player: an HTTP client and action ledger, grid primitives, three-valued rule
+checking, RHAE scoring with card corroboration, and a clean-rollout discipline
+that discards runs which are not results.
+
+**Porting it to another harness: start at
+[docs/ccarc3_port_guide.md](docs/ccarc3_port_guide.md).** It separates the five
+modules that are pure ARC-AGI-3 domain logic (no harness dependency) from the
+parts that only make sense under Claude Code, and records the scoring invariants
+that produce plausible-looking wrong numbers when inverted — the environment is
+scored on its *best* play rather than its last, `actions_by_level` is cumulative
+rather than per-level, an action belongs to the level it was taken *from*, and
+the play-opening RESET is not billed while a post-death RESET is. Each was
+established against the live API or a real trace.
+
+The domain modules carry a re-runnable mutation battery —
+`tools/mutation_battery_ccarc3.py`, 147 mutants across five modules — because
+the defect this project keeps producing is a check that names a thing and reads
+a proxy for it, and the signature is that it passes by not running.
+
 ## Documentation
 
 - [RESULTS.md](RESULTS.md) — full-eval score, cost analysis, hard-pair frontier
@@ -141,6 +166,9 @@ several.
 - [docs/cc_harness.md](docs/cc_harness.md) — the Claude Code harness variant: mechanism mapping, gate contract, open questions
 - [docs/cc_harness_results.md](docs/cc_harness_results.md) — the variant's experiment log: round-by-round results, every harness defect found and fixed, and the negative results
 - [docs/zero_solve_subset.md](docs/zero_solve_subset.md) — frozen 2026-04-12 snapshot methodology and reproduction queries
+- [docs/ccarc3_port_guide.md](docs/ccarc3_port_guide.md) — ARC-AGI-3 harness: what ports, the scoring invariants, the audit method, and what is *not* established
+- [docs/ccarc3_design.md](docs/ccarc3_design.md) — ARC-AGI-3 design note and open questions
+- [docs/ccarc3_open_findings.md](docs/ccarc3_open_findings.md) — every ARC-AGI-3 audit finding, with the argument for each
 
 ## Tests
 
