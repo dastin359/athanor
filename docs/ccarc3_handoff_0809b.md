@@ -11,8 +11,9 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 ## 0. The sixty-second version
 
 - The harness has had a full mutation audit. **1383 tests pass.** Every on-path
-  module has now been audited, including the three solver-facing ones and the
-  card-facing half of `scoring.py`, and all of `client.py` (§3) — 147 mutants. The battery is
+  module has now been audited, including the three solver-facing
+  modules, the card-facing half of `scoring.py` and all of `client.py` (§3) —
+  147 mutants across five modules. The battery is
   re-runnable: `tools/mutation_battery_ccarc3.py`.
 - The `bp35` validation run **finished** and banked nothing — both attempts were
   discarded by two different guards, both correctly (§1). No run is in flight.
@@ -29,7 +30,7 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 | | |
 |---|---|
-| HEAD | `4fa7811` (plus preserver commits after it) |
+| HEAD | `c8cd07a` (plus preserver commits after it) |
 | Tests | 1383 passed, 5 skipped, 1 xfailed |
 | Weekly quota | `util=0.98`, resets **2026-08-10 21:00 PDT** |
 | Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh` and `daemon_watchdog.sh`, all ppid 1 |
