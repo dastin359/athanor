@@ -99,7 +99,7 @@ Check, do not assume — `AUTOPILOT.md` has the argv-exact liveness idiom.
 
     python tools/verify_audit_findings.py     # 32 findings, exits 1 if any reopened
     python tools/leak_exposure.py             # preserved streams vs known leak strings
-    .venv/bin/pytest -q                       # 1355 passing as of 2026-08-09
+    .venv/bin/pytest -q                       # 1366 passing as of 2026-08-09
 
 **A green suite is not the same as an audited module.** Every module on the run
 path has now been mutation-audited with `tools/mutation_check.py`, including the

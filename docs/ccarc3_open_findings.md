@@ -312,6 +312,72 @@ comparison from the corruption is the one thing it must not do.
 
 **Totals: 25 mutants, 23 caught, 2 equivalent and argued below.**
 
+## The daemon watchdog, and a guard that was broken closed (2026-08-09)
+
+The watch that relaunches `supervisor.sh`, `heartbeat.sh` and
+`preserve_evidence.sh` was a `Monitor`, and it timed out **three times in ninety
+minutes**: the runtime clamps a monitor to thirty minutes whatever lifetime the
+caller asks for, and the same clamp is on record against `persistent: true`. So
+the thing guarding the daemons kept dying before they did, and each re-arm
+depended on somebody noticing. It is now `tools/daemon_watchdog.sh`, detached at
+ppid 1 like the daemons it watches — measured protection, since a session-worker
+restart during the `bp35` run killed the `claude` solver and left all three
+detached daemons running.
+
+Writing it turned up four defects in the guard, none of them by reading:
+
+1. **The single-instance guard was a second copy of the liveness check**, and the
+   copy matched only the absolute path while the original matched absolute *and*
+   relative. Watchdogs are started as `bash tools/daemon_watchdog.sh`, so the
+   guard could not see one and a second instance launched straight past it. Two
+   implementations of one predicate fail the way two enumerated lists fail.
+
+2. **Then the guard matched its own forked subshell.** `$(pids_of ...)` is a
+   command substitution — a forked copy of the script, same argv, same
+   environment, different pid — so a scan excluding only `$$` finds that copy and
+   calls it another watchdog. The guard refused **every** launch including the
+   first, and `--check` reported "watchdog already running" while the box had
+   none. Broken closed, and reporting the reassuring opposite. Excluding by
+   process group fixes it at any nesting depth while leaving a genuinely separate
+   `setsid` watchdog visible.
+
+3. **A `pgrep -f` liveness check would have matched the watchdog itself**, which
+   names all three daemons in its own source — so a dead supervisor would read as
+   alive. The check is argv-element-exact.
+
+4. **`2>/dev/null` on a command does not silence a failed input redirection.**
+   Reading `/proc/$pid/environ` for a process that exits mid-scan printed to the
+   terminal anyway. This trap is already on record in this project and was
+   reintroduced here regardless; the fix is to redirect the whole group.
+
+### The test suite passed while the guard was broken
+
+Every test asserted that a *second* watchdog refuses. Nothing asserted that a
+*first* one starts, so the state where no watchdog can ever start satisfied the
+whole file. **A guard has two directions and testing one is testing half of it.**
+There is now a test for a lone launch, one for `--check` agreeing with the
+process table, and one that a live daemon is never relaunched — that last mutant
+(`if ! running "$d"` → `if true`) survived the first battery, and it would turn a
+two-minute loop into an unbounded fork bomb against the supervisor, which spends
+real money.
+
+### Two test-isolation defects I introduced along the way
+
+The watchdog relaunches daemons with `setsid`, so a relaunch **outlives the test
+that caused it** and `killpg` cannot reach it. With a shared probe name, a leak
+read as "alive" to the next test and failed a test that was perfectly correct —
+the suite passed or failed on whichever order pytest chose. Fixed structurally
+with a unique probe name per test rather than by widening the cleanup, then
+confirmed over five consecutive runs.
+
+Also worth knowing operationally: **a mutation battery rewrites a script that may
+be executing.** Running one against `daemon_watchdog.sh` while an instance was
+live meant a `--check` I ran mid-battery was itself running mutated code — which
+is how I came to report the live watchdog as dead when it was fine. Stop the
+instance, or read the result knowing the tool is the thing under mutation.
+
+**Totals: 8 mutants, 7 caught, 1 equivalent and argued below.**
+
 ## Equivalent mutants, recorded rather than tested around (2026-08-09)
 
 A mutant that survives is either a gap in the tests or a change that cannot alter
@@ -328,6 +394,7 @@ each:
 | `grids.collapse` dropping `.copy()` on `arr[:, keep_cols]` | numpy *advanced* indexing always returns a copy, so the call is belt-and-braces; verified with `np.shares_memory` and `.base is None`. Note this does **not** extend to the sibling `arr[::k, ::k]` in `logical`, which is basic slicing and does alias -- the two look alike and behave oppositely. |
 | `scoring.score_run`'s `if not candidates` branch | `plays()` always yields at least one list — its `starts` begins with a literal `0` — so an empty ledger arrives as `[[]]`, one empty play, and is scored by the live path. The branch is a defensive fallback that cannot fire today. Its old comment claimed it was what handled the empty ledger, which was false and would have misled anyone relaxing `plays()`; the comment now says what is true. |
 | `scoring.card_disagreement`'s `else 0` when the play slice is empty | Both paths return early before reaching it: with a known attempt boundary an empty slice gives `0 < plays` and returns, and without one the `len(done) < plays` check has already returned. **This became equivalent only when the non-positive `playthroughs` guard landed** — a negative count was previously usable as a slice length and could empty the slice. Verified exhaustively over every `(done, playthroughs, boundary)` shape up to length 4: zero combinations reach it. |
+| `daemon_watchdog.pgid_of` reading field 4 (session) instead of field 3 (process group) | Both are compared against our own field 3, and every process this code sees is launched under `setsid`, which sets pgid **and** sid equal to the pid; a forked subshell inherits both. So the two fields discriminate identically here. **This is an equivalence of the environment, not of the code**: launch a watchdog without `setsid` and the two diverge. It holds only while the documented launch does. |
 | `grids.cell_boundaries` `r < height` → `r <= height` | a boundary is `j + 1` for `j` at most `height - 2`, so none can reach `height`. **This became equivalent only when the ragged-input guard landed**: with mixed shapes a boundary from a taller frame could equal the shorter frame's height, and the two comparisons differed. It survived as a genuine gap before the fix and as an equivalence after it. |
 
 The last two of the original four are the instructive pair: both equivalences are properties of the

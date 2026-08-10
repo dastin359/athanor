@@ -10,7 +10,7 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 
 ## 0. The sixty-second version
 
-- The harness has had a full mutation audit. **1355 tests pass.** Every on-path
+- The harness has had a full mutation audit. **1366 tests pass.** Every on-path
   module has now been audited, including the three solver-facing ones and the
   card-facing half of `scoring.py` (§3) — 120 mutants. The battery is
   re-runnable: `tools/mutation_battery_ccarc3.py`.
@@ -30,9 +30,9 @@ Branch: `claude/athanor-cc-harness-variant-jpqw7t`. **Never open a PR.**
 | | |
 |---|---|
 | HEAD | `4fa7811` (plus preserver commits after it) |
-| Tests | 1355 passed, 5 skipped, 1 xfailed |
+| Tests | 1366 passed, 5 skipped, 1 xfailed |
 | Weekly quota | `util=0.98`, resets **2026-08-10 21:00 PDT** |
-| Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh`, all ppid 1 |
+| Daemons | `supervisor.sh`, `heartbeat.sh`, `preserve_evidence.sh` and `daemon_watchdog.sh`, all ppid 1 |
 | Banked | 25/25 games in `clean_rollouts`, one card per game |
 
 ### The validation run — finished, nothing banked
