@@ -728,7 +728,7 @@ still true.
 
 Do not restart from scratch and do not re-derive what you already know. Pick up
 where you are, try an approach you have not tried, and keep playing."""
-"""What a solver is told when it quits with its allowance untouched.
+"""What a solver is told when it quits while it can still act.
 
 **No figure appears in it, and none may be added.** "You still have actions
 left" tells a solver only what it could already infer from not having been
@@ -1237,6 +1237,53 @@ def _card_facts(ws: Workspace) -> dict[str, Any]:
     return facts
 
 
+GIVE_UP_FRACTION_ENV = "CCARC3_GIVE_UP_FRACTION"
+
+
+def _give_up_fraction() -> float:
+    """How much of the allowance may be spent and the stop still count as quitting.
+
+    **The default is 1.0: any allowance left over at all.** A solver that stops
+    while it can still act has stopped by choice, and the harness treats that as
+    something to continue rather than as a measurement of the environment.
+
+    It was `0.5` until an operator decision on 2026-08-10. The old value drew the
+    line in the middle on the reasoning that a solver past halfway had at least
+    contested the game, and the cost of that reading is now visible: a run that
+    stopped with a large minority of its allowance intact was banked as a real
+    loss, and the nudge -- which exists precisely to say "you are not finished,
+    carry on" -- never fired on it. Under a fraction of 1.0 the same run is
+    continued instead.
+
+    **A run that exhausts the allowance is not exempted because it counts as a
+    result. It is exempted because there is nothing left to continue on.** Any
+    run that does not score `E = 1` is a loss — grinding to the ceiling and
+    losing is a loss too, and calling it "a measurement of the game" was a
+    distinction this file used to draw and no longer does. The only question a
+    nudge answers is whether the solver still has actions to spend; at
+    `used >= budget` it does not, so there is nothing to say to it.
+
+    The retry cost is bounded by `GIVE_UP_ATTEMPTS` regardless of this value, so
+    loosening the fraction widens *which* runs get another go, never how many
+    goes any one game gets.
+
+    Set the environment variable to tighten it again -- `0.5` restores the old
+    behaviour exactly.
+    """
+    raw = os.environ.get(GIVE_UP_FRACTION_ENV, "")
+    if not raw:
+        return 1.0
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"{GIVE_UP_FRACTION_ENV}={raw!r} is not a number; using 1.0", flush=True)
+        return 1.0
+    if not 0.0 < value <= 1.0:
+        print(f"{GIVE_UP_FRACTION_ENV}={raw!r} is outside (0, 1]; using 1.0", flush=True)
+        return 1.0
+    return value
+
+
 GIVE_UP_ATTEMPTS = 3
 """How many times a game that quit early is re-run before its loss is accepted.
 
@@ -1355,12 +1402,18 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
                 f"({used / budget:.0%} of budget) — interrupted by the clock, "
                 f"not a result; re-run this game"
             )
-    # **A solver that stopped while most of its allowance was untouched did not
-    # lose either. It gave up.**
+    # **A solver that stopped while it could still act did not lose either.
+    # It gave up.**
+    #
+    # The threshold was half the allowance until 2026-08-10 and is now the whole
+    # of it (`_give_up_fraction`, default 1.0). Half drew the line on the
+    # reasoning that a solver past the midpoint had at least contested the game;
+    # the cost of that reading was that a run stopping with a large minority of
+    # its allowance intact was banked as a real loss and never nudged.
     #
     # `lf52` is why this exists, and it is the largest recoverable loss in the
     # set: `exit_code 0`, `error: null`, `timed_out: false`, stopped **three
-    # levels short of the end** with well under half its allowance spent and the
+    # levels short of the end** with most of its allowance unspent and the
     # ceiling nowhere in sight. Nothing stopped it; it stopped. Banked with no
     # error it keeps that score forever, and
     # `if prior and not prior.get("error"): skip` makes it permanent. An earlier
@@ -1385,7 +1438,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     elif not exit_code and not timed_out and not outcome.get("won"):
         budget = _action_budget(ws)
         used = outcome.get("actions_used", 0) or 0
-        if budget and used < budget / 2 and _prior_give_ups(ws) < GIVE_UP_ATTEMPTS:
+        if budget and used < budget * _give_up_fraction() and _prior_give_ups(ws) < GIVE_UP_ATTEMPTS:
             # **A flag, not a substring.** The nudge loop in `run_game` has to
             # recognise this exact condition, and the obvious way -- grepping the
             # message for "gave up" -- makes the wording load-bearing, so
@@ -1396,7 +1449,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
                 f"solver stopped at {outcome.get('levels_reached')} of "
                 f"{outcome.get('levels_total')} levels after {used} of {budget} "
                 f"actions ({used / budget:.0%} of budget) with no error and no "
-                f"timeout — it gave up with the allowance untouched, which is not "
+                f"timeout — it gave up while it could still act, which is not "
                 f"a result; re-run this game"
             )
     # **Bookkeeping must never cost the result.** This parsed rules.json

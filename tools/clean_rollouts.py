@@ -702,7 +702,7 @@ def _outstanding() -> list[str]:
 
 
 def enable_nudging() -> None:
-    """Tell `run_game` to resume a solver that quits with its allowance untouched.
+    """Tell `run_game` to resume a solver that quits while it can still act.
 
     When a solver stops early, the alternative is discarding the attempt and
     replaying the game from level zero. Measured on `bp35` (2026-08-09): the
@@ -721,7 +721,12 @@ def enable_nudging() -> None:
 
     `setdefault`, so an operator who names a value keeps it -- including `0`.
     """
-    os.environ.setdefault("CCARC3_MAX_NUDGES", "2")
+    # Three, raised from two on 2026-08-10 by operator decision, in the same
+    # pass that removed the half-allowance restriction on what counts as
+    # quitting. The two changes compound: more runs are now recognised as
+    # give-ups, and each gets one more chance to continue before the game is
+    # replayed from level zero.
+    os.environ.setdefault("CCARC3_MAX_NUDGES", "3")
 
 
 def main() -> int:

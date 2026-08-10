@@ -342,6 +342,40 @@ derive-don't-enumerate change made to `rehydrate_box.sh` and `snapshot_results.p
 
 ---
 
+## 5b. Operator changes to the give-up policy (2026-08-10)
+
+Two defaults changed on operator instruction, in one pass. Both widen how much
+the harness tries to rescue a run before accepting its loss.
+
+**The half-allowance restriction is gone.** A stop counted as "gave up" only if
+the solver had spent less than half its action budget. It now counts whenever
+*any* allowance is left: `_give_up_fraction()` in `session.py`, default `1.0`,
+overridable with `CCARC3_GIVE_UP_FRACTION` (set `0.5` to restore the old rule
+exactly). A junk or out-of-range value falls back to 1.0 and never to a tighter
+rule, so a typo cannot silently start banking runs the operator asked to have
+continued.
+
+The one remaining exemption is exhausting the allowance, and the reason is
+narrower than it used to be stated. **Any run that does not score `E = 1` is a
+loss**, including one that grinds to the ceiling — the harness no longer treats
+"it spent everything" as earning the result a pass. It is exempt only because a
+nudge would have nothing to spend: at `used >= budget` there are no actions left
+to continue on.
+
+**Nudges per launch: 2 -> 3.** `clean_rollouts.enable_nudging()` now sets
+`CCARC3_MAX_NUDGES=3`.
+
+The two compound: more runs are recognised as give-ups, and each gets one more
+chance to continue in its own session before the game is replayed from level
+zero. Cost is still bounded by `GIVE_UP_ATTEMPTS = 3` whole re-runs.
+
+**One adjacent rule was deliberately NOT changed.** A run killed by the wall
+clock is treated as an interruption rather than a result when it has spent less
+than half its budget (`session.py`, the `timed_out` branch). That is a different
+mechanism — it does not set `gave_up` and cannot trigger a nudge, because the
+clock stopped the run rather than the solver choosing to stop. Left at half
+pending a separate decision.
+
 ## 6. Known gaps — recorded, not fixed
 
 1. **The leak scan identifies the median array by order.** A solver that *sorts*

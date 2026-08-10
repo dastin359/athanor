@@ -52,15 +52,65 @@ def test_quitting_with_the_allowance_untouched_is_not_a_result(tmp_path, monkeyp
     assert "gave up" in out["error"] and "7 of 10" in out["error"]
 
 
-def test_a_solver_that_spent_its_allowance_is_a_real_loss(tmp_path, monkeypatch):
-    """Grinding to the ceiling and losing is a measurement of the game, and must
-    stay banked — otherwise every hard environment retries forever."""
+def test_a_solver_with_no_actions_left_is_not_asked_to_continue(tmp_path, monkeypatch):
+    """Not because exhausting the budget earns the loss a pass — any run that
+    does not score `E = 1` is a loss — but because a nudge has nothing to spend.
+
+    The threshold used to be halfway, and 5,000 of 6,695 actions was banked
+    without a retry on the reasoning that the solver had "contested the game".
+    An operator removed that on 2026-08-10. What is left is the only exemption
+    that does not rest on a judgement call: there are no actions remaining, so
+    telling the solver to carry on would be telling it to do nothing.
+    """
     ws = _ws(tmp_path)
-    monkeypatch.setattr(S, "ledger_facts", lambda p: {"actions_used": 5000, "levels_reached": 7})
+    budget = S._action_budget(ws)
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {"actions_used": budget, "levels_reached": 7})
     monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
     monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
 
     assert not S.collect_outcome(ws, exit_code=0, timed_out=False).get("error")
+
+
+def test_stopping_with_any_allowance_left_is_not_a_result(tmp_path, monkeypatch):
+    """The restriction removed on 2026-08-10, pinned as a behaviour.
+
+    5,000 of 6,695 actions is well past halfway and was banked as a real loss
+    under the old rule. One action short of the budget is the tightest case the
+    new rule must still catch.
+    """
+    ws = _ws(tmp_path)
+    budget = S._action_budget(ws)
+    for used in (5000, budget - 1):
+        monkeypatch.setattr(S, "ledger_facts",
+                            lambda p, u=used: {"actions_used": u, "levels_reached": 7})
+        monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+        monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+        out = S.collect_outcome(ws, exit_code=0, timed_out=False)
+        assert out.get("gave_up"), f"{used} of {budget} was banked as a real loss"
+
+
+def test_the_fraction_is_settable_for_an_operator_who_wants_the_old_rule(tmp_path, monkeypatch):
+    """`0.5` restores the previous behaviour exactly, so the change is a default
+    rather than a removal."""
+    ws = _ws(tmp_path)
+    budget = S._action_budget(ws)
+    monkeypatch.setattr(S, "ledger_facts", lambda p: {"actions_used": 5000, "levels_reached": 7})
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+
+    monkeypatch.setenv(S.GIVE_UP_FRACTION_ENV, "0.5")
+    assert not S.collect_outcome(ws, exit_code=0, timed_out=False).get("gave_up")
+
+    monkeypatch.delenv(S.GIVE_UP_FRACTION_ENV)
+    assert S.collect_outcome(ws, exit_code=0, timed_out=False).get("gave_up")
+
+
+@pytest.mark.parametrize("bad", ["banana", "0", "-1", "2", ""])
+def test_a_nonsense_fraction_falls_back_to_no_restriction(monkeypatch, bad):
+    """Never to a *tighter* rule: a typo must not silently start banking runs
+    the operator asked to have continued."""
+    monkeypatch.setenv(S.GIVE_UP_FRACTION_ENV, bad)
+    assert S._give_up_fraction() == 1.0
 
 
 def test_the_retry_is_bounded(tmp_path, monkeypatch):

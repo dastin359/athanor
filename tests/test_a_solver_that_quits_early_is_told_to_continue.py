@@ -264,7 +264,7 @@ def test_the_driver_opts_in_when_it_actually_runs(monkeypatch):
 
     monkeypatch.delenv("CCARC3_MAX_NUDGES", raising=False)
     cr.enable_nudging()
-    assert sess._max_nudges() == 2, "the driver did not enable nudging"
+    assert sess._max_nudges() == 3, "the driver did not enable nudging"
 
 
 def test_an_operator_value_survives_the_driver(monkeypatch):
