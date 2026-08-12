@@ -1,8 +1,8 @@
-"""Every mutant the three solver-facing ccarc3 modules were audited with.
+"""Every mutant the solver-facing ccarc3 modules were audited with.
 
 Run it to re-verify the audit rather than trusting this file's summary:
 
-    .venv/bin/python tools/mutation_battery_ccarc3.py            # all three
+    .venv/bin/python tools/mutation_battery_ccarc3.py            # every module
     .venv/bin/python tools/mutation_battery_ccarc3.py grids      # one module
 
 Exit status is the number of unexpected survivors. Mutants listed in
@@ -398,6 +398,106 @@ CLIENT = ("src/athanor/ccarc3/client.py", [
      "        self.level_tried += 1", "        pass"),
 ])
 
+# The shim every solver action passes through. It holds the credential, the
+# action ceiling and the allowlist, so a defect here is not a wrong number in a
+# report -- it is a leaked baseline, a miscounted budget, or a sweep whose shared
+# card gets closed halfway. It had 41 tests across four files and had never been
+# mutated, which is the state this whole battery exists to distrust.
+PROXY = ("src/athanor/ccarc3/arc_proxy.py", [
+    ("allowlist_off", "forward every path, not just the four",
+     "return any(p.match(path) for p in ALLOW)", "return True"),
+    ("games_allowlisted", "restore /api/games, the one endpoint the arm withholds",
+     '    re.compile(r"^/api/scorecard/open$"),',
+     '    re.compile(r"^/api/games$"),\n    re.compile(r"^/api/scorecard/open$"),'),
+    ("allowlist_sees_query", "check the allowlist against the query string too",
+     '        path = self.path.split("?", 1)[0]', "        path = self.path"),
+    ("refuse_without_drain", "answer a refusal with the request body unread",
+     '        n = int(self.headers.get("Content-Length") or 0)\n'
+     "        payload = self.rfile.read(n) if n else None\n\n"
+     "        if not _allowed(path):\n            self._refuse(path)\n            return\n",
+     "        if not _allowed(path):\n            self._refuse(path)\n            return\n"
+     '        n = int(self.headers.get("Content-Length") or 0)\n'
+     "        payload = self.rfile.read(n) if n else None\n\n"),
+
+    ("cmd_never_charges", "bill nothing, so the ceiling never binds",
+     "charge = bool(_CMD.match(path))", "charge = False"),
+    ("cmd_always_charges", "bill scorecard reads as actions",
+     "charge = bool(_CMD.match(path))", "charge = True"),
+    ("exhausted_off_by_one", "allow one action past the ceiling",
+     "if self.max_actions and self.actions_used >= self.max_actions:",
+     "if self.max_actions and self.actions_used > self.max_actions:"),
+    ("exhausted_disabled", "never refuse for budget",
+     "if self.max_actions and self.actions_used >= self.max_actions:",
+     "if False:"),
+    ("charge_on_error", "bill a 502 the solver was never served",
+     "if charge and not (200 <= code < 300):", "if False:"),
+    ("refund_never", "keep the slot upstream declined",
+     "            if self.actions_used > 0:\n                self.actions_used -= 1",
+     "            if self.actions_used > 0:\n                pass"),
+    ("refund_underflows", "refund below zero",
+     "            if self.actions_used > 0:\n                self.actions_used -= 1",
+     "            if True:\n                self.actions_used -= 1"),
+    ("charge_never", "accept the action and bill nothing",
+     "            self.actions_used += 1\n        return None",
+     "            pass\n        return None"),
+    ("budget_race", "restore the two-acquisition check: ask, then take",
+     "            self.actions_used += 1\n        return None",
+     "        import time as _t\n        _t.sleep(0.05)\n"
+     "        with self._lock:\n            self.actions_used += 1\n        return None"),
+    ("forward_full_path", "forward the unchecked path, query string and all",
+     "            UPSTREAM + path, data=payload, method=method, headers=headers,",
+     "            UPSTREAM + self.path, data=payload, method=method, headers=headers,"),
+    ("used_not_seeded", "restart a resumed game's counter at zero",
+     "self.max_actions, self.actions_used = int(max_actions), int(used)",
+     "self.max_actions, self.actions_used = int(max_actions), 0"),
+
+    ("wrong_game_fails_open", "the pre-08-07 hole: a body-less action skips the check",
+     "if wanted and charge:", "if wanted and charge and payload:"),
+    ("wrong_game_none_ok", "an action naming no game is billed to whoever received it",
+     "            if asked != wanted:", "            if asked is not None and asked != wanted:"),
+    ("wrong_game_never", "spend a neighbour's budget freely",
+     "            if asked != wanted:", "            if False:"),
+
+    ("lent_card_closable", "let a solver close the driver's shared card",
+     'if self.state.card_is_lent and path == "/api/scorecard/close":',
+     'if False and path == "/api/scorecard/close":'),
+    ("adopt_not_lent", "adopt a card without marking it lent",
+     "            self._card_is_lent = True", "            self._card_is_lent = False"),
+
+    ("strip_off", "return the body with its baselines intact",
+     "return {k: _strip(v) for k, v in node.items() if k not in HIDDEN_FIELDS}",
+     "return {k: _strip(v) for k, v in node.items()}"),
+    ("strip_shallow", "strip only the top level, not nested objects",
+     "return {k: _strip(v) for k, v in node.items() if k not in HIDDEN_FIELDS}",
+     "return {k: v for k, v in node.items() if k not in HIDDEN_FIELDS}"),
+    ("strip_skips_lists", "never descend into a list, where per-game records live",
+     "return [_strip(v) for v in node]", "return list(node)"),
+    ("hidden_keeps_level_scores", "leave level_scores, which inverts to the medians",
+     '    "level_scores",', ""),
+    ("hidden_keeps_baseline_actions", "leave baseline_actions",
+     '    "baseline_actions",', ""),
+    ("hidden_keeps_level_baselines", "leave level_baseline_actions",
+     '    "level_baseline_actions",', ""),
+    ("filtered_fails_closed", "swallow an unparseable 5xx body the client needs",
+     "    except (ValueError, UnicodeDecodeError):\n        return body",
+     "    except (ValueError, UnicodeDecodeError):\n        return b''"),
+
+    ("fresh_opener_each_call", "rebuild the session per call, unpinning the card",
+     "            if self._opener is None:", "            if True:"),
+    ("adopted_cookies_dropped", "build the session without the driver's pinning",
+     "                for c in self._adopted:", "                for c in ():"),
+    ("no_setcookie_relay", "swallow the upstream Set-Cookie headers",
+     "        for value in set_cookies:", "        for value in ():"),
+    ("budget_no_reset_session", "carry the previous game's pinning into the next",
+     "        # A new game means a new card; carrying the previous game's pinning over\n"
+     "        # is how a stale session survives into a run that did not open it.\n"
+     "        self.reset_session()",
+     "        # A new game means a new card; carrying the previous game's pinning over\n"
+     "        # is how a stale session survives into a run that did not open it.\n"
+     "        pass"),
+])
+
+
 TESTS = [
     "tests/test_ccarc3.py",
     "tests/test_ccarc3_client.py",
@@ -415,16 +515,21 @@ TESTS = [
     "tests/test_build_trace_audit_best_play.py",
     "tests/test_sweep_split_is_detectable.py",
     "tests/test_the_client_knows_a_win_from_a_loss.py",
-    "tests/test_ccarc3_client.py",
     "tests/test_ccarc3_gate.py",
     "tests/test_resume_agreement.py",
     "tests/test_reap_clock_is_actually_wound.py",
     "tests/test_ccarc3_solver_reachable_docs.py",
     "tests/test_gave_up_is_not_a_result.py",
+    "tests/test_arc_proxy_allowlist.py",
+    "tests/test_arc_proxy_endtoend.py",
+    "tests/test_the_allowlist_is_anchored_at_both_ends.py",
+    "tests/test_the_shim_keeps_its_pinning_and_its_secret.py",
+    "tests/test_the_action_ceiling_binds_under_concurrency.py",
+    "tests/test_a_search_that_gave_up_says_so.py",
 ]
 
 MODULES = {"grids": GRIDS, "rules": RULES, "ledger": LEDGER, "scoring": SCORING,
-           "client": CLIENT}
+           "client": CLIENT, "proxy": PROXY}
 
 
 def _check_equivalent_names_exist() -> None:

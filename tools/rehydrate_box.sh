@@ -226,6 +226,53 @@ if bash "$REPO/tools/box_fingerprint.sh" >/dev/null 2>&1; then
 else
   echo "fingerprint NOT recorded — the row is local only, or was never written"
 fi
+# 3b. The scorecard pin, before anything reads it.
+#
+# **This is the only piece of state a rehydrate can restore that evidence cannot
+# reconstruct.** A scorecard lives on one backend instance and the `AWSALBAPP-*`
+# stickiness cookies are the only route back to it -- to read it, to play onto it,
+# and to CLOSE it, which is what publishes an artifact. `evidence/` deliberately
+# carries the card *id* and never the cookies, so before `card_vault.py` existed a
+# replaced box could name the card it had stranded and do nothing about it. On
+# 2026-08-11 that was `e6e6a61c`, seven games in, two of them at 100.0.
+#
+# **Order matters and this is why it sits here.** `clean_rollouts.sweep_card()`
+# hard-stops when the pin is missing and the committed history names a card
+# carrying banked games -- correctly, because minting a fresh card would build a
+# submission that silently omits them. That refusal is the last line of defence,
+# not the outcome we want: a restored pin means the sweep simply continues onto
+# the card it was already building. So restore runs before any driver relaunch,
+# and it runs before the banked-result restores below purely so its line appears
+# in the order an operator reads.
+#
+# It refuses to overwrite a live pin, so on a healthy box this is a no-op.
+# Deliberately NOT gated on `CCARC3_CARD_VAULT`: that switch governs whether to
+# *publish* an encrypted credential, and if a vault file exists that decision was
+# already made. Declining to read it here would forfeit the sweep and buy back no
+# secrecy at all.
+#
+# The key comes from `arc3/.env`, which the scratchpad snapshot restores -- the
+# same event that destroyed the cookies. Sourced in a subshell so the key never
+# enters this script's environment or any child it did not intend.
+if [ -f "$SP/arc3/.env" ]; then
+  vpy="$REPO/.venv/bin/python"; [ -x "$vpy" ] || vpy=python3
+  # `set -a` so the sourced assignment is EXPORTED: `arc3/.env` is written
+  # `ARC_API_KEY=...` with no `export`, so a plain `.` leaves it invisible to the
+  # python child. Inside the subshell, so nothing escapes into this script.
+  vout="$( set -a; . "$SP/arc3/.env"; set +a
+           CCARC3_SCRATCH="$SP" "$vpy" "$REPO/tools/card_vault.py" restore 2>&1 )"
+  case "$vout" in
+    *restored*)         echo "card pin: ${vout#card_vault: }" ;;
+    *"already exists"*) : ;;                      # healthy box, nothing to do
+    *"no card history"*) : ;;                     # no sweep has opened a card
+    "")                 : ;;
+    *)                  echo "card pin: ${vout#card_vault: }" ;;
+  esac
+else
+  echo "card pin: no $SP/arc3/.env — the vault key is unavailable, so a stranded"
+  echo "          card could not be recovered on this box"
+fi
+
 for restore in restore_banked_results restore_clean_rollouts; do
   # The rollout driver reads its banked markers off the scratchpad too, and
   # restores only attempts that finished without an error.

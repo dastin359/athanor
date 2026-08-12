@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import signal
 import subprocess
 import time
@@ -96,7 +97,10 @@ def _runner_name_block() -> str:
 
 
 def _daemon_check_fn() -> str:
-    return _extract(r"^daemon_check\(\) \{.*?^\}$", "daemon_check()")
+    return _extract(
+        r"^daemon_alive\(\) \{.*?^\}\n\n^daemon_check\(\) \{.*?^\}$",
+        "daemon_alive() and daemon_check()",
+    )
 
 
 def _work_pending_fn() -> str:
@@ -105,7 +109,23 @@ def _work_pending_fn() -> str:
 #: `context_watch.py` is deliberately absent: it is a one-shot alarm that EXITS
 #: on its threshold crossing, so listing it made every correct firing report
 #: `DAEMON DOWN` on every poll thereafter.
-DAEMON_LIST = "for name in supervisor.sh preserve_evidence.sh"
+#: The watch list is now ONE array read in two places, not the same literal
+#: written twice. These tests used to assert that literal appeared exactly
+#: TWICE -- pinning the duplication itself, and that duplication is what let
+#: `daemon_watchdog.sh` be added to neither copy on 2026-08-09.
+DAEMON_LIST = 'WATCHED_DAEMONS=('
+
+
+def _watched_daemons():
+    match = re.search(r"^WATCHED_DAEMONS=\(([^)]*)\)", SRC, re.M)
+    assert match, "WATCHED_DAEMONS not found in heartbeat.sh"
+    return match.group(1).split()
+
+
+def _daemon_check_with(names):
+    """`daemon_check` plus an override of the list it reads."""
+    joined = " ".join(names)
+    return _daemon_check_fn() + "\nWATCHED_DAEMONS=(" + joined + ")\n"
 
 
 def _sub(text: str, needle: str, repl: str, expect: int) -> str:
@@ -122,6 +142,15 @@ def _sub(text: str, needle: str, repl: str, expect: int) -> str:
 # process helpers
 # --------------------------------------------------------------------------
 def _argv_elements(pid: str) -> list[str]:
+    if not Path("/proc").is_dir():
+        out = subprocess.run(
+            ["ps", "-ww", "-o", "command=", "-p", str(pid)],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        try:
+            return shlex.split(out)
+        except ValueError:
+            return out.split()
     try:
         raw = Path("/proc", pid, "cmdline").read_bytes()
     except OSError:
@@ -134,10 +163,14 @@ def _running_by_argv(name: str) -> bool:
     path ending in `name`.  Deliberately not a substring search -- substring
     matching is the bug the script's own comments are about, and it would find
     this test process."""
-    for d in Path("/proc").iterdir():
-        if not d.name.isdigit():
-            continue
-        if any(a.endswith("/" + name) for a in _argv_elements(d.name)):
+    if Path("/proc").is_dir():
+        pids = [d.name for d in Path("/proc").iterdir() if d.name.isdigit()]
+    else:
+        pids = subprocess.run(
+            ["ps", "-axo", "pid="], capture_output=True, text=True,
+        ).stdout.split()
+    for pid in pids:
+        if any(a.endswith("/" + name) for a in _argv_elements(pid)):
             return True
     return False
 
@@ -453,6 +486,9 @@ def test_live_runner_is_seen_and_its_own_log_is_the_one_read(tmp_path, procs):
     assert "RETIRED-ARM" not in out, f"read the retired arm's log: {out!r}"
     assert "1/3 done" in out, f"progress counts missing: {out!r}"
     assert "2 acts" in out, f"act count missing: {out!r}"
+    assert re.search(r"2 acts \([0-9]+s ago\)", out), (
+        f"trace age was not derived from the portable mtime check: {out!r}"
+    )
     assert "five_hour" in out, f"quota block missing: {out!r}"
 
 
@@ -609,12 +645,8 @@ def test_daemon_check_names_the_absent_and_stays_quiet_for_the_present(
 ):
     """Controlled both-directions test: two daemon names, one running, one not,
     so the result cannot depend on what happens to be running on the box."""
-    daemon_fn = _daemon_check_fn()
-    hits = daemon_fn.count(DAEMON_LIST)
-    assert hits == 2, f"daemon_check's name list changed shape ({hits} lists found)"
-    fn = daemon_fn.replace(
-        DAEMON_LIST, "for name in zz_present_daemon.sh zz_absent_daemon.sh"
-    )
+    assert SRC.count(DAEMON_LIST) == 1, "the watch list is no longer a single array"
+    fn = _daemon_check_with(["zz_present_daemon.sh", "zz_absent_daemon.sh"])
 
     procs(tmp_path / "zz_present_daemon.sh")
     assert not _running_by_argv("zz_absent_daemon.sh"), "the absent fixture is running"
@@ -635,9 +667,12 @@ def test_daemon_check_agrees_with_the_real_process_table():
     than against whatever the box happens to be doing -- so this neither passes
     by luck nor fails when a daemon legitimately restarts.  That daemon_check
     can speak at all is established by the controlled test above."""
-    names = ["supervisor.sh", "preserve_evidence.sh"]
-    assert SRC.count(DAEMON_LIST) == 2, (
-        "daemon_check no longer watches exactly those three daemons"
+    if os.environ.get("CCARC3_LIVE_DAEMON_CHECK") != "1":
+        pytest.skip("set CCARC3_LIVE_DAEMON_CHECK=1 inside the managed runner")
+
+    names = _watched_daemons()
+    assert "daemon_watchdog.sh" in names, (
+        "the process that restarts the others must itself be watched"
     )
 
     out = _bash(_daemon_check_fn() + "\ndaemon_check\n").stdout

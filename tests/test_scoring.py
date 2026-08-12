@@ -176,11 +176,12 @@ class TestOutOfWorkspacePaths:
         assert not any("outside the workspace" in e for e in result["evidence"])
 
     def test_the_solver_interpreter_is_not_flagged(self, tmp_path):
-        """CLAUDE.md tells the agent to run this exact path; flagging it is noise."""
+        """The workspace tells the agent to run this interpreter; it is benign."""
+        import sys
         from athanor.cc_harness.scoring import contamination_scan
         ws = tmp_path / "workspace"
         (ws / "task").mkdir(parents=True)
-        stream = self._stream(tmp_path, "/home/user/athanor/.venv/bin/python explore/probe.py")
+        stream = self._stream(tmp_path, f"{sys.executable} explore/probe.py")
         result = contamination_scan(workspace_root=ws, stream_path=stream)
         assert not any("outside the workspace" in e for e in result["evidence"])
 

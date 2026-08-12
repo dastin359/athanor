@@ -70,7 +70,9 @@ _FORBIDDEN_TOOLS = ("WebFetch", "WebSearch")
 
 #: Absolute paths a solver mentions in a command or tool argument. Relative
 #: paths are workspace-relative by construction and are not interesting here.
-_OUT_OF_WORKSPACE = re.compile(r"/(?:root|home|etc|usr|var|opt|srv|mnt|media)/[\w./\\-]{2,}")
+_OUT_OF_WORKSPACE = re.compile(
+    r"/(?:private/)?(?:root|home|etc|usr|var|opt|srv|mnt|media)/[\w./\\-]{2,}"
+)
 
 #: Paths every run legitimately touches. The solver's interpreter lives outside
 #: the workspace by design, and the harness tells it so in CLAUDE.md.
@@ -162,9 +164,10 @@ def contamination_scan(
         # so. It was established by hand. That is the wrong division of labour.
         for match in set(_OUT_OF_WORKSPACE.findall(stream_text)):
             resolved = match.replace("\\", "/")
-            if resolved.startswith(str(workspace_root)):
+            canonical = str(Path(resolved).resolve())
+            if canonical.startswith(str(workspace_root)):
                 continue
-            if any(resolved.startswith(prefix) for prefix in _BENIGN_PATH_PREFIXES):
+            if any(canonical.startswith(prefix) for prefix in _BENIGN_PATH_PREFIXES):
                 continue
             # Claude Code spills large tool results to a project directory whose
             # name is the workspace path with separators replaced. A reference

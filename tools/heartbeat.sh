@@ -59,14 +59,26 @@ RUNNER_NAME=$(grep -oE 'RUNNER="\$\{1:-\$REPO/tools/[a-z_]+\.py\}"' \
 RUNNER_NAME="${RUNNER_NAME:-clean_rollouts.py}"
 
 runner_alive() {
-    local d
-    for d in /proc/[0-9]*; do
-        [ -r "$d/cmdline" ] || continue
-        if { tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null \
-           | grep -qx ".*/${RUNNER_NAME//./\\.}"; then
-            return 0
-        fi
-    done
+    local d pid cmdline
+    if [ -d /proc ]; then
+        for d in /proc/[0-9]*; do
+            [ -r "$d/cmdline" ] || continue
+            if { tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null \
+               | grep -qx ".*/${RUNNER_NAME//./\\.}"; then
+                return 0
+            fi
+        done
+        return 1
+    fi
+
+    # macOS has no procfs. Match a command token ending in the runner's name;
+    # exclude this heartbeat so a name present in its source cannot self-match.
+    while read -r pid cmdline; do
+        [ "$pid" = "$$" ] && continue
+        case " $cmdline " in
+            *"/$RUNNER_NAME "*|*" $RUNNER_NAME "*) return 0;;
+        esac
+    done < <(ps -ww -axo pid=,command= 2>/dev/null)
     return 1
 }
 
@@ -94,11 +106,23 @@ ANNOUNCED_COMPLETE=0
 #
 # Its absence is not unmonitored: the crossing itself is the report, and the
 # handoff protocol says to re-arm it after handling one.
-daemon_check() {
-    local d name argv
-    local -A seen=()
-    for d in /proc/[0-9]*; do
-        [ -r "$d/cmdline" ] || continue
+# **The list is one list.** It was written twice -- once to fill `seen`, once to
+# report -- and a name added to one and not the other is silently unwatched. That
+# is the eighth stale enumerated list in this project, and it had already gone
+# stale: `daemon_watchdog.sh` was added on 2026-08-09 as the thing that relaunches
+# the other three, and nothing reported its own death. The watchdog watches them;
+# this watches the watchdog, which closes the loop.
+WATCHED_DAEMONS=(supervisor.sh preserve_evidence.sh daemon_watchdog.sh)
+
+daemon_alive() {
+    local name="$1" d argv cmd pid
+
+    # Linux exposes argv boundaries through procfs, so keep the exact-element
+    # check there. Codex also runs this harness on macOS, whose system Bash is
+    # 3.2 and which has no /proc; fall back to ps without associative arrays.
+    if [ -d /proc ]; then
+        for d in /proc/[0-9]*; do
+            [ -r "$d/cmdline" ] || continue
 # **`2>/dev/null` on `tr` does not silence the redirection.** `< "$d/cmdline"` is
 # opened by the SHELL before `tr` exists, so when the process exits between the
 # glob and the read -- which it does, `/proc` is a live directory -- the failure is
@@ -108,13 +132,29 @@ daemon_check() {
 # alarm channel that emits noise is one people stop reading, which is the same
 # reason the daemon report is not always-on. Braces put the redirection inside the
 # group, so the group's stderr covers it.
-        argv=$({ tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null)
-        for name in supervisor.sh preserve_evidence.sh; do
-            grep -qx ".*/${name//./\\.}" <<< "$argv" && seen[$name]=1
+            argv=$({ tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null)
+            while IFS= read -r cmd; do
+                case "$cmd" in
+                    */"$name"|"$name") return 0;;
+                esac
+            done <<< "$argv"
         done
-    done
-    for name in supervisor.sh preserve_evidence.sh; do
-        [ -n "${seen[$name]}" ] || \
+        return 1
+    fi
+
+    while read -r pid cmd; do
+        [ "$pid" = "$$" ] && continue
+        case " $cmd " in
+            *"/$name "*|*" $name "*) return 0;;
+        esac
+    done < <(ps -ww -axo pid=,command= 2>/dev/null)
+    return 1
+}
+
+daemon_check() {
+    local name
+    for name in "${WATCHED_DAEMONS[@]}"; do
+        daemon_alive "$name" || \
             echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') DAEMON DOWN: $name"
     done
 }
@@ -237,7 +277,11 @@ except Exception:
     # reasoning over the trace writes the stream, not the ledger. Check the
     # process before concluding anything from it.
     age="?"
-    [ -n "$d" ] && [ -f "$d/trace.jsonl" ] && age=$(( $(date +%s) - $(stat -c %Y "$d/trace.jsonl") ))
+    if [ -n "$d" ] && [ -f "$d/trace.jsonl" ]; then
+        mtime=$("$PY_BIN" -c 'import os,sys; print(int(os.path.getmtime(sys.argv[1])))' \
+                "$d/trace.jsonl" 2>/dev/null || true)
+        [ -n "$mtime" ] && age=$(( $(date +%s) - mtime ))
+    fi
     q=$(bash "$SP/quota.sh" 2>/dev/null | grep -E 'five_hour|seven_day' | tr -s ' ' | tr '\n' ';')
 
     echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') ${arm:-starting} | ${n} acts (${age}s ago) | ${done_n}/${total} done | ${q}${fail:+ | LAST FAILURE: $fail}"

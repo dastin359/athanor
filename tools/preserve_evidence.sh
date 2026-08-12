@@ -42,6 +42,31 @@ SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 # container's clone location; a fresh container, or the same repo checked out
 # by a different account, gets a different one. `readlink -f` first, so the
 # derivation still holds if this script is reached through a symlink.
+# **This daemon re-execs itself when its own file changes on disk.**
+#
+# A running bash script holds its function definitions in memory: editing the
+# file changes nothing until the process restarts. That is stated plainly and
+# then violated -- on 2026-08-11 the card-vault call was fixed at 22:05 and the
+# daemon kept running the broken version for 13 consecutive cycles, logging
+# "card_vault: save failed" every five minutes, because the operator who wrote
+# "a fix is not live until the daemon restarts" at 21:50 did not restart it at
+# 22:05. It cost nothing that time only because the cookies happened not to
+# rotate.
+#
+# A rule that has to be remembered at the right moment is the weakest kind, and
+# CLAUDE.md already says so about timestamps. So the daemon checks its own hash
+# each cycle and re-execs when it moves. Idempotent by construction: the new
+# process re-reads the same state from disk and continues.
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_HASH="$(sha256sum "$SELF" 2>/dev/null | cut -d" " -f1)"
+# **Self-contained on purpose, not merely by habit.** This was briefly rewritten
+# as `dirname "$SELF"`, which is equivalent and wrong for two reasons: a line
+# whose meaning depends on an earlier assignment breaks if either moves, and
+# tests/test_ccarc3_scratch_path_is_overridable.py extracts this exact line and
+# runs it alone to prove the tool follows its own file. Under that extraction
+# `$SELF` was unbound and the derivation silently resolved against the caller's
+# cwd -- which is the failure the test exists to catch, introduced by the fix for
+# something else.
 REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 DEST="$REPO/evidence/ccarc3"
 # **Overridable, because the branch is not a property of the code.** It was
@@ -55,7 +80,12 @@ DEST="$REPO/evidence/ccarc3"
 # push would go somewhere unintended", and a branch read from HEAD always
 # agrees with HEAD.
 BRANCH="${CCARC3_BRANCH:-codexarc3}"
-TICK=300
+# Overridable so the loop can be exercised without racing a five-minute timer.
+# This file already carries the argument, about `--once`: logic that decides what
+# happens can only be trusted if it is reachable without launching anything. The
+# re-exec guard above is the same case -- proving it works in a live process
+# means watching a real cycle, and at 300s that is not a thing anyone will do.
+TICK="${CCARC3_PRESERVE_TICK:-300}"
 
 # **Source the key rather than inherit it.** `key_is_clean` refuses to commit
 # without `ARC_API_KEY`, which is right -- the one state where the check cannot
@@ -133,6 +163,99 @@ key_is_clean() {
     return 0
 }
 
+# **The API key was the only secret this daemon ever looked for, and it is not
+# the only secret in a trace.** `trace.state.json` persists the client's cookie
+# jar so a run can rebind its scorecard after a restart, and a `GAMESESSION`
+# value is a live credential for the ARC backend exactly as the key is. 79
+# tracked files carried one before this check existed, every one of them
+# committed and pushed by this daemon under a message saying "preserve run
+# artifacts".
+#
+# **Structural, not value-matching.** This project has twice proved that matching
+# secrets by VALUE does not work -- the space is dense enough that a scan either
+# collides constantly or is narrowed until it catches nothing. What identifies a
+# cookie is the shape it is written in: a `cookies` array of `name`/`value`
+# objects. That shape is what is banned, whatever the value happens to be.
+# **Quote-agnostic, and name-anchored as well as key-anchored.** The first
+# version tested `*'"cookies"'*'"value"'*` and then grepped for a long `"value"`.
+# Both halves assume the jar is written as JSON with double quotes -- and on
+# 2026-08-11 a tracked, pushed `stream.jsonl.gz` carried a live 64-character
+# `GAMESESSION` and a full `AWSALBAPP-0` stickiness token written as a **Python
+# repr**: `'cookies': [{'name': 'GAMESESSION', 'value': '...'}]`. The `case`
+# returned no match, the loop `continue`d, and this function reported the file
+# clean. Verified by hand against that exact file before the rewrite.
+#
+# That is this project's signature defect once more, and in the worst possible
+# place: the guard named "a session cookie value" and actually read "a session
+# cookie value spelled the way I happened to imagine it". It did not fail; it
+# declined to run, and returned success for having done so.
+#
+# Two patterns now, either of which is a refusal:
+#   1. a `cookies` key, in either quoting, on a line that also carries a
+#      non-empty `value` -- the jar as a structure;
+#   2. a known cookie NAME followed closely by a credential-length value -- which
+#      catches a jar that reached the file some other way, e.g. printed field by
+#      field, or nested inside an escaped string;
+#   3. the raw wire form `GAMESESSION=<value>`, which has no `value` key to
+#      anchor on and which pattern 2 therefore walked straight past.
+#
+# **All three share one credential floor of 16 characters over one charset, and
+# the redaction marker is outside it by construction.** The first version used
+# `[^"']{8,}` here, which is every printable character -- so the marker
+# `SESSION-COOKIE-REDACTED` matched, and a redacted file went on being refused
+# forever: the stripper could not clear the refusal it caused, which is the exact
+# deadlock four paragraphs up, arrived at by having written the two halves to
+# different definitions after all. `[session cookie redacted]` opens with `[`,
+# which is not in the charset, so the match fails at the first character rather
+# than by being special-cased. A marker that is safe because it is on an
+# exception list is one more thing that can fall off the list.
+#
+# 16 is the floor because both real values are far above it -- a `GAMESESSION` is
+# 64 hex characters and an `AWSALBAPP-*` token is ~144 of base64 -- while the
+# backend's own tombstone value `_remove_` is 8, and refusing a commit over a
+# cookie the server has already deleted is a false positive that costs the whole
+# cycle's evidence.
+# The value charset covers base64 (`+ / =`) as well as hex, because a token may
+# carry either inside its first characters and the length test is measured from
+# the opening quote forward. (An earlier draft of this comment claimed the
+# narrow charset "could not match an AWSALBAPP token at all". That is false, and
+# the mutation run that survived is what said so: a real token happens to open
+# with a long run of `A`, so ~28 characters match before the first `/` and the
+# 16-character floor is reached without ever needing one. The charset is worth
+# widening for the tokens that are not shaped that way -- not for the ones that
+# are.)
+#
+# **And every quote may be backslash-escaped.** A stream line is JSONL whose
+# `content` field is a STRING, so a jar quoted inside it arrives as
+# `\"cookies\": [{\"name\": ...}]`. The first rewrite of this guard handled
+# single quotes and still missed that, because `["']value["']` cannot match
+# `\"value\"` -- the character after `value` is a backslash, not a quote. Caught
+# by drilling the patterns against a hand-written escaped sample rather than only
+# against the file that had already leaked, which is the difference between
+# testing the fix and testing the incident.
+_COOKIE_KEY='\\?["'"'"']cookies\\?["'"'"'][[:space:]]*:.*\\?["'"'"']value\\?["'"'"'][[:space:]]*:[[:space:]]*\\?["'"'"'][A-Za-z0-9%_+/=.-]{16,}'
+_COOKIE_NAMED='\\?["'"'"']?(GAMESESSION|AWSALBAPP[-_A-Za-z0-9]*)\\?["'"'"']?[^A-Za-z0-9]{1,20}\\?["'"'"']?value\\?["'"'"']?[[:space:]]*[:=][[:space:]]*\\?["'"'"'][A-Za-z0-9%_+/=.-]{16,}'
+# 3. the raw `Set-Cookie` wire form, `NAME=<value>`, which carries no `value`
+#    key at all -- a header echoed into a log is a credential exactly as a jar is.
+_COOKIE_HEADER='(GAMESESSION|AWSALBAPP[-_A-Za-z0-9]*)=[A-Za-z0-9%_+/=.-]{16,}'
+
+cookies_are_clean() {
+    local hits f body
+    hits=""
+    while IFS= read -r f; do
+        [ -f "$REPO/$f" ] || continue
+        body=$(gzip -cd -- "$REPO/$f" 2>/dev/null || cat -- "$REPO/$f" 2>/dev/null)
+        if printf '%s' "$body" | grep -qaE -e "$_COOKIE_KEY" -e "$_COOKIE_NAMED" -e "$_COOKIE_HEADER"; then
+            hits="$hits $f"
+        fi
+    done <<< "$(git -C "$REPO" diff --cached --name-only -- evidence 2>/dev/null)"
+    if [ -n "$hits" ]; then
+        log "REFUSING TO COMMIT — a session cookie value appears in:$hits"
+        return 1
+    fi
+    return 0
+}
+
 # **Write through a temp file and rename, because `>` is not atomic and this
 # loop commits whatever it finds.** `gzip -c src > dest` truncates dest, then
 # fills it over many write() calls. Anything reading dest in between sees a
@@ -152,12 +275,108 @@ key_is_clean() {
 # destroying the only surviving copy of a banked 9/9 run's reasoning, since the
 # scratchpad is not durable. rename(2) within a filesystem is atomic, so a reader
 # sees either the old file or the new one and never a prefix of the new one.
+# **Strip session cookies on the way in, not on the way out.**
+# `trace.state.json` persists the client's cookie jar so a run can rebind its
+# scorecard after a restart. That jar is a live credential and `evidence/` is
+# pushed to a public remote, so it must not arrive here at all.
+#
+# Redacting the *destination* does not work and the failure is instructive: this
+# loop re-copies from the scratchpad every 300s, so 62 files hand-cleaned in
+# `evidence/` were re-filled from their intact sources on the next tick. The
+# verification that said "0 files carry a value" was true when it ran and false
+# four minutes later. A cleanup a daemon is actively undoing is not a fix.
+#
+# The commit guard stays as the backstop. This is the thing that keeps the
+# secret out; the guard is what notices if this ever stops working.
+strip_cookies() {
+    local src="$1" out="$2"
+    "$REPO/.venv/bin/python" - "$src" "$out" <<'PYEOF' 2>/dev/null || cp -f "$src" "$out"
+import json, sys
+src, out = sys.argv[1], sys.argv[2]
+try:
+    doc = json.load(open(src))
+except Exception:
+    raise SystemExit(1)                      # not JSON: fall back to a plain copy
+
+def scrub(o):
+    if isinstance(o, dict):
+        jar = o.get("cookies")
+        if isinstance(jar, list):
+            for c in jar:
+                if isinstance(c, dict) and c.get("value"):
+                    c["value"] = ""
+                    c["redacted"] = "session cookie removed before publication"
+        for v in o.values():
+            scrub(v)
+    elif isinstance(o, list):
+        for v in o:
+            scrub(v)
+
+scrub(doc)
+json.dump(doc, open(out, "w"), separators=(",", ":"))
+PYEOF
+}
+
+# **A jar can reach a file the JSON scrubber cannot walk, so there is a second,
+# text-level pass.** `strip_cookies` parses the file and rewrites the `cookies`
+# array; that works for `trace.state.json`, whose jar is a real JSON structure.
+# It is useless for a stream, where the jar arrives INSIDE a string -- a tool
+# result whose text happens to contain the client's state dict -- because there
+# is no `cookies` key at the JSON level to find. On 2026-08-11 exactly that
+# published a live 64-character `GAMESESSION` and a full `AWSALBAPP-0` token in
+# `lf52/attempt_2/stream.jsonl.gz`, tracked and pushed.
+#
+# **Driven by the guard's own patterns, deliberately.** If the stripper and the
+# refusal held separate ideas of what a cookie looks like they would drift, and
+# the failure mode of that drift is silent in one direction (a leak the guard
+# does not see) and total in the other (a refusal the stripper cannot clear, so
+# the daemon preserves *nothing* every cycle, forever). One definition, used
+# twice: `grep` decides, `sed` acts, and both read `$_COOKIE_*`.
+#
+# The grep is the cheap half and runs on every file; the rewrite only runs on the
+# rare file that matches, so the ordinary cycle costs one extra `grep` per file.
+redact_cookies() {
+    local src="$1" out="$2"
+    # Values only. The names, the keys and the surrounding text stay, because a
+    # reader has to be able to see that a jar was here and was removed -- a
+    # silently vanished field is indistinguishable from a run that never had one.
+    sed -E \
+      -e 's/((\\?["'"'"']?(GAMESESSION|AWSALBAPP[-_A-Za-z0-9]*)\\?["'"'"']?[^A-Za-z0-9]{1,20}\\?["'"'"']?value\\?["'"'"']?[[:space:]]*[:=][[:space:]]*\\?["'"'"'])[A-Za-z0-9%_+\/=.-]{16,})/\2[session cookie redacted]/g' \
+      -e 's/((GAMESESSION|AWSALBAPP[-_A-Za-z0-9]*)=)[A-Za-z0-9%_+\/=.-]{16,}/\1[session cookie redacted]/g' \
+      -- "$src" > "$out" 2>/dev/null || return 1
+    return 0
+}
+
 gz_atomic() {
-    local src="$1" dest="$2" tmp="$2.tmp.$$"
+    local src="$1" dest="$2" tmp="$2.tmp.$$" clean="$2.clean.$$"
+    case "$src" in
+        *state.json|*state.json.gz|*cookies*)
+            strip_cookies "$src" "$clean" && src="$clean";;
+    esac
+    # **Then the text pass, on anything the guard would refuse.** Runs after the
+    # structural scrub so a state file gets both: the JSON walk empties the jar
+    # properly, and this catches a jar that reached the same file some other way.
+    # The grep is the same definition the commit guard uses, so a file that
+    # survives here is a file that guard will accept -- and if it ever is not,
+    # the guard refuses and says which file, rather than the secret shipping.
+    if grep -qaE -e "$_COOKIE_KEY" -e "$_COOKIE_NAMED" -e "$_COOKIE_HEADER" -- "$src" 2>/dev/null; then
+        if redact_cookies "$src" "$clean.txt" && [ -s "$clean.txt" ]; then
+            log "redacted a session cookie out of $(basename "$src")"
+            [ -f "$clean" ] && rm -f "$clean"
+            clean="$clean.txt"
+            src="$clean"
+        else
+            rm -f "$clean.txt"
+            log "WARNING: could not redact $(basename "$src"); leaving it out of evidence"
+            rm -f "$clean"
+            return 0
+        fi
+    fi
     if gzip -9 -n -c "$src" > "$tmp" 2>/dev/null; then
+        [ -f "$clean" ] && rm -f "$clean"
         mv -f "$tmp" "$dest"
     else
-        rm -f "$tmp"
+        rm -f "$tmp" "$clean"
         log "WARNING: failed to compress $src; left $dest as it was"
     fi
 }
@@ -237,10 +456,74 @@ refresh_proxy() { [ -f "$SP/proxy_env" ] && . "$SP/proxy_env"; }
 ONCE=0
 [ "${1:-}" = "--once" ] && ONCE=1
 
+# **One preserver per repository, enforced rather than assumed.**
+#
+# `daemon_watchdog.sh` relaunches this daemon when it sees none running, which is
+# right -- and on 2026-08-11 it fired inside the two-second window of a manual
+# restart and produced two, three seconds apart. Two preservers commit to the
+# same index: `git add` and `git commit` race, one of them fails, and the loser
+# logs COMMIT FAILED on a cycle where nothing was wrong. The driver already
+# solved this for itself (`clean_rollouts._only_driver`); this daemon assumed
+# uniqueness instead, which is the same "assumed rather than checked" shape as
+# every other defect in this file.
+#
+# Keyed on $REPO, so a test running `--once` against a temporary clone -- which
+# tests/test_no_tool_is_pinned_to_this_container.py does -- takes a different
+# lock and is unaffected. Held in /tmp rather than the repo (no git noise) or the
+# scratchpad (which reverts).
+#
+# **Fails OPEN, loudly.** If the lock cannot be taken for any reason other than
+# contention, this runs anyway: a duplicate costs a noisy cycle, while refusing
+# to start costs evidence on a disk that has been rolled back six times. The
+# asymmetry decides it.
+LOCK="/tmp/ccarc3-preserve-$(printf '%s' "$REPO" | md5sum | cut -c1-12).lock"
+if command -v flock >/dev/null 2>&1 && exec 9>"$LOCK" 2>/dev/null; then
+    if ! flock -n 9; then
+        log "another preserver already holds $LOCK — exiting rather than racing its git index"
+        exit 0
+    fi
+    echo "$$" >&9
+elif command -v shlock >/dev/null 2>&1; then
+    # macOS ships Bash 3.2 and shlock, but not flock. shlock atomically creates
+    # a PID lock and discards one whose owner has died, preserving the same
+    # crash-release property the Linux path relies on.
+    if ! shlock -f "$LOCK" -p "$$"; then
+        log "another preserver already holds $LOCK — exiting rather than racing its git index"
+        exit 0
+    fi
+    cleanup_preserver_lock() { rm -f "$LOCK"; }
+    pause_preserver() {
+        sleep "$1" &
+        PAUSE_PID=$!
+        wait "$PAUSE_PID"
+        PAUSE_PID=
+    }
+    stop_preserver() {
+        [ -n "${PAUSE_PID:-}" ] && kill "$PAUSE_PID" 2>/dev/null || true
+        exit 0
+    }
+    trap cleanup_preserver_lock EXIT
+    trap stop_preserver INT TERM HUP
+else
+    log "WARNING: could not take $LOCK; running anyway (a duplicate is cheaper than no preserver)"
+fi
+
 mkdir -p "$DEST"
 [ "${ONCE:-0}" = 1 ] || log "preserving evidence every ${TICK}s -> $DEST"
 
 while true; do
+    # Pick up an edit to this file. Deliberately at the TOP of the cycle, before
+    # any copying or committing, so a re-exec cannot land between staging and
+    # committing. Skipped under --once, which must run exactly one cycle and
+    # exit -- tests extract this loop and would otherwise re-exec into a daemon.
+    if [ "${ONCE:-0}" != 1 ]; then
+        now_hash="$(sha256sum "$SELF" 2>/dev/null | cut -d" " -f1)"
+        if [ -n "$now_hash" ] && [ "$now_hash" != "$SELF_HASH" ]; then
+            log "$(basename "$SELF") changed on disk — re-execing so the fix is live"
+            exec bash "$SELF" "$@"
+        fi
+    fi
+
     # **Three hardcoded names, and the submission sweep is not one of them.**
     # `clean_rollouts.py` is *forced* into a different directory for a
     # submission run -- all 25 games in `clean_rollouts` already hold a
@@ -283,8 +566,48 @@ while true; do
     if [ "$cur" != "$BRANCH" ]; then
         log "REFUSING — HEAD is on $cur, not $BRANCH; nothing preserved this cycle"
         if [ "${ONCE:-0}" = 1 ]; then exit 1; fi
-        sleep "$TICK"
+        pause_preserver "$TICK"
         continue
+    fi
+
+    # **Seal the scorecard pin, so a replacement cannot strand a live card.**
+    #
+    # This is the one piece of run state that is destroyed by the same event this
+    # whole daemon exists for and is NOT recoverable from evidence: a scorecard
+    # lives on one backend instance and the `AWSALBAPP-*` stickiness cookies in
+    # `shared_card.json` are the only route back to it -- to read it, to play onto
+    # it, and to CLOSE it, which is what publishes. On 2026-08-11 a replacement
+    # stranded `e6e6a61c` with seven games on it, two of them at 100.0.
+    #
+    # The cookies are live credentials and this tree is pushed to a public remote,
+    # so what lands here is ciphertext keyed on ARC_API_KEY -- sourced above from
+    # `arc3/.env`, which is private and part of the image snapshot. The snapshot
+    # that destroys the cookies restores the key that decrypts them.
+    #
+    # `card_vault.py` is off unless armed, decides that for itself, and writes
+    # nothing when the pin has not changed -- so on a box where the operator has
+    # not armed it this is a no-op that costs one process spawn every 300s.
+    # Failures are logged, never fatal: losing a pin is expensive, but so is a
+    # preservation daemon that stops preserving traces because a side errand
+    # failed.
+    # **`ARC_API_KEY` is passed explicitly, because sourcing does not export.**
+    # `arc3/.env` is written `ARC_API_KEY=...` with no `export`, so `. file` makes
+    # it a SHELL variable and nothing else. Every existing consumer here reads it
+    # as `${ARC_API_KEY:-}` from the same shell, so that has always been enough --
+    # and a python child cannot see it at all, which made this call fail on its
+    # first real invocation with "no ARC_API_KEY in the environment".
+    #
+    # It was drilled end to end before shipping, and the drill passed, because the
+    # fixture `.env` it wrote said `export ARC_API_KEY=...`. Testing the wiring
+    # against my own idea of the file rather than the file. One-shot assignment
+    # rather than `set -a`, so the key reaches this command and no other child of
+    # this daemon.
+    vpy="$REPO/.venv/bin/python"; [ -x "$vpy" ] || vpy=python3
+    if vout="$(ARC_API_KEY="${ARC_API_KEY:-}" CCARC3_SCRATCH="$SP" \
+               "$vpy" "$REPO/tools/card_vault.py" save --quiet 2>&1)"; then
+        [ -n "$vout" ] && log "$vout"
+    else
+        log "card_vault: save failed — ${vout:-no output}"
     fi
 
     # **Drain a push backlog even on a cycle with nothing new.** The commit and
@@ -325,7 +648,7 @@ while true; do
         # impossible and that this is exactly why it is worth asserting -- and
         # then it asserted nothing.
         git add evidence
-        if key_is_clean; then
+        if key_is_clean && cookies_are_clean; then
             # **Count and commit the same set, and let that set be `evidence`.**
             # `n` counted the WHOLE index and the commit carried no pathspec, so
             # this daemon would commit anything another process happened to have
@@ -365,7 +688,7 @@ live API key appears anywhere under evidence/." -- evidence || {
                     log "  removed a stale .git/index.lock left by the failed commit"
                 fi
                 if [ "${ONCE:-0}" = 1 ]; then exit 1; fi
-                sleep "$TICK"
+                pause_preserver "$TICK"
                 continue
             }
             pushed=0
@@ -395,5 +718,5 @@ live API key appears anywhere under evidence/." -- evidence || {
         fi
     fi
     if [ "${ONCE:-0}" = 1 ]; then exit 0; fi
-    sleep "$TICK"
+    pause_preserver "$TICK"
 done

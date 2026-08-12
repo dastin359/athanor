@@ -39,13 +39,39 @@ def gate(monkeypatch, tmp_path):
     monkeypatch.setattr(cr, "_last_limit", None)
     monkeypatch.setattr(cr, "_running", 0)
     monkeypatch.setattr(cr, "_waiting", set())
+    cr._aborted.clear()
     monkeypatch.setattr(cr, "CONCURRENCY_FILE", tmp_path / "concurrency")
     cr._aborted.clear()
     return tmp_path / "concurrency"
 
 
 def _take_with_timeout(gid: str, rank: int, seconds: float) -> bool:
-    """True if a slot was granted within the window."""
+    """True if a slot was granted within the window. Never leaves a waiter parked.
+
+    **Abandoning the thread poisoned the gate for every later test in the
+    process, and it took a whole test file down.** This used to `join(seconds)`
+    and return, leaving a daemon thread blocked inside `_take_slot` — which is
+    the point of the brake tests, since a limit of 0 means it can never be
+    granted. But `_take_slot` is a `while True` around a 10-second timed wait, so
+    the abandoned thread wakes up every ten seconds and re-reads *module
+    globals*, which by then belong to whatever test is running now.
+
+    Measured 2026-08-10: `test_clean_rollout_queue_order` monkeypatches
+    `concurrency()` to 1 and refills `_waiting` with ranks 0-19. The stranded
+    waiter — still carrying rank 0 — wakes, finds `_running < 1` and
+    `0 == min(_waiting)`, takes the slot, discards rank 0 from the set, and
+    exits **without ever calling `_free_slot`**. `_running` sticks at 1 forever,
+    so no game is ever admitted: `started == []`, and the real rank-0 thread can
+    never match `min(_waiting)` either, because its rank was discarded by an
+    impostor. Run the two files together and the suite hangs.
+
+    A daemon thread makes the process exit anyway, which is what kept this
+    invisible — nothing crashes, the file passes alone, and the damage lands on
+    somebody else's test.
+
+    So release the waiter through the module's own escape hatch rather than
+    walking away from it, and hand back a slot if one was granted.
+    """
     import threading
     got = []
 
@@ -59,6 +85,15 @@ def _take_with_timeout(gid: str, rank: int, seconds: float) -> bool:
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     t.join(seconds)
+    if t.is_alive():
+        cr._aborted.set()
+        with cr._slots:
+            cr._slots.notify_all()
+        t.join(10)
+        cr._aborted.clear()
+        assert not t.is_alive(), "the gate would not release its waiter"
+    if got:
+        cr._free_slot()          # granted after all; do not leak the slot
     return bool(got)
 
 

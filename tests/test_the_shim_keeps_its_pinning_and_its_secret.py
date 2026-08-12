@@ -94,8 +94,8 @@ def test_the_refusal_never_names_the_ceiling():
     state.set_budget(1234)
     assert state.exhausted() is None, "the ceiling bound before any action"
 
-    for _ in range(1234):
-        state.charge()
+    for i in range(1234):
+        assert state.reserve() is None, f"the ceiling bound early, at action {i}"
     message = state.exhausted()
 
     assert message, "the ceiling did not bind at the cap"
@@ -115,5 +115,6 @@ def test_the_ceiling_binds_exactly_at_the_cap_not_one_past_it():
     state.set_budget(3)
     for expected in (None, None, None):
         assert state.exhausted() is expected
-        state.charge()
+        assert state.reserve() is None, "a slot inside the cap was refused"
     assert state.exhausted() is not None, "a fourth action was allowed through"
+    assert state.reserve() is not None, "a fourth action was allowed through"

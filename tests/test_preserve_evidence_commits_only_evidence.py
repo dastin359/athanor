@@ -110,7 +110,7 @@ def out(proc) -> str:
     return proc.stdout.strip()
 
 
-BRANCH = "claude/athanor-cc-harness-variant-jpqw7t"
+BRANCH = "codexarc3"
 
 
 @pytest.fixture

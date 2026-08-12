@@ -28,6 +28,11 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    not pathlib.Path("/proc").is_dir(),
+    reason="the production supervisor's orphan sweep requires Linux procfs",
+)
+
 REPO = pathlib.Path(__file__).resolve().parents[1]
 SUPERVISOR = REPO / "tools" / "supervisor.sh"
 SRC = SUPERVISOR.read_text(encoding="utf-8")

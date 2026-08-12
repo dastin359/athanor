@@ -27,6 +27,7 @@ import gzip
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -83,17 +84,22 @@ def box(tmp_path):
     # asserting they land in the right place asserts an absence the fixture
     # guarantees — which is what the first version of this file did, and a mutant
     # removing the game-level guard survived it.
-    pkg = repo / "src" / "athanor" / "ccarc3"
+    athanor_pkg = repo / "src" / "athanor"
+    pkg = athanor_pkg / "ccarc3"
     pkg.mkdir(parents=True)
+    (athanor_pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "client.py").write_text("# the version this run talked to\n", encoding="utf-8")
     (pkg / "gate.py").write_text("# and its gate\n", encoding="utf-8")
+    for module in ("grids.py", "ledger.py", "scoring.py"):
+        (pkg / module).write_bytes((REPO / "src" / "athanor" / "ccarc3" / module).read_bytes())
     home = tmp_path / "home"
     home.mkdir()
     env = {"PATH": "/usr/bin:/bin", "HOME": str(home),
            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x",
            "GIT_CONFIG_NOSYSTEM": "1"}
-    _git(repo, "init", "-q", "-b", "claude/athanor-cc-harness-variant-jpqw7t", env=env)
+    _git(repo, "init", "-q", "-b", "codexarc3", env=env)
     (repo / "README").write_text("x\n", encoding="utf-8")
     _git(repo, "add", "-A", env=env)
     _git(repo, "commit", "-q", "-m", "base", env=env)
@@ -104,7 +110,7 @@ def box(tmp_path):
     _git(repo, "init", "-q", "--bare", str(bare), env=env)
     _git(repo, "remote", "add", "origin", str(bare), env=env)
     _git(repo, "push", "-q", "-u", "origin",
-         "claude/athanor-cc-harness-variant-jpqw7t", env=env)
+         "codexarc3", env=env)
     # The real script, reached through the fixture repo so REPO derives to it.
     # Both real scripts, reached through the fixture repo so each derives its
     # own `REPO` to it. Copying rather than importing is deliberate: the paths
@@ -121,7 +127,7 @@ def _preserve(scratch: pathlib.Path, repo: pathlib.Path, env: dict) -> str:
         ["bash", str(repo / "tools" / "preserve_evidence.sh"), "--once"],
         capture_output=True, text=True, timeout=180,
         env={**env, "CCARC3_SCRATCH": str(scratch),
-             "CCARC3_BRANCH": "claude/athanor-cc-harness-variant-jpqw7t",
+             "CCARC3_BRANCH": "codexarc3",
              "ARC_API_KEY": "not-a-real-key-for-the-guard"},
     )
     # The push has no remote in this sandbox and is expected to fail loudly;
@@ -268,12 +274,33 @@ def test_a_preserved_runtime_copy_is_never_restamped(box):
 # Two properties nothing held. Both survived the round-trip tests above, which is
 # fair: a single preserve cycle over a healthy tree cannot show either.
 
+def _slice(text: str, marker: str) -> str:
+    start = text.index(marker)
+    return text[start:text.index("\n}\n", start) + 3]
+
+
 def _gz_atomic_fn() -> str:
-    """The real function, lifted out of the real file."""
+    """The real function, lifted out of the real file — with what it depends on.
+
+    **A slice that takes only `gz_atomic` runs it with its guards unbound**, and
+    the failure is not a clean one: `grep -E -e ""` matches every line, so every
+    file is treated as carrying a cookie, `redact_cookies` is undefined, the
+    error branch fires, and the function returns having written nothing. Both
+    round-trip tests below then fail with `FileNotFoundError` on the output --
+    which is at least loud. The quiet version of the same mistake is what this
+    file's own header is about: an extraction that succeeds at pulling the wrong
+    thing tests something that does not ship.
+    """
     text = PRESERVE.read_text(encoding="utf-8")
-    start = text.index("gz_atomic() {")
-    end = text.index("\n}\n", start) + 3
-    return "log() { echo \"$*\"; }\n" + text[start:end]
+    patterns = [ln for ln in text.splitlines() if re.match(r"^_COOKIE_[A-Z]+=", ln)]
+    assert len(patterns) >= 3, f"expected the cookie patterns, found {len(patterns)}"
+    return "\n".join([
+        'log() { echo "$*"; }',
+        *patterns,
+        _slice(text, "redact_cookies() {"),
+        _slice(text, "strip_cookies() {"),
+        _slice(text, "gz_atomic() {"),
+    ]) + "\n"
 
 
 def _run_gz(body: str, tmp_path: pathlib.Path) -> subprocess.CompletedProcess:

@@ -41,6 +41,22 @@ from typing import Any, Callable, Hashable, Iterable, Sequence
 __all__ = ["shortest_path", "reachable"]
 
 
+def _runaway(max_states: int) -> RuntimeError:
+    """The shared diagnosis for a search that will not terminate.
+
+    **One function, because the two searches had the same guard and two
+    different behaviours.** `shortest_path` raised this; `reachable` wrote the
+    same bound into a `while` condition and, on hitting it, returned a partial
+    set as though it were the whole answer. Two copies of a rule drift, and the
+    drift here was silent in the worse direction -- see :func:`reachable`.
+    """
+    return RuntimeError(
+        f"search exceeded {max_states} states; the step function is "
+        f"probably returning a new state every call (is something in it "
+        f"changing that should not?)"
+    )
+
+
 def shortest_path(
     step: Callable[[Any, int], Any],
     start: Hashable,
@@ -80,11 +96,7 @@ def shortest_path(
     queue: deque[Any] = deque([start])
     while queue:
         if len(prev) > max_states:
-            raise RuntimeError(
-                f"search exceeded {max_states} states; the step function is "
-                f"probably returning a new state every call (is something in it "
-                f"changing that should not?)"
-            )
+            raise _runaway(max_states)
         current = queue.popleft()
         for action in actions:
             nxt = step(current, action)
@@ -113,11 +125,28 @@ def reachable(
 
     Useful for the question that comes before routing: *is the thing I want even
     reachable, or have I misread the board?* An unexpectedly small reachable set
-    usually means the model thinks a wall is somewhere it is not.
+    usually means the model thinks a wall is somewhere it is not -- and that
+    reading is only safe because this raises rather than truncating at
+    ``max_states``, so a short set is always the board and never the search.
     """
     seen = {start}
     queue: deque[Any] = deque([start])
-    while queue and len(seen) <= max_states:
+    while queue:
+        # **Raise, do not truncate.** This was `while queue and len(seen) <=
+        # max_states`, which on a runaway step function stopped early and
+        # returned the states found so far -- typed and shaped exactly like a
+        # complete answer, with nothing to distinguish it from one.
+        #
+        # The docstring below makes that the worst possible failure mode: it
+        # tells the reader an unexpectedly small reachable set means the model
+        # has a wall in the wrong place. So the cap firing produces the exact
+        # observation the documentation teaches you to blame on your model, and
+        # a solver would go and "fix" a step function that was fine.
+        #
+        # `shortest_path` raised on the identical condition. Same bound, same
+        # cause, opposite contract.
+        if len(seen) > max_states:
+            raise _runaway(max_states)
         current = queue.popleft()
         for action in actions:
             nxt = step(current, action)

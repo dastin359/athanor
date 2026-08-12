@@ -137,7 +137,8 @@ sys.exit(1 if d.get('error') else 0)
 if [ "${1:-}" = "--record" ]; then
   mkdir -p "$(dirname "$MARKER")"
   stamps | sort > "$MARKER"
-  echo "recorded $(wc -l < "$MARKER") results as refreshed"
+  recorded_count="$(wc -l < "$MARKER" | tr -d '[:space:]')"
+  echo "recorded $recorded_count results as refreshed"
   exit 0
 fi
 

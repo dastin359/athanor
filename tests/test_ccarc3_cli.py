@@ -197,7 +197,7 @@ def test_trace_on_a_missing_run_fails_cleanly(tmp_path, capsys):
 
 def test_the_parser_defaults_to_the_required_model_and_effort():
     args = cli.build_parser().parse_args(["run", "--game", "g"])
-    assert args.model == "gpt-5.3-codex"
+    assert args.model == "gpt-5.6-sol"
     assert args.effort == "high"
 
 

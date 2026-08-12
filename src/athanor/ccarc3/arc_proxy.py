@@ -133,27 +133,89 @@ class ProxyState:
         # is how a stale session survives into a run that did not open it.
         self.reset_session()
 
-    def exhausted(self) -> str | None:
-        """The refusal once the ceiling is reached, or ``None`` before then."""
-        with self._lock:
-            if self.max_actions and self.actions_used >= self.max_actions:
-                # No figure. `actions_used` equals `max_actions` at the moment
-                # this fires, and the cap is the withheld total times
-                # `budget_multiple` -- so printing it hands back the number the
-                # ceiling was moved out of the child's environment to withhold.
-                return ("action budget exhausted. The environment is over; "
-                        "nothing further can be scored.")
-        return None
+    def reserve(self) -> str | None:
+        """Take one action slot, or return the refusal. Atomic.
 
-    def charge(self) -> None:
-        """Bill one action, after upstream accepted it.
+        **This was two methods and that was the bug.** `exhausted()` answered
+        under the lock and `charge()` billed under the lock, but `_forward` ran
+        them as separate acquisitions with the whole upstream round-trip in
+        between -- up to the 120-second timeout. Every request already in flight
+        had passed the check and not yet paid, so N concurrent actions at the
+        ceiling all read "not exhausted" and all went through. The cap overshot
+        by N-1, and N is however many connections the caller chose to open.
 
-        Charged on the response rather than the request so the count tracks
-        `ArcClient.actions_used`, which increments while processing a frame the
-        server actually returned. A 502 costs the solver nothing at either end.
+        Each half was scrupulous about the lock, which is why reading the code
+        did not show it: the gap was not inside either critical section but
+        between them.
+
+        **The caller is the party the ceiling exists to constrain.** The header
+        above explains that the limit was moved out of the solver's environment
+        because "a limit the solver can read is a limit the solver can invert",
+        and that the solver reaches this shim over loopback with no key.
+        Nothing in that design stops it opening fifty connections at once.
+
+        Deciding and taking under one acquisition is the whole fix. The slot
+        comes back via :meth:`refund` if upstream did not accept it, which is
+        what keeps the old promise that a 502 costs the solver nothing.
         """
         with self._lock:
+            over = self._over()
+            if over:
+                return over
             self.actions_used += 1
+        return None
+
+    def refund(self) -> None:
+        """Hand back a reserved slot upstream did not accept.
+
+        Reserving up front bills the action before knowing whether ARC performed
+        it, so this restores the documented rule: a 502 costs the solver nothing
+        at either end, and the count still tracks `ArcClient.actions_used`, which
+        increments only while processing a frame the server actually returned.
+
+        Refunding is deliberately the only way the counter goes down, and it
+        never goes below zero: over-counting caps a run early, which is a bad
+        run; under-counting uncaps it, which is a bad number in a submission.
+        """
+        with self._lock:
+            if self.actions_used > 0:
+                self.actions_used -= 1
+
+    def _over(self) -> str | None:
+        """The refusal text if the ceiling is reached. **Caller holds the lock.**
+
+        One copy of the rule, because splitting `exhausted()` into a checking
+        half and a taking half briefly left two -- the same condition and the
+        same message written out in `reserve` and in `exhausted`. The mutation
+        battery reported it immediately, as `SKIP (matches 2x)`: a mutant aimed
+        at "the ceiling condition" no longer had a unique target, so both
+        ceiling mutants stopped being applied at all and the audit went quiet
+        about the one thing it was there to check.
+
+        That is the failure this repo keeps meeting -- a check that passes by not
+        running -- arriving through a refactor that was itself fixing a bug. Two
+        copies of a rule do not merely risk drifting later; they cost the
+        coverage that would notice.
+
+        No figure in the message. `actions_used` equals `max_actions` when this
+        fires and the cap is the withheld total times `budget_multiple`, so
+        printing it hands back the number the ceiling was moved out of the
+        child's environment to withhold.
+        """
+        if self.max_actions and self.actions_used >= self.max_actions:
+            return ("action budget exhausted. The environment is over; "
+                    "nothing further can be scored.")
+        return None
+
+    def exhausted(self) -> str | None:
+        """The refusal if the ceiling is reached, without taking a slot.
+
+        Read-only, for callers that want to ask. `_forward` must use
+        :meth:`reserve` instead -- asking and then acting is the race this
+        method cannot be used to avoid.
+        """
+        with self._lock:
+            return self._over()
 
     def upstream(self) -> urllib.request.OpenerDirector:
         """This game's persistent session to ARC, cookie jar and all.
@@ -381,7 +443,7 @@ class Handler(BaseHTTPRequestHandler):
             # 403 and not 429: `client._send` raises on 4xx without retrying, so
             # the solver gets one clear terminal error rather than three rounds
             # of backoff against a wall that will not move.
-            over = self.state.exhausted()
+            over = self.state.reserve()
             if over:
                 sys.stderr.write(f"BUDGET {path} — {over}\n")
                 sys.stderr.flush()
@@ -416,8 +478,27 @@ class Handler(BaseHTTPRequestHandler):
         #
         # The proxy owns the upstream session. That is the whole point of it
         # holding the key, and the session belongs with the credential.
+        # **Send the string that was checked, not the one it was derived from.**
+        # This was `UPSTREAM + self.path` while the allowlist matched `path`, the
+        # query-stripped copy -- so `/api/scorecard/close?anything=you+like`
+        # passed a check on `/api/scorecard/close` and went upstream with the
+        # query intact. The check named the request and read a part of it.
+        #
+        # That is the shape this repo keeps finding, so close it structurally
+        # rather than by adding a rule about query strings: one variable is both
+        # matched and sent, and an unchecked byte has no path to ARC. A separate
+        # "reject queries" guard would be a second rule to keep in step with the
+        # first, which is how the two searches in `planning.py` drifted apart.
+        #
+        # Nothing legitimate is lost: every URL `client.py` builds is bare (five
+        # call sites, no query anywhere in the package or in `tools/`).
+        if self.path != path:
+            # Still loud. A solver appending a query is the same signal as a
+            # solver probing a path -- it belongs in the log either way.
+            sys.stderr.write(f"DROPPED QUERY {self.path!r} -> {path!r}\n")
+            sys.stderr.flush()
         req = urllib.request.Request(
-            UPSTREAM + self.path, data=payload, method=method, headers=headers,
+            UPSTREAM + path, data=payload, method=method, headers=headers,
         )
         set_cookies: list[str] = []
         try:
@@ -433,8 +514,10 @@ class Handler(BaseHTTPRequestHandler):
             set_cookies = exc.headers.get_all("Set-Cookie") or []
         except (urllib.error.URLError, TimeoutError) as exc:
             body, code = json.dumps({"error": f"upstream: {exc}"}).encode(), 502
-        if charge and 200 <= code < 300:
-            self.state.charge()
+        if charge and not (200 <= code < 300):
+            # The slot was taken before the request went out; upstream declined
+            # it, so give it back.
+            self.state.refund()
         # Filter on the way back, not just on the way in. Content-Length is
         # recomputed below from the filtered body, so this must happen first.
         body = _filtered(body)

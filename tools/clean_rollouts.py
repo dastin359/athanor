@@ -135,6 +135,25 @@ def install_strip() -> None:
 # first within them: bank what can finish before betting a window on what
 # probably cannot.
 GAMES = [
+    # **bp35 first, and it is the only entry here placed by outcome rather than
+    # by length.** Every other game in this list is banked at E=1.0000; bp35 is
+    # the single shortfall at 0.7252, and that figure predates the win-frame
+    # replay prompt, so nothing has ever measured what the current harness scores
+    # on it. The submission's headline number is capped by exactly this game.
+    #
+    # Ordering by length -- "bank what can finish before betting a window on what
+    # probably cannot" -- was written when a five-hour window was believed to be
+    # the binding constraint. It is not: bp35 has already run 4.86 h to
+    # completion once, and the supervisor has never made a ceiling stop. The
+    # weekly window is the real limit, and it constrains the sweep's total, not
+    # the placement of one game inside it.
+    #
+    # At rank 18 under concurrency 3, bp35 would have run near the very end --
+    # returning the one uncertain answer at the moment nothing could be done with
+    # it. The card scores the BEST play (`scoring.py`, select="best"), so a
+    # retry raises the card and cannot lower it. That makes an early answer
+    # actionable and a late one merely informative.
+    "bp35-0a0ad940",   # 9 levels, 651 baseline, 4.86 h — the only sub-1.0 run
     "sb26-7fbdac44",   # 8 levels, 0.29 h in the arm
     "ft09-0d8bbf25",   # 6 levels, 0.54 h
     "ka59-38d34dbb",   # 7 levels, 1.34 h
@@ -171,7 +190,6 @@ GAMES = [
     "vc33-5430563c",   # 7 levels, 447
     "tu93-0768757b",   # 9 levels, 462
     "s5i5-18d95033",   # 8 levels, 638
-    "bp35-0a0ad940",   # 9 levels, 651
     "ar25-0c556536",   # 8 levels, 748
     "ls20-9607627b",   # 7 levels, 776
     "cn04-2fe56bfb",   # 6 levels, 789
@@ -695,8 +713,14 @@ def _outstanding() -> list[str]:
     because the rule it states is the load-bearing one -- an input that stopped
     being `GAMES`-ordered would change the answer silently otherwise.
     """
-    return sorted(
+    fresh = sorted(
         (g for g in GAMES if not (OUT / g / "clean_result.json").exists()),
+        key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
+    )
+    # Behind everything unplayed, on purpose: a complete card is worth more than
+    # a polished one, and an environment already banked is already on the card.
+    return fresh + sorted(
+        (g for g in GAMES if g not in fresh and _wants_replay(g)),
         key=lambda g: (completed_attempts(OUT / g, g), GAMES.index(g)),
     )
 
@@ -729,7 +753,46 @@ def enable_nudging() -> None:
     os.environ.setdefault("CCARC3_MAX_NUDGES", "3")
 
 
+# **One driver at a time, enforced rather than assumed.**
+#
+# The supervisor starts a driver whenever it sees none running. So any window
+# between stopping one and starting the next -- 30 seconds is enough -- lets the
+# supervisor's ten-minute cycle fire into the gap, and then a hand-started driver
+# makes two. Measured 2026-08-11: two drivers, ten solvers, every one of five
+# games being played twice at once.
+#
+# The card survives that (a duplicate play is just a play, and the environment
+# keeps its best), but it doubles the burn, and the cleanup is delicate --
+# solvers are `setsid` into their own process groups, so killing a driver's group
+# does not reach them and each one has to be matched to its parent by walking
+# /proc.
+#
+# A lock makes the second driver a no-op instead of a hazard. `flock` and not a
+# pidfile: a pidfile written by a driver killed with SIGKILL outlives it and
+# locks the sweep out forever, while a flock is released by the kernel when the
+# holder dies however it dies.
+def _only_driver() -> "object | None":
+    """Hold the sweep's lock, or return None if another driver already has it."""
+    import fcntl
+    lock = SP / f"{OUT.name}.driver.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fh = lock.open("w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    fh.write(f"{os.getpid()}\n")
+    fh.flush()
+    return fh
+
+
 def main() -> int:
+    held = _only_driver()
+    if held is None:
+        print(f"another driver already holds {OUT.name}.driver.lock — exiting so "
+              f"the two do not play every game twice at once", flush=True)
+        return 0
     enable_nudging()
     install_strip()
     OUT.mkdir(parents=True, exist_ok=True)
@@ -1064,6 +1127,34 @@ def _cards_seen() -> dict[str, list[str]]:
     # `sweep_card`'s refusal (stopping the sweep over work that was never
     # banked) and the split report alike. A result.json beside the state file is
     # the cheapest evidence the attempt got somewhere.
+    # **Also read the durable copy, because the live one dies with the pin.**
+    #
+    # This scanned only OUT, which lives in the scratchpad. A container
+    # replacement reverts the scratchpad -- taking the card pin AND every
+    # `trace.state.json` with it -- so at the exact moment `sweep_card` asks
+    # "does the previous card carry games?", the evidence it reads is gone.
+    # It then answers "nothing is stranded, opening a new one" and silently
+    # builds a partial artifact.
+    #
+    # That is the failure the guard exists to prevent, reached through the guard
+    # itself: the check named the card's contents and read a proxy for them, and
+    # the proxy is destroyed by the same event that triggers the check.
+    #
+    # Measured 2026-08-11. The replacement stranded `e6e6a61c` carrying seven
+    # games; `OUT` was empty and the durable evidence under `evidence/ccarc3/`
+    # -- which `preserve_evidence.sh` pushes to origin -- named all seven.
+    import gzip
+    durable = DURABLE_CARD_DIR.parent / OUT.name
+    for state in sorted(durable.rglob("trace.state.json.gz")):
+        try:
+            cid = json.loads(gzip.decompress(state.read_bytes())).get("card_id", "")
+        except (OSError, ValueError, EOFError):
+            continue
+        if cid:
+            gid = state.parent.name
+            if gid not in seen.setdefault(cid, []):
+                seen[cid].append(gid)
+
     for state in sorted(OUT.glob("*/attempt_*/*/trace.state.json")):
         if not (state.parent / "result.json").exists():
             continue
@@ -1078,9 +1169,93 @@ def _cards_seen() -> dict[str, list[str]]:
     return seen
 
 
+# **Replay an environment the harness itself judged short, not one an operator
+# picked.** ARC scores an environment by its BEST play and renders every play on
+# the public card, so replaying is the documented mechanic rather than a
+# loophole. What makes a reported number honest is that the rule is fixed in
+# advance, applied to every environment alike, and stated with the result -- an
+# operator clearing one game's bank because that game disappointed is selection,
+# and looks like it.
+#
+# So: a run that completes below `RETRY_BELOW` is not done. It goes back to the
+# queue, behind every environment that has not yet been played at all, until it
+# scores or it has had `RETRY_ATTEMPTS` tries.
+#
+# Bounded because it has to be: `bp35` is 4.9 hours and about $79 an attempt, so
+# an unbounded "retry until 1.0" hands one stubborn environment the entire
+# budget and banks nothing else.
+RETRY_BELOW = float(os.environ.get("CCARC3_RETRY_BELOW", "1.0"))
+RETRY_ATTEMPTS = int(os.environ.get("CCARC3_RETRY_ATTEMPTS", "3"))
+
+
+def _rhae(workspace: pathlib.Path, gid: str) -> float | None:
+    """This run's RHAE, or ``None`` when it cannot be computed.
+
+    `None` is deliberately not zero. A scoring failure -- no baselines, an
+    unreadable ledger -- must not read as "scored badly" and send a finished game
+    back for another $79 attempt. Unknown means leave it banked.
+    """
+    try:
+        from athanor.ccarc3 import client as _client, ledger as _ledger, scoring as _scoring
+        base = _client.baselines_for(gid)
+        if not base:
+            return None
+        # **Argument order: transitions first, baselines second.** This read
+        # `score_run(base, load(...))` — swapped — so every call raised
+        # `'int' object has no attribute 'full_reset'` the moment scoring touched
+        # what it thought was a ledger. The `except` below turned that into
+        # `None`, `_wants_replay` short-circuits on `None`, and the replay policy
+        # this function exists to drive has therefore **never once fired**. A
+        # game banked at 7/10 with won=False sat there and was never requeued.
+        #
+        # **And `.score`, not `.E`.** Fixing the argument order surfaced a second
+        # error on the same line — `EnvironmentScore` exposes `raw`, `cap` and
+        # `score`, never `E` — which had been sitting behind the same blanket
+        # `except` all along. Two independent mistakes in one expression, neither
+        # ever observed, because the only thing that ever read the result treated
+        # every failure as "this run cannot be scored".
+        return float(_scoring.score_run(_ledger.load(workspace / "trace.jsonl"), base).score)
+    except (TypeError, AttributeError) as exc:
+        # **A programming error is not an unscoreable run, and must not look like
+        # one.** The blanket catch below is right for its stated purpose — a run
+        # that genuinely cannot be scored must still bank rather than be lost —
+        # and that is exactly why it hid a swapped argument for the life of the
+        # feature. These two exception types cannot come from bad data; they mean
+        # this function is wrong. Still banks, because losing the run helps
+        # nobody, but says so in terms nobody will read as routine.
+        print(f"    {gid.split('-')[0]}: SCORING IS BROKEN ({type(exc).__name__}: "
+              f"{exc}). This is a bug in _rhae, not a property of the run — the "
+              f"replay policy is inert until it is fixed.", flush=True)
+        return None
+    except Exception as exc:  # noqa: BLE001 -- scoring must never fail a bank
+        print(f"    {gid.split('-')[0]}: could not score this run ({exc}); "
+              f"banking it as-is", flush=True)
+        return None
+
+
+def _wants_replay(gid: str) -> bool:
+    """True when a banked environment scored short and has attempts left."""
+    banked = OUT / gid / "clean_result.json"
+    if not banked.exists():
+        return False
+    try:
+        e = json.loads(banked.read_text()).get("E")
+    except (OSError, ValueError):
+        return False
+    if e is None or float(e) >= RETRY_BELOW:
+        return False
+    return completed_attempts(OUT / gid, gid) < RETRY_ATTEMPTS
+
+
 def _run_one(gid: str, infos: dict) -> None:
     banked = OUT / gid / "clean_result.json"
-    if banked.exists():
+    if banked.exists() and _wants_replay(gid):
+        prior = json.loads(banked.read_text())
+        print(f"\n=== {gid}: banked at E={prior.get('E')}, below {RETRY_BELOW} — "
+              f"replaying (attempt {completed_attempts(OUT / gid, gid) + 1} of "
+              f"{RETRY_ATTEMPTS})", flush=True)
+        banked.unlink()          # the card keeps the better play either way
+    elif banked.exists():
         prior = json.loads(banked.read_text())
         print(f"\n=== {gid}: already has a clean run "
               f"({prior.get('levels_reached')}/{prior.get('levels_total')}), skipping",
@@ -1196,6 +1371,7 @@ def _run_one(gid: str, infos: dict) -> None:
     # "CLEAN in 20 min" belongs to whichever one you assume it does.
     short = gid.split("-")[0]
     if state == "clean":
+        data["E"] = _rhae(workspace_of(run_dir, gid), gid)
         (OUT / gid / "clean_result.json").write_text(json.dumps(data, indent=1))
         print(f"    {short} CLEAN in {mins:.0f} min — "
               f"{data['levels_reached']}/{data['levels_total']}, "

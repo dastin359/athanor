@@ -30,6 +30,11 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    not Path("/proc").is_dir(),
+    reason="the production watchdog is a Linux procfs daemon",
+)
+
 REPO = Path(__file__).resolve().parents[1]
 WATCHDOG = REPO / "tools" / "daemon_watchdog.sh"
 
@@ -268,3 +273,53 @@ def test_a_daemon_that_is_already_alive_is_not_relaunched(tmp_path, probe):
         f"the watchdog relaunched a live daemon: {_count_running(script.name)} copies"
     )
     assert "RELAUNCHED" not in log.read_text(errors="ignore")
+
+
+def test_a_health_check_is_not_mistaken_for_a_running_watchdog(tmp_path, probe):
+    """`--check` carries this script's argv for the half-second it lives.
+
+    A watchdog launched in the same breath as a health check saw the check as a
+    rival and refused. That is not hypothetical sequencing: it is exactly how an
+    autopilot loop calls this — launch if missing, then report — and it failed
+    ten times out of ten while `--check` simultaneously reported no watchdog
+    running. The two invocations were looking at each other. Reporting on the
+    daemons is not being one.
+    """
+    script, started = probe
+    log = tmp_path / "check.log"
+    log.touch()
+    env = {"CCARC3_WATCHDOG_DAEMONS": script.name,
+           "CCARC3_WATCHDOG_LOG": str(log),
+           "CCARC3_WATCHDOG_INTERVAL": "60"}
+
+    checker = subprocess.Popen(
+        ["bash", str(WATCHDOG), "--check"], cwd=REPO, start_new_session=True,
+        env={**os.environ, **env}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    started.append(checker)
+    daemon = subprocess.Popen(
+        ["bash", str(WATCHDOG)], cwd=REPO, start_new_session=True,
+        env={**os.environ, **env}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    started.append(daemon)
+
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and "watchdog up" not in log.read_text(errors="ignore"):
+        time.sleep(0.2)
+    body = log.read_text(errors="ignore")
+    assert "watchdog up" in body, "a concurrent --check blocked the launch"
+    assert "already running" not in body
+
+
+def test_a_pid_that_vanishes_mid_scan_is_not_counted_as_a_rival():
+    """`pgid_of` reads /proc/PID/stat, and the pid most likely to disappear is
+    our own command-substitution subshell — which carries this script's argv and
+    exits the moment `pids_of` returns. An empty pgid compared unequal to
+    MY_PGID, so the corpse counted as another watchdog and the guard refused with
+    nothing running. Intermittent, which is why it read as contention for hours.
+    """
+    body = WATCHDOG.read_text()
+    assert 'pg="$(pgid_of "$pid")"' in body and '[ -z "$pg" ] && continue' in body, (
+        "an unreadable pgid must skip the candidate, not fall through to a compare"
+    )
+    assert '[ -r "/proc/$pid/environ" ] || continue' in body, (
+        "an unreadable environ must skip too, not default to the standard set"
+    )

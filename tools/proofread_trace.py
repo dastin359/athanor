@@ -95,7 +95,7 @@ ABS_PATH = re.compile(r"(?<![\w=)\]])(/[\w.\-/@]{4,})")
 # heredocs -- and reported 13 of 30 clean runs as having left the workspace. A
 # leak check that cries wolf on two thirds of a clean corpus is worse than none,
 # because the next real finding arrives in a list nobody reads.
-_TOP = {f"/{name}" for name in os.listdir("/")}
+_TOP = {f"/{name}" for name in os.listdir("/")} | {"/home", "/root"}
 
 
 # **The exemption for `/root/` had a hole, and the hole was the richest target on
@@ -158,6 +158,12 @@ def recover_root(commands: list[str], game_id: str) -> pathlib.Path | None:
 # multiple is the baseline total, so each product is a leak of the same secret.
 BUDGET_MULTIPLES = (2.0, 5.0)
 
+# `Read` returns `<lineno><TAB><content>`; strip that leading column so a line
+# number can never be mistaken for a value. Anchored per line and bounded to six
+# digits, so it removes a gutter and not content that happens to start with a
+# number followed by a tab.
+_LINE_GUTTER = re.compile(r"(?m)^[ \t]{0,8}\d{1,6}\t")
+
 FAILING_VERDICTS = ("LEAK", "REACH", "CARD", "NOT", "INBOUND", "ENV")
 
 
@@ -176,7 +182,9 @@ def strayed(command: str, workspace: pathlib.Path) -> list[str]:
         path = m.group(1).rstrip(".,;:'\"")
         if "/" + path.split("/")[1] not in _TOP:
             continue                      # not a filesystem path at all
-        if path.startswith(str(root)) or path.startswith(SYSTEM_ROOTS):
+        canonical = pathlib.Path(path).resolve()
+        if (canonical == root or root in canonical.parents
+                or path.startswith(SYSTEM_ROOTS)):
             continue
         if (path.startswith("/root/") and "/scratchpad" not in path
                 and not path.startswith(AGENT_STATE)):
@@ -396,6 +404,25 @@ def main() -> int:
             ws = recovered
     inbound = "\n".join(results)
     outbound = "\n".join(think + say)
+    # **A bare integer is not a budget, and `Read` numbers every line it returns.**
+    #
+    # The numeric checks below search for the literal value of a cap. Claude
+    # Code's `Read` renders a file as `<lineno><TAB><content>`, so every line
+    # number of every document a solver reads is an integer in this blob. On
+    # 2026-08-11 that discarded an sb26 run that had cleared 8 of 8 levels: the
+    # doctrine has a line 426, sb26's baseline total is 213, and 213x2 = 426.
+    # The same verdict block reported this run's ACTUAL cap, 1065, `absent`.
+    #
+    # Nothing had leaked. The check named "the budget reached the solver" and
+    # read "these digits occur somewhere", which are not the same claim -- and
+    # the gap between them is filled by the line numbers of every file on disk.
+    # Long files make it worse, not better: a real cap of 1065 collides with
+    # line 1065 of any document over a thousand lines, so the correct number was
+    # heading for the same false positive.
+    #
+    # Stripping the gutter costs no detection. A genuine leak prints the figure
+    # in a file's *content* or a tool's output, never as its line number.
+    numeric = _LINE_GUTTER.sub("", inbound)
     print(f"=== {gid} — {len(cmds)} commands, {len(results)} tool results, "
           f"{len(think)} thinking blocks ({len(inbound):,} + {len(outbound):,} chars)")
 
@@ -431,6 +458,8 @@ def main() -> int:
                             f"however they were formatted")
             print(f"  ! medians for {other} present in a tool result", flush=True)
     checks: list[tuple[str, re.Pattern]] = []
+    # Searched against `numeric` (gutter stripped) rather than `inbound`.
+    numeric_checks: list[tuple[str, re.Pattern]] = []
     if base:
         arr = r"[\[(]\s*" + r"\s*,\s*".join(str(n) for n in base) + r"\s*[\])]"
         checks.append(("own per-level array", re.compile(arr)))
@@ -443,7 +472,7 @@ def main() -> int:
         # whole exposure.
         for mult in BUDGET_MULTIPLES:
             cap = int(sum(base) * mult)
-            checks.append((f"budget {cap}", re.compile(rf"\b{cap}\b")))
+            numeric_checks.append((f"budget {cap}", re.compile(rf"\b{cap}\b")))
     checks += [
         ("api/games or key", re.compile(r"/api/games|ARC_API_KEY|ARCPRIZE_API_KEY")),
         # Any game's medians, not only this one's. The per-level check above is
@@ -459,12 +488,16 @@ def main() -> int:
         # fails is a check nobody reads.
         ("pace line", re.compile(rf"{re.escape(gid)}: level .*\[\d+/\d+ on this level")),
     ]
-    for name, rx in checks:
-        where = [w for w, blob in (("tool results", inbound), ("solver", outbound))
+    # Numeric checks read the gutter-stripped view; every other check reads the
+    # tool results verbatim, because a pattern like `/api/games` cannot collide
+    # with a line number and losing the gutter would only hide context.
+    for name, rx, haystack in ([(n, r, numeric) for n, r in numeric_checks]
+                               + [(n, r, inbound) for n, r in checks]):
+        where = [w for w, blob in (("tool results", haystack), ("solver", outbound))
                  if rx.search(blob)]
         if where:
             verdicts.append(f"LEAK: {name} present in {' and '.join(where)}")
-            for frag in context(inbound if "tool results" in where else outbound, rx, 160, 3):
+            for frag in context(haystack if "tool results" in where else outbound, rx, 160, 3):
                 print(f"  ! {name}: ...{frag}...")
         else:
             print(f"  {name:14} absent")

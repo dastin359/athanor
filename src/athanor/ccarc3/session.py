@@ -44,8 +44,12 @@ __all__ = [
 
 ASSETS = Path(__file__).parent / "assets"
 
-# Pin the Codex model and reasoning effort so runs stay comparable.
-DEFAULT_MODEL = "gpt-5.3-codex"
+# Pin the Codex flagship and reasoning effort so runs stay comparable.  The
+# previous ``gpt-5.3-codex`` slug is not available to ChatGPT-authenticated
+# Codex sessions: the CLI accepts it syntactically, then the first turn fails
+# before the solver can act.  Keep this explicit rather than inheriting a
+# personal config, which would make two benchmark runs silently incomparable.
+DEFAULT_MODEL = "gpt-5.6-sol"
 DEFAULT_EFFORT = "high"
 
 
@@ -305,8 +309,12 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
             # the line above: a keyword the solver can see is a question the
             # solver can ask, and on the usual one-card-per-game run there is
             # nothing here to explain.
+            # `require_card` rides with the id: a workspace built for a shared
+            # card must never, on any later rebuild or resume, decide that
+            # minting its own is an acceptable default.
             card_line=(
-                f"    card_id={config.card_id!r},\n" if config.card_id else ""
+                f"    card_id={config.card_id!r},\n"
+                f"    require_card=True,\n" if config.card_id else ""
             ),
         ),
         encoding="utf-8",
@@ -659,9 +667,39 @@ that is DOCTRINE.md §0b, and it applies now. Re-read your own rules.json and
 notes: what you have already worked out about this game is still on disk and
 still true.
 
-Do not restart from scratch and do not re-derive what you already know. Pick up
-where you are, try an approach you have not tried, and keep playing."""
+There are two things left to do, in this order.
+
+**First, clear every remaining level.** Do not restart from scratch and do not
+re-derive what you already know. Pick up where you are, try an approach you have
+not tried, and keep playing until the last level is done. A game that ends
+unfinished is capped no matter how efficiently you played the levels you did
+reach.
+
+**Then, once every level is cleared, play it again from the beginning.** By
+that point you know the whole game: which mechanics are real, which routes are
+direct, and which of your experiments were wasted. A second run applying that
+knowledge clears the same levels in far fewer moves. Do that — play the whole
+game through again, cleanly, using the best approach you now have for each
+level.
+
+Both runs count, and the better one is what stands, so a fast clean replay can
+only help you and a slow first clearing cannot hurt you. Keep going until you
+have done both."""
 """What a solver is told when it quits while it can still act.
+
+**Two phases, in that order, and the order is the whole point.** Finishing is a
+gate: a game left unfinished is capped whatever else was done well, so nothing
+else is worth asking for until every level is cleared. Once it is, the only
+remaining lever is doing the same thing in fewer moves — and a solver that has
+just finished a game knows things about it that no solver starting one can.
+
+**Asking for the replay is free.** The scorecard keeps the better attempt rather
+than the later one (measured against a live card; see
+:mod:`athanor.ccarc3.scoring`), so a weaker second pass cannot cost anything the
+first pass earned. There is no downside to weigh.
+
+That gap is the one thing every under-scoring run on record has in common: they
+cleared their game, and the play that cleared it was the only play they made.
 
 **No figure appears in it, and none may be added.** "You still have actions
 left" tells a solver only what it could already infer from not having been
@@ -1081,6 +1119,28 @@ def _action_budget(ws: Workspace) -> int:
     return 0
 
 
+def _action_slots_used(outcome: dict[str, Any]) -> int:
+    """How much of the harness ceiling this run actually consumed.
+
+    ``actions_used`` is ARC's billed score quantity, and ARC exempts the RESET
+    that opens each play.  The proxy ceiling deliberately counts every accepted
+    command, including those opening RESETs, because that is the resource it
+    reserves atomically.  A replay therefore makes ``trace_rows`` larger than
+    ``actions_used`` by one.
+
+    Give-up and timeout classification ask whether the *harness ceiling* was
+    exhausted, so they must read the proxy's quantity.  Before this helper a
+    live run used all 200 proxy slots, had 198 billed actions after two opening
+    RESET exemptions, and was falsely labelled an early give-up.  Fall back to
+    the billed count for old or synthetic results that do not carry a ledger
+    row count.
+    """
+    value = outcome.get("trace_rows")
+    if isinstance(value, int) and value >= 0:
+        return value
+    return int(outcome.get("actions_used", 0) or 0)
+
+
 def _prior_give_ups(ws: Workspace) -> int:
     """How many earlier attempts at this game already quit with budget in hand.
 
@@ -1337,7 +1397,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     # had the replay in reserve that doctrine 0a tells it to keep.
     elif timed_out and not outcome.get("won"):
         budget = _action_budget(ws)
-        used = outcome.get("actions_used", 0) or 0
+        used = _action_slots_used(outcome)
         if budget and used < budget / 2:
             outcome["error"] = (
                 f"solver hit the wall clock after {used} of {budget} actions "
@@ -1379,7 +1439,7 @@ def collect_outcome(ws: Workspace, *, exit_code: int, timed_out: bool) -> dict[s
     # `GIVE_UP_ATTEMPTS` tries the result stands as real.
     elif not exit_code and not timed_out and not outcome.get("won"):
         budget = _action_budget(ws)
-        used = outcome.get("actions_used", 0) or 0
+        used = _action_slots_used(outcome)
         if budget and used < budget * _give_up_fraction() and _prior_give_ups(ws) < GIVE_UP_ATTEMPTS:
             # **A flag, not a substring.** The nudge loop in `run_game` has to
             # recognise this exact condition, and the obvious way -- grepping the

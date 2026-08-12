@@ -58,7 +58,7 @@ class LevelGate:
     last_level: int = 0
     refusals: int = 0
     on_change: Any = None
-    """Called with no arguments whenever the gate's held/open state changes.
+    """Called with no arguments when :meth:`acknowledge` clears the gate.
 
     ``ArcClient`` sets this to its state saver. Without it an acknowledgement is
     lost the moment the process ends: the client persists after each *action*,
@@ -68,6 +68,22 @@ class LevelGate:
     Found by reading what a real solver had to write around it -- a helper whose
     docstring read "Gate state is per-process; re-clear it after re-importing
     session." A harness the solver has to work around is a harness bug.
+
+    **Only that transition, and the asymmetry is the point.** This said
+    "whenever the gate's held/open state changes", which is broader than what
+    fires it: :meth:`observe` can take the gate from open to held and does not
+    call it. It does not need to. Arming happens *inside* an action -- five
+    lines later ``ArcClient._act`` saves unconditionally -- while clearing
+    happens *between* actions, when the solver calls :meth:`acknowledge`
+    directly and nothing else is going to write to disk.
+
+    Stated precisely because the overstated version invites the wrong repair in
+    both directions: add a redundant save to :meth:`observe` to make the
+    sentence true, or notice that arming does not fire and conclude the hook is
+    unnecessary. The narrow contract is the correct one.
+
+    :meth:`check` does not fire it either; it increments ``refusals`` and
+    raises, leaving the new count to be persisted by the next save.
     """
 
     def _changed(self) -> None:

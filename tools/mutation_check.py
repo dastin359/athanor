@@ -26,6 +26,17 @@ correct test fail four times in a row, and adding any statement to the function
 this: a real survivor reads CAUGHT and a killed mutant reads UNCAUGHT. So:
 bytecode writing off in the child, caches purged between mutants.
 
+**It edits the live source file, so prefer `tools/audit_in_clone.sh`.** The
+restore-on-signal below is sound, but while a battery runs the working tree is
+dirty and "is the tree clean?" stops being answerable -- and the one resolution
+that must never be taken, committing it, publishes deliberately broken source.
+The wrapper runs the whole battery in a throwaway git worktree at HEAD instead.
+
+**A green baseline is a precondition, not a nicety.** See the refusal in
+:func:`run`: a suite that is already failing scores every mutant CAUGHT, because
+the old verdict asked whether the suite failed rather than whether this mutant
+broke it. That produced a fraudulent "31 caught, 0 survivors" on 2026-08-10.
+
 **A mutant can kill the runner.** Removing the `ppid == 1` guard from
 `clean_rollouts.kill_orphan_solvers` made the tested function SIGTERM the process
 group of the pytest run testing it -- which is the test working, since a live
@@ -64,6 +75,21 @@ def _purge() -> None:
             shutil.rmtree(cache, ignore_errors=True)
 
 
+def failed_nodes(stdout: str) -> set[str]:
+    """The test ids pytest's short summary reported as FAILED or ERROR.
+
+    Node ids, not a count. A mutant that breaks one test while coincidentally
+    fixing another leaves the count unchanged, and counting would call that
+    UNCAUGHT.
+    """
+    out = set()
+    for line in stdout.splitlines():
+        for tag in ("FAILED ", "ERROR "):
+            if line.startswith(tag):
+                out.add(line[len(tag):].split(" ")[0])
+    return out
+
+
 def run(source: str, tests: list[str], muts: list[tuple[str, str, str, str]],
         *, timeout: int = 1800) -> int:
     """Return the number of survivors. Zero is the only good answer."""
@@ -86,6 +112,45 @@ def run(source: str, tests: list[str], muts: list[tuple[str, str, str, str]],
             pass
 
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+
+    def _pytest():
+        return subprocess.run([PYTEST, *tests, "-q", "-p", "no:cacheprovider"],
+                              capture_output=True, text=True, timeout=timeout,
+                              cwd=REPO, env=env)
+
+    # **Baseline first, and refuse to proceed if it is red.**
+    #
+    # The verdict used to be `"CAUGHT" if proc.returncode else "UNCAUGHT"`, which
+    # asks "did the suite fail?" and not "did this mutant break something that
+    # was working". Those differ the moment any test in `tests` is already
+    # failing: every run then exits non-zero, every mutant reads CAUGHT, and the
+    # battery reports a clean sweep without having detected anything.
+    #
+    # Not hypothetical. On 2026-08-10 an `arc_proxy` refactor removed
+    # `ProxyState.charge()` while two tests still called it. The proxy battery
+    # ran 31 mutants against that suite and reported "31 caught, 0 survivors" --
+    # a perfect score produced entirely by two AttributeErrors. The audit passed
+    # by not running, which is the exact defect this whole tool exists to find,
+    # sitting in the tool.
+    #
+    # So: measure the failures the mutant is responsible for, by set difference
+    # against a pristine run, and refuse outright when the pristine run is not
+    # green -- a red baseline makes every verdict here meaningless, and a
+    # meaningless verdict that reads CAUGHT is worse than no verdict at all.
+    _purge()
+    base = _pytest()
+    base_failed = failed_nodes(base.stdout)
+    if base.returncode:
+        src.write_text(pristine, encoding="utf-8")
+        _purge()
+        listing = "\n".join(f"    {n}" for n in sorted(base_failed)) or "    (see output)"
+        raise SystemExit(
+            "mutation_check: the suite is ALREADY RED on unmutated source, so "
+            "every mutant would be scored CAUGHT by a failure it did not cause. "
+            f"Refusing to run.\n  failing before any mutation:\n{listing}\n"
+            "  Fix the suite, then re-run the battery."
+        )
+
     survivors = 0
     try:
         for name, desc, old, new in muts:
@@ -97,13 +162,16 @@ def run(source: str, tests: list[str], muts: list[tuple[str, str, str, str]],
                 continue
             src.write_text(body.replace(old, new), encoding="utf-8")
             _purge()
-            proc = subprocess.run([PYTEST, *tests, "-q", "-p", "no:cacheprovider"],
-                                  capture_output=True, text=True, timeout=timeout,
-                                  cwd=REPO, env=env)
+            proc = _pytest()
             tail = [ln for ln in proc.stdout.strip().splitlines()
                     if "passed" in ln or "failed" in ln or "error" in ln]
-            verdict = "CAUGHT" if proc.returncode else "UNCAUGHT"
-            survivors += proc.returncode == 0
+            # Caught only by a failure this mutant introduced. `base_failed` is
+            # empty here -- the refusal above guarantees it -- so this is
+            # equivalent to the old returncode test today, and stays correct if
+            # that ever stops being true.
+            caught = bool(failed_nodes(proc.stdout) - base_failed)
+            verdict = "CAUGHT" if caught else "UNCAUGHT"
+            survivors += not caught
             print(f"{verdict:9} {name} -- {desc}\n          "
                   f"{tail[-1] if tail else '(no summary)'}")
     finally:

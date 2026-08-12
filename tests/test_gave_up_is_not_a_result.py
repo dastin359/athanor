@@ -71,6 +71,35 @@ def test_a_solver_with_no_actions_left_is_not_asked_to_continue(tmp_path, monkey
     assert not S.collect_outcome(ws, exit_code=0, timed_out=False).get("error")
 
 
+def test_proxy_slots_not_score_actions_decide_whether_the_ceiling_fired(
+    tmp_path, monkeypatch
+):
+    """Opening RESETs consume proxy slots but ARC excludes them from scoring.
+
+    The real Codex smoke run made two plays: 200 accepted command rows but 198
+    billed actions.  Comparing the latter to the proxy ceiling mislabeled a
+    genuinely exhausted run as a give-up and asked the driver to pay for it
+    again.
+    """
+    ws = _ws(tmp_path)
+    budget = S._action_budget(ws)
+    monkeypatch.setattr(
+        S, "ledger_facts",
+        lambda p: {
+            "actions_used": budget - 2,
+            "trace_rows": budget,
+            "levels_reached": 2,
+        },
+    )
+    monkeypatch.setattr(S, "run_cost", lambda p: {"attempts": 1})
+    monkeypatch.setattr(S, "snapshot_scorecard", lambda ws: {})
+
+    out = S.collect_outcome(ws, exit_code=0, timed_out=False)
+
+    assert not out.get("gave_up")
+    assert not out.get("error")
+
+
 def test_stopping_with_any_allowance_left_is_not_a_result(tmp_path, monkeypatch):
     """The restriction removed on 2026-08-10, pinned as a behaviour.
 

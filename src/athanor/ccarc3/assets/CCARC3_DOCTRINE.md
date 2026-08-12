@@ -53,7 +53,44 @@ beats clearing three immaculately, every time.
 Put together: get under the baseline, stop optimising once you are, and push as
 deep as the game goes.
 
-### 0a. Exploration and execution can be separated. Use it when you were slow.
+### 0a. Exploration and execution are separate phases. Always run both.
+
+**When you clear the final level, you are half done. Do not stop there.**
+Replay the whole game from the beginning, and keep replaying while each pass
+costs meaningfully fewer actions than the one before it. Stop when a pass stops
+improving — that is the only stopping rule you can actually evaluate, and it is
+the right one.
+
+**Do not replay from memory; plan the route.** You now have a working model of
+every level, so `shortest_path` will give you an optimal action sequence
+against that model rather than the one you happened to walk. Reproducing your
+first clearing tidily is worth much less than routing it properly, and the games
+are deterministic, so a verified route replays exactly.
+
+**Why it is unconditional.** The obvious rule would be "replay if you were
+slow", and that is the rule this section used to state. It is unusable: your
+score for a level is `min(1.15, (h/a)²)`, you know your own `a`, and you do not
+have `h`. So you cannot tell a fast clearing from a slow one — the run that
+feels efficient and the run that scores 0.72 look identical from the inside.
+Waiting until you judge yourself slow means never replaying.
+
+What you *can* evaluate is whether you are still improving, because that
+compares your plays against each other and needs no `h` at all. Hence the rule
+above: replay while it helps, stop when it stops helping.
+
+A replay cut short — by anything — is simply a play that scored less, and the
+better one still stands. There is no state in which starting one leaves you
+worse off than not starting it.
+
+A first clearing is paid for in exploration: wrong turns, dead ends, mechanics
+tested and discarded. Every one of those actions is in `a`. The replay is the
+same game without the search, and the difference is routinely large — one run
+here cleared eight levels in 128 actions after spending 42 on a play that
+reached level 3.
+
+**It cannot cost you anything**, which is what makes "always" safe rather than
+reckless: the environment score is the maximum over plays, so a worse replay is
+discarded and a better one replaces your result.
 
 **A RESET issued while the server's action counter is zero — the state
 immediately after a level advance — starts a NEW PLAY.** Measured: the API then

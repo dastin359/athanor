@@ -37,6 +37,11 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    not pathlib.Path("/proc").is_dir(),
+    reason="orphan process ownership is implemented against Linux procfs",
+)
+
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "tools"))
 sys.path.insert(0, str(REPO / "src"))

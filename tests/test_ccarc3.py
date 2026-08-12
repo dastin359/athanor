@@ -993,3 +993,29 @@ def test_a_bad_line_in_the_middle_is_corruption_and_is_refused(tmp_path):
     path.write_text(good + "\n{ broken\n" + good + "\n")
     with pytest.raises(ValueError, match="line 2 of 3"):
         load(path)
+
+
+def test_verify_reads_the_level_in_play_not_the_deepest_ever_reached():
+    """After a full reset the ledger still holds the abandoned play's levels.
+
+    `ledger.load` concatenates every playthrough, so a trace that reached level 3
+    and then reset to level 0 has `max(level) == 3` while the level actually
+    being played is 0. `verify` defaulted to the max and returned a confident
+    verdict about a level nobody was on — the module docstring's own named
+    catastrophe with the levels swapped.
+
+    The existing default test uses levels [0, 3] in ascending order, where max
+    and last are the same value, so it could not see this.
+    """
+    transitions = [
+        _t(0, 0, "ACTION1", [[0]], [[2]]),   # play 1, level 0: holds
+        _t(1, 3, "ACTION1", [[2]], [[2]]),   # play 1, level 3: violated
+        _t(2, 0, "ACTION1", [[0]], [[2]]),   # play 2 after a reset: level 0 again
+    ]
+    result = verify(RED_MOVES, transitions)
+    assert result.level == 0, (
+        f"scoped to level {result.level}, but the game is being played on level 0 "
+        "— the deeper level belongs to a playthrough that was abandoned")
+    assert not result.refuted, (
+        "a rule that holds on the level in play was refuted using evidence from "
+        "a discarded playthrough")

@@ -58,12 +58,33 @@ pgid_of() {
 }
 
 pids_of() {
-    local script="$1" want="$REPO/tools/$1" pid cmd
+    local script="$1" want="$REPO/tools/$1" pid cmd pg
     for dir in /proc/[0-9]*; do
         pid="${dir#/proc/}"
         [ "$pid" = "$$" ] && continue
-        [ "$(pgid_of "$pid")" = "$MY_PGID" ] && continue
+        # **A pid with no readable pgid is gone, not a rival.** `pgid_of` reads
+        # `/proc/$pid/stat`, and the pid most likely to vanish mid-scan is *our
+        # own command-substitution subshell* -- which carries this script's argv,
+        # so it is a candidate, and which exits the moment `pids_of` returns.
+        # Empty then compared unequal to `MY_PGID`, the dead subshell counted as
+        # another watchdog, and the guard refused to start with no watchdog
+        # running at all. Intermittent, because it depends on whether the
+        # subshell has been reaped yet: a launch would refuse three times and
+        # succeed on the fourth, which is why this read as contention for hours
+        # before it read as a bug.
+        pg="$(pgid_of "$pid")"
+        [ -z "$pg" ] && continue
+        [ "$pg" = "$MY_PGID" ] && continue
         [ -r "$dir/cmdline" ] || continue
+        # **A `--check` invocation is not a running daemon.** It carries this
+        # script's argv for the half-second it lives, so a watchdog started in
+        # the same breath as a health check sees the check as a rival and
+        # refuses. That is how the launch failed for two hours while `--check`
+        # reported no watchdog running: the two invocations were looking at each
+        # other. Reporting on the daemons is not being one.
+        case " $({ tr '\0' ' ' < "$dir/cmdline"; } 2>/dev/null) " in
+            *" --check "*) continue;;
+        esac
         while IFS= read -r -d '' cmd; do
             if [ "$cmd" = "$want" ] || [ "$cmd" = "tools/$script" ]; then
                 echo "$pid"
@@ -96,6 +117,10 @@ already_watching() {
         # redirection* -- the shell reports that itself, before `tr` runs. This
         # project has the trap on record and it was reintroduced here anyway;
         # the fix is to redirect the whole group's stderr.
+        # Same reasoning as the pgid read above: an unreadable environ means the
+        # process is gone. Defaulting to the standard daemon set here would make
+        # a corpse look like a rival watching exactly what we watch.
+        [ -r "/proc/$pid/environ" ] || continue
         theirs="$({ tr '\0' '\n' < "/proc/$pid/environ" \
                     | sed -n 's/^CCARC3_WATCHDOG_DAEMONS=//p' | head -1; } 2>/dev/null)"
         [ -z "$theirs" ] && theirs="supervisor.sh heartbeat.sh preserve_evidence.sh"

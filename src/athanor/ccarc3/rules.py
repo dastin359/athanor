@@ -186,7 +186,37 @@ def verify(
     without restraint.
     """
     if level is None:
-        level = max((t.level for t in transitions), default=0)
+        # **The LAST level, not the highest.** This line read
+        # `max(t.level for t in transitions)`, which is not what the docstring
+        # three paragraphs up promises and not what the caller needs: the two
+        # agree only while levels ascend, i.e. within a single playthrough.
+        #
+        # `ledger.load` concatenates every playthrough — it even forces
+        # `full_reset=True` when the recorded level goes *down* — so after a full
+        # reset the ledger holds an abandoned play's deep levels while play
+        # resumes at 0. `verify` then scoped its evidence to the abandoned
+        # play's deepest level and returned a confident verdict about a level
+        # nobody is playing.
+        #
+        # That is this module's own named catastrophe, from its docstring
+        # ("replaying a level-3 rule against level 1 and believing the result
+        # would false-refute a correct rule"), with the levels swapped — and it
+        # is not vacuous, so the three-valued defence never fires: the stale
+        # level has plenty of applicable transitions, `violated > 0`, and the
+        # solver deletes a correct rule about the level it is actually on.
+        #
+        # Measured across the 30 preserved traces: 23 have two or more
+        # playthroughs, and each spends 70-1855 transitions in the window where
+        # max != last. `ls20-9607627b` spends 67% of its run there. The
+        # unconditional-replay doctrine makes multi-play traces the norm, so this
+        # gets worse precisely as the strategy is adopted.
+        #
+        # Found by an adversarial audit that ran the mutation: swapping this line
+        # to the documented behaviour broke NO test, because every fixture in the
+        # suite is single-level or ascending — including
+        # `test_verify_defaults_to_the_current_level`, which uses levels [0, 3]
+        # where max and last coincide.
+        level = transitions[-1].level if transitions else 0
     scoped = [t for t in transitions if t.level == level]
     counts, violations = _tally(rule, scoped)
     return VerifyResult(rule=rule.name, level=level, counts=counts, violations=violations)

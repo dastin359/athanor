@@ -407,7 +407,24 @@ _original_build = sess.build_workspace
 
 
 def _actions_already_spent(root: pathlib.Path) -> int:
-    """What a resumed game has already charged, per the client's own checkpoint."""
+    """What a resumed game's proxy has already charged.
+
+    The proxy reserves one slot for every accepted command, including an
+    opening RESET.  ARC's score quantity in ``trace.state.json.actions_used``
+    excludes one such RESET per play, so seeding from that field quietly gave a
+    resumed game one extra slot per replay.  The trace has exactly one row per
+    accepted command and therefore restores the counter the proxy actually
+    enforces.  The state value remains a compatibility fallback for old runs
+    whose trace is missing.
+    """
+    trace = root / "trace.jsonl"
+    if trace.exists():
+        try:
+            rows = sum(1 for line in trace.open(encoding="utf-8") if line.strip())
+            if rows:
+                return rows
+        except OSError:
+            pass
     state = root / "trace.state.json"
     if not state.exists():
         return 0
@@ -469,10 +486,44 @@ def release_proxy(game_id: str) -> None:
         proxy.shutdown()
 
 
+def _card_from_existing_workspace(config) -> str:
+    """The card a previous build of this same workspace was playing onto.
+
+    **A rebuild must not be able to forget the card.** `_shared_card` is a module
+    global, set once at driver start; a workspace rebuilt while it is unset gets
+    `card_id=''` and the solver opens its own card. That happened on 2026-08-12
+    at 00:00:36, and the state file sitting in the workspace at that moment still
+    named the right card -- the rebuild simply threw it away and wrote an empty
+    launcher over it.
+
+    So the workspace's own checkpoint is consulted before giving up. It is the
+    same file `_actions_already_spent` already reads, for the same reason: what
+    the last process knew about this game is on disk, not in this process.
+    """
+    root = pathlib.Path(config.out_dir) / config.game_id
+    state = root / "trace.state.json"
+    try:
+        cid = json.loads(state.read_text(encoding="utf-8")).get("card_id") or ""
+    except (OSError, ValueError, TypeError):
+        return ""
+    return cid if isinstance(cid, str) else ""
+
+
 def build_without_baselines(config, info=None, *, arc_root=None):
     proxy = proxy_for(config.game_id)
     if _shared_card is not None and not config.card_id:
         config.card_id = _shared_card.card_id
+    if not config.card_id:
+        # Second source, deliberately noisy. Reaching here means the global was
+        # lost, which is a fault in its own right even when the workspace can
+        # repair it -- and silence is how the same fault cost a run once already.
+        recovered = _card_from_existing_workspace(config)
+        if recovered:
+            config.card_id = recovered
+            print(f"    {config.game_id}: shared card recovered from the workspace "
+                  f"checkpoint ({recovered[:8]}) — the driver's card binding was "
+                  f"LOST, which should not happen; a rebuild would otherwise have "
+                  f"minted a new card and split the submission", flush=True)
     ws = _original_build(config, info, arc_root=arc_root or proxy.url)
     strip_baselines(ws.root)
 

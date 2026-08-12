@@ -156,7 +156,7 @@ def test_doctrine_carries_the_findings_that_contradict_instinct(ws):
 
 def test_the_run_defaults_are_the_ones_the_project_requires():
     """The Codex model and effort are pinned so runs remain comparable."""
-    assert DEFAULT_MODEL == "gpt-5.3-codex"
+    assert DEFAULT_MODEL == "gpt-5.6-sol"
     assert DEFAULT_EFFORT == "high"
     cfg = Ccarc3Config("g")
     assert cfg.model == DEFAULT_MODEL and cfg.effort == DEFAULT_EFFORT

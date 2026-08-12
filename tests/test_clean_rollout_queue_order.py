@@ -46,18 +46,49 @@ def driver(monkeypatch):
     monkeypatch.setattr(cr, "_running", 0, raising=False)
     monkeypatch.setattr(cr, "_last_limit", 0, raising=False)
     monkeypatch.setattr(cr, "_waiting", set(), raising=False)
+    # Rebinding the globals is not isolation on its own: a thread stranded
+    # inside `_take_slot` by an earlier test re-reads them on its next wakeup
+    # and acts on this test's values. See `_take_with_timeout` in
+    # `test_an_engaged_brake_says_so.py`, which used to strand one.
+    cr._aborted.clear()
     return cr
 
 
 def test_slots_are_granted_in_queue_order_not_wake_order(driver, monkeypatch):
-    """Twenty games, two slots: the order they start must be the queue order.
+    """Twenty games, one slot: the order they start must be the queue order.
 
     Threads are started deliberately *backwards* and with a stagger, so the
     scheduler is handed every opportunity to grant a late game an early slot.
     Under the old `if _running < limit` the last-submitted game could take the
     first free slot; under rank-ordered admission it cannot.
+
+    **One slot, not two.** At two, this asserted `started == games` while being
+    *granted* a slot and *recording* the start are two separate steps: ranks 0
+    and 1 are both legitimately admitted, and the two threads then race to
+    append. Which of two concurrent games logs first is undefined and does not
+    matter -- the property that matters is admission order -- so the assertion
+    was stronger than anything `_take_slot` promises. At one slot, admission and
+    recording cannot interleave and exact order is a real claim.
+
+    The test still discriminates: a wake-order gate hands the first slot to
+    whichever of the twenty threads the scheduler likes. Concurrency above one is
+    covered by :func:`test_with_several_slots_admission_still_follows_the_queue`,
+    and the bound itself by :func:`test_the_limit_is_still_honoured_while_ordering`.
+
+    **This narrowing did not cause the 2026-08-10 failure, and saying that it did
+    was a wrong diagnosis held for an hour.** The over-strong assertion is real,
+    but the observed failure was `started == []` -- not a misordering, an empty
+    list, with no game admitted at all. The cause was a thread stranded inside
+    `_take_slot` by `test_an_engaged_brake_says_so`, which woke into this test's
+    globals, took a slot and never freed it.
+
+    Kept in the record because the wrong diagnosis was *plausible and partly
+    true*: there really is a race here, it really would produce a misordering,
+    and fixing it changed nothing. The failure output said `[]`, which that race
+    cannot produce -- the evidence was on the screen and I reasoned past it
+    toward a defect I already had a name for.
     """
-    monkeypatch.setattr(driver, "concurrency", lambda: 2)
+    monkeypatch.setattr(driver, "concurrency", lambda: 1)
     games = [f"g{i:02d}" for i in range(20)]
     started: list[str] = []
     lock = threading.Lock()
@@ -83,6 +114,48 @@ def test_slots_are_granted_in_queue_order_not_wake_order(driver, monkeypatch):
     assert started == games, (
         "slots were granted out of queue order; shortest-first is not in force"
     )
+
+
+def test_with_several_slots_admission_still_follows_the_queue(driver, monkeypatch):
+    """The real configuration runs several games at once. Pin what holds there.
+
+    With ``L`` slots, at most ``L`` games are admitted-but-not-yet-recorded at
+    any moment, so the i-th game to record its start cannot be further down the
+    queue than ``i + L``. That is load-independent, unlike an exact-order claim,
+    and it is still violated wildly by a wake-order gate -- twenty threads
+    started backwards would put rank 19 first, needing ``19 < 3``.
+    """
+    limit = 3
+    monkeypatch.setattr(driver, "concurrency", lambda: limit)
+    games = [f"g{i:02d}" for i in range(20)]
+    started: list[str] = []
+    lock = threading.Lock()
+
+    def worker(gid: str, rank: int) -> None:
+        driver._take_slot(gid, rank)
+        try:
+            with lock:
+                started.append(gid)
+            time.sleep(0.02)
+        finally:
+            driver._free_slot()
+
+    driver._register_queue(len(games))
+    threads = [threading.Thread(target=worker, args=(g, i))
+               for i, g in enumerate(games)]
+    for t in reversed(threads):
+        t.start()
+        time.sleep(0.001)
+    for t in threads:
+        t.join(timeout=30)
+
+    assert sorted(started) == sorted(games), "a game never started"
+    for i, gid in enumerate(started):
+        assert games.index(gid) < i + limit, (
+            f"{gid} (queue position {games.index(gid)}) started {i + 1}th, past "
+            f"the {limit}-slot admission window; slots are being granted out of "
+            f"queue order"
+        )
 
 
 def test_the_limit_is_still_honoured_while_ordering(driver, monkeypatch):

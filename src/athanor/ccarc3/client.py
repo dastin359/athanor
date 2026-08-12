@@ -361,6 +361,23 @@ class ArcClient:
     :mod:`athanor.ccarc3.shared_card`.
     """
 
+    require_card: bool = False
+    """This run is part of a shared-card sweep, so minting is a bug, not a default.
+
+    **`card_id` empty and "standalone run" were the same state, and that cost a
+    sweep.** `open()` mints whenever `card_id` is falsy, which is correct for a
+    one-card-per-game run and catastrophic for a sweep: on 2026-08-12 a workspace
+    was rebuilt while the driver's `_shared_card` global was unset, the launcher
+    was generated with `card_id=''`, and the solver quietly opened its own card
+    and kept scoring onto it. Nothing failed; the driver's whole card-succession
+    apparatus -- liveness probe, stranding refusal, committed history -- sits on a
+    path that was never taken. On 25 games that is 25 cards and a submission
+    worth nothing, with every game reporting success.
+
+    Set this and the client stops instead. A refused run is recoverable; a run
+    scored onto a card nobody tracks is not.
+    """
+
     guid: str = ""
     actions_used: int = 0
     level: int = 0
@@ -502,6 +519,65 @@ class ArcClient:
     def state_path(self) -> Path:
         return Path(self.trace_path).with_suffix(".state.json")
 
+    @property
+    def session_path(self) -> Path:
+        """Where the cookie jar lives — deliberately NOT in the agent's workspace.
+
+        **The jar used to be a field of `trace.state.json`, which sits in the
+        directory the solver works in.** On 2026-08-11 an agent ran `cat` on that
+        file to check its own progress, the tool result went into `stream.jsonl`
+        verbatim, and `preserve_evidence.sh` pushed a live 64-character
+        `GAMESESSION` and a full `AWSALBAPP-0` stickiness token to a public
+        GitHub repository. Nothing malfunctioned: every component did exactly
+        what it was built to do with a credential that had been left where the
+        agent works.
+
+        The agent has no use for these values -- it never speaks to the ARC
+        backend directly, only through the proxy, which carries the jar itself.
+        So the fix is to stop putting them within reach: one directory up, and a
+        dotfile, so neither `ls` nor `cat *` nor a glob in the workspace finds
+        it. Mode 600, like the API key.
+
+        This is not confinement -- an agent with a shell can read anything the
+        process can. It removes the *accident*, which is what actually happened,
+        and it is worth doing on that basis alone. The redaction in
+        `preserve_evidence.sh` remains the backstop for whatever finds a way in.
+        """
+        state = self.state_path
+        name = f".{self.game_id or 'run'}.session.json"
+        parent = state.parent.parent
+        # The parent only when there is one that is not the workspace itself; a
+        # standalone run with a trace at the filesystem root must not silently
+        # write its credentials somewhere unrelated.
+        if parent != state.parent and parent.is_dir():
+            return parent / name
+        return state.parent / name
+
+    def _save_session(self, cookies: list[dict]) -> None:
+        """Persist the jar beside the workspace, never inside it."""
+        path = self.session_path
+        tmp = path.with_suffix(".json.tmp")
+        try:
+            tmp.write_text(json.dumps({"game_id": self.game_id, "cookies": cookies}),
+                           encoding="utf-8")
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except OSError:
+            # A jar that cannot be written costs a resume, which costs a replay.
+            # Losing the run to an exception here would cost the whole game, so
+            # this stays best-effort -- the caller's state file is what matters.
+            tmp.unlink(missing_ok=True)
+
+    def _load_session(self) -> list[dict]:
+        try:
+            doc = json.loads(self.session_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if doc.get("game_id") not in (None, self.game_id):
+            return []
+        jar = doc.get("cookies")
+        return jar if isinstance(jar, list) else []
+
     def _write_state_atomically(self, payload: str, encoding: str = "utf-8") -> None:
         """Write the state file so a reader never sees a half-written one."""
         tmp = self.state_path.with_suffix(".json.tmp")
@@ -509,6 +585,13 @@ class ArcClient:
         os.replace(tmp, self.state_path)      # atomic on POSIX
 
     def _save_state(self) -> None:
+        # The jar goes to its own file, outside the workspace, before the state
+        # file is written -- so a reader that sees the state file always has a
+        # session to go with it, never the other way round.
+        self._save_session([
+            {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+            for c in self._cookiejar()
+        ])
         # Written via a temporary file and os.replace, which is atomic on POSIX.
         # `write_text` was measured to issue a single write() syscall, so a torn
         # file is not something this code produces on its own -- but a reader
@@ -541,8 +624,14 @@ class ArcClient:
                     "dead_keys": self._dead_keys,
                     "seen_keys": sorted(self._seen_keys),
                     "last_frame_key": self._last_frame_key,
+                    # **The values live in `session_path`, not here.** This file
+                    # is in the agent's working directory; see `session_path` for
+                    # what that cost on 2026-08-11. The names stay, because a
+                    # reader has to be able to tell a run that had a session from
+                    # one that never did.
                     "cookies": [
-                        {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+                        {"name": c.name, "value": "", "domain": c.domain,
+                         "path": c.path, "stored": "session_path"}
                         for c in self._cookiejar()
                     ],
                     "gate_last_level": self.gate.last_level if self.gate else 0,
@@ -641,7 +730,16 @@ class ArcClient:
         self._last_frame_key = saved.get("last_frame_key", "")
 
         jar = self._cookiejar()
-        for c in saved.get("cookies", []):
+        # **Sidecar first, state file second.** A state file written before the
+        # jar moved out carries real values under `cookies`; one written after
+        # carries the same names with empty values, which must not overwrite a
+        # good sidecar with blanks. Filtering on a non-empty value covers both
+        # without needing a version field: an entry with no value restores
+        # nothing, which is exactly right either way.
+        restored = self._load_session() or saved.get("cookies", [])
+        for c in restored:
+            if not c.get("value"):
+                continue
             jar.set_cookie(
                 http.cookiejar.Cookie(
                     0, c["name"], c["value"], None, False,
@@ -710,6 +808,15 @@ class ArcClient:
                 self.card_plays_at_open = -1
             self._save_state()
             return self
+        if self.require_card:
+            raise RuntimeError(
+                f"{self.game_id}: this run is part of a shared-card sweep but no "
+                f"card_id reached it, so opening one here would score this game "
+                f"onto a card the driver does not know about and cannot submit. "
+                f"Refusing. Recover the sweep's card id (the committed history "
+                f"under evidence/ccarc3/sweep_card/) and pass it in, or start a "
+                f"deliberately fresh sweep."
+            )
         card = _post(f"{self.root}/api/scorecard/open", {"tags": list(self.tags)},
                      self._key, opener=self._opener)
         self.card_id = card["card_id"]
@@ -776,7 +883,19 @@ class ArcClient:
             )
         done = entry.get("levels_completed")
         if isinstance(done, list):
-            done = done[-1] if done else None      # the play now in flight
+            # **Find OUR row by guid, not by position.** `done[-1]` assumed the
+            # last row is the play in flight. Measured false: a card can gain a
+            # trailing zero-action row (a play opened by something else against
+            # the same card) after ours, and then the guard compares our ledger
+            # level against a stranger's empty play and refuses a resume that is
+            # perfectly sound. The guid is the identity the server itself uses,
+            # so match on it and only fall back to the old positional guess.
+            guids = entry.get("guids") or []
+            if self.guid and self.guid in guids:
+                i = guids.index(self.guid)
+                done = done[i] if i < len(done) else None
+            else:
+                done = done[-1] if done else None  # the play now in flight
         # **A readable card is not evidence the GAME is alive.** The two are on
         # different clocks, measured in `shared_card`: a game idle past ~18 min
         # is reaped, a card is not. Under one card shared by 25 games the other
@@ -833,6 +952,11 @@ class ArcClient:
         self._snapshot_scorecard()
         card_id, self.card_id = self.card_id, ""
         self.state_path.unlink(missing_ok=True)
+        # The jar goes with it. `_load_session` already refuses a sidecar from a
+        # different game, so this is not needed for correctness -- it is here so
+        # a finished run does not leave live session credentials sitting on disk
+        # for however long the box survives.
+        self.session_path.unlink(missing_ok=True)
         if not self._owns_card:
             # Someone else's card, still carrying games that have not finished.
             # Snapshotting it was the useful half; closing it would end the
@@ -1184,9 +1308,17 @@ class ArcClient:
         # **Stamped here, not in `_save_state`.** What the reap clock measures is
         # time since the SERVER last heard from this game, and `_save_state` also
         # runs from `open()`'s lent-card branch and from `gate.on_change`, which
-        # `gate.check()` can fire before any server contact at all. Stamping
+        # `gate.acknowledge()` fires before any server contact at all. Stamping
         # there would refresh the clock without touching ARC, which is precisely
-        # the proxy-for-the-thing mistake. Epoch seconds, because this is a
+        # the proxy-for-the-thing mistake.
+        #
+        # (This named `gate.check()` as the caller, which does not fire
+        # `on_change` at all -- it increments `refusals` and raises. The
+        # conclusion survives the correction because `acknowledge()` is a
+        # genuine no-server-contact path, but a justification citing a mechanism
+        # that does not exist is one a careful reader disproves and then
+        # "simplifies" away, putting the stamp back into `_save_state` and
+        # restoring the bug this comment prevents.) Epoch seconds, because this is a
         # machine comparison -- CLAUDE.md's Pacific rule governs reports.
         self.last_touched = time.time()
 

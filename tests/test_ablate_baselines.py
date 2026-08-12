@@ -227,6 +227,23 @@ def test_a_resumed_game_seeds_the_cap_from_what_it_already_spent(tmp_path, monke
     assert ab.proxy_for(INFO.game_id).actions_used == 291
 
 
+def test_a_resumed_proxy_restores_command_slots_not_scored_actions(tmp_path, monkeypatch):
+    """Each opening RESET is a proxy slot even though ARC does not score it."""
+    monkeypatch.setenv("ARC_API_KEY", "test-key-not-real")
+    monkeypatch.delenv("CCARC3_PROXY_URL", raising=False)
+    root = tmp_path / INFO.game_id
+    root.mkdir(parents=True)
+    (root / "trace.jsonl").write_text("{}\n" * 200)
+    (root / "trace.state.json").write_text(json.dumps({"actions_used": 198}))
+
+    ab.install()
+    sess.build_workspace(
+        Ccarc3Config(INFO.game_id, out_dir=tmp_path, fresh=False), INFO
+    )
+
+    assert ab.proxy_for(INFO.game_id).actions_used == 200
+
+
 def test_the_strip_turns_the_raw_conditionals_into_statements(workspace):
     """A branch whose true arm is unreachable should not be written as a branch.
 

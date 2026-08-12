@@ -25,8 +25,11 @@ import os
 import pathlib
 import re
 import signal
+import shutil
 import subprocess
 import time
+
+import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 WATCHDOG = REPO / "tools" / "heartbeat_watch.sh"
@@ -74,6 +77,9 @@ def test_the_relaunch_orphans_the_heartbeat(tmp_path: pathlib.Path) -> None:
     It also read ppid the instant the process appeared, before reparenting had
     settled, which made it flake roughly one run in three.
     """
+    if not pathlib.Path("/proc").is_dir() or shutil.which("setsid") is None:
+        pytest.skip("the production runner's orphan/setsid contract is Linux-specific")
+
     stub = tmp_path / "stub_heartbeat.sh"
     stub.write_text("#!/bin/bash\nsleep 120\n", encoding="utf-8")
     stub.chmod(0o755)
