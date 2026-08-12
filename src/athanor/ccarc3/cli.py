@@ -2,6 +2,7 @@
 
     athanor ccarc3 games                     # what is available, with baselines
     athanor ccarc3 run  --game ls20-9607627b # one solver session
+    athanor ccarc3 clean-run --game ls20-…   # benchmark-clean single game
     athanor ccarc3 batch --games a,b,c       # several, sequentially
     athanor ccarc3 report --out-dir runs/    # what finished, read off the traces
     athanor ccarc3 trace --run runs/ls20-…   # what actually happened in one run
@@ -59,6 +60,15 @@ def cmd_games(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     out = run_game(_config(args, args.game))
+    print(json.dumps(out, indent=2))
+    return 0 if out.get("levels_reached", 0) > 0 else 1
+
+
+def cmd_clean_run(args: argparse.Namespace) -> int:
+    """Run one game through the explicit baseline-free, credential-free boundary."""
+    from .clean import run_clean_game
+
+    out = run_clean_game(_config(args, args.game), max_nudges=args.max_nudges)
     print(json.dumps(out, indent=2))
     return 0 if out.get("levels_reached", 0) > 0 else 1
 
@@ -334,6 +344,21 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     run.add_argument("--game", required=True)
     _common(run)
     run.set_defaults(func=cmd_run)
+
+    from .clean import DEFAULT_OUT_DIR
+
+    clean_run = sub.add_parser(
+        "clean-run",
+        help="Play one game with baselines, credentials, host config, and memory isolated.",
+    )
+    clean_run.add_argument("--game", required=True)
+    _common(clean_run)
+    clean_run.set_defaults(out_dir=str(DEFAULT_OUT_DIR))
+    clean_run.add_argument(
+        "--max-nudges", type=int, default=3,
+        help="bounded Codex resume attempts after an early give-up (default: 3)",
+    )
+    clean_run.set_defaults(func=cmd_clean_run)
 
     batch = sub.add_parser("batch", help="Play several games sequentially.")
     batch.add_argument("--games", required=True, help="comma-separated game ids")

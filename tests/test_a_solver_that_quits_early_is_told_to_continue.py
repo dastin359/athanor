@@ -131,6 +131,34 @@ def test_the_nudge_resumes_the_assigned_id_not_one_from_the_stream(harness, monk
     ]
 
 
+def test_a_launch_validator_runs_before_initial_and_resumed_processes(harness, monkeypatch):
+    """The clean boundary must guard the nudge path, not just workspace creation."""
+    ws, launches, outcomes = harness
+    checked: list[list[str]] = []
+    ws.config.launch_validator = lambda workspace, args: checked.append(list(args))
+    monkeypatch.setenv("CCARC3_MAX_NUDGES", "1")
+    outcomes.extend([{"gave_up": True}, {"gave_up": False}])
+
+    sess.run_game(_cfg())
+
+    assert checked == launches
+    assert checked[0] == ["codex", "exec", "first"]
+    assert checked[1][1:3] == ["exec", "resume"]
+
+
+def test_a_launch_validator_refusal_starts_no_solver(harness):
+    """A false invariant is a refusal, not a warning emitted after launch."""
+    ws, launches, outcomes = harness
+    ws.config.launch_validator = lambda workspace, args: (_ for _ in ()).throw(
+        RuntimeError("isolation false")
+    )
+
+    with pytest.raises(RuntimeError, match="isolation false"):
+        sess.run_game(_cfg())
+
+    assert launches == []
+
+
 def test_the_first_launch_does_not_invent_a_codex_thread_id(monkeypatch, tmp_path):
     monkeypatch.setattr(sess, "_codex_binary", lambda: "codex")
     ws = types.SimpleNamespace(

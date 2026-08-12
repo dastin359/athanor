@@ -33,6 +33,29 @@ semantics remain the source of truth. None of those five files changed.
 Operational scripts now default to this branch, a Codex-specific temporary run
 root, `codex` process matching, and the `AGENTS.md` evidence surface.
 
+## Benchmark-clean single game
+
+Use the explicit clean entrypoint for a scored live game:
+
+```bash
+athanor ccarc3 clean-run --game cd82-fb555c5d
+```
+
+It defaults to `/tmp/athanor-ccarc3-codex/clean-single`, refuses an output path
+inside any Git checkout, installs and asserts the audited baseline-ablation
+proxy before workspace construction, and checks the boundary again immediately
+before every Codex launch. The check covers both the initial invocation and
+`exec resume` nudges: neither ARC credential nor `CCARC3_MAX_ACTIONS` may reach
+the child; `CCARC3_HIDE_BASELINES` and this game's loopback
+`CCARC3_ARC_ROOT` must be present; the proxy must enforce the configured cap;
+workspace files must contain neither the baselines nor the credential; and all
+four Codex host-isolation options must remain on the command line.
+
+The historical `athanor ccarc3 run` command is unchanged and is not a
+benchmark-clean entrypoint. `tools/clean_rollouts.py` remains the batch driver.
+As with every live command, do not run either clean path without explicit
+authorization to open a game and spend ARC actions.
+
 ## Scoring invariants
 
 All eight invariants in `ccarc3_port_guide.md` §3 are runtime-independent and

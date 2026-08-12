@@ -26,7 +26,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .client import GameInfo, list_games
 
@@ -141,6 +141,14 @@ class Ccarc3Config:
     """
 
     extra_cli_args: tuple[str, ...] = ()
+    launch_validator: Callable[["Workspace", list[str]], None] | None = None
+    """Optional fail-closed check run immediately before every solver launch.
+
+    The ordinary harness leaves this unset.  Benchmark-clean entrypoints use it
+    to re-check their isolation boundary for both the initial Codex invocation
+    and every later ``exec resume`` nudge; validating only workspace construction
+    would leave the resumed path able to drift independently.
+    """
 
 
 @dataclass
@@ -837,6 +845,9 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
     nudged = 0
 
     while True:
+        validator = getattr(ws.config, "launch_validator", None)
+        if validator is not None:
+            validator(ws, args)
         code, timed_out = _launch(ws, args, deadline)
         outcome = collect_outcome(ws, exit_code=code, timed_out=timed_out)
         outcome["nudges"] = nudged
