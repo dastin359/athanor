@@ -50,7 +50,7 @@ from athanor.ccarc3.session import ledger_facts, run_cost       # noqa: E402
 
 SP = pathlib.Path(
     os.environ.get("CCARC3_SCRATCH")
-    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    or "/tmp/athanor-ccarc3-codex/scratchpad"
 )
 LEDGER = SP / "results.jsonl"
 

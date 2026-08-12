@@ -330,7 +330,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     _common(games)
     games.set_defaults(func=cmd_games)
 
-    run = sub.add_parser("run", help="Play one game with Claude Code as the agent loop.")
+    run = sub.add_parser("run", help="Play one game with Codex as the agent loop.")
     run.add_argument("--game", required=True)
     _common(run)
     run.set_defaults(func=cmd_run)

@@ -16,14 +16,14 @@
 #   stale + allowed_warning/rejected -> still binding. Utilization only grew.
 #   stale + allowed                  -> unknown. It may have crossed since.
 #   resetsAt in the past             -> void. The window rolled over.
-S="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+S="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 python3 - <<'PY'
 import json, glob, os, time
 
 # Overridable so this script can be exercised against a fixture. It had no
 # such hook, so three tests of its scan logic silently ran against the live
 # scratchpad and "passed" by reporting the real numbers.
-S = os.environ.get("CCARC3_SCRATCH") or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+S = os.environ.get("CCARC3_SCRATCH") or "/tmp/athanor-ccarc3-codex/scratchpad"
 FRESH = 3600  # a reading younger than this is trusted as-is
 
 streams = sorted(

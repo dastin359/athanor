@@ -32,7 +32,7 @@
 # this project three times. This file's own path ends in `heartbeat_watch.sh`,
 # which `-x .*/heartbeat\.sh` cannot match, so the watchdog can never mistake
 # itself for the thing it watches.
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 LOG="$SP/heartbeat.log"
 HB="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/heartbeat.sh"
 

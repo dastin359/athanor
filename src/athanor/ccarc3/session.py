@@ -1,14 +1,13 @@
-"""Workspace construction and session launch for CCARC3.
+"""Workspace construction and Codex session launch for CCARC3.
 
-The division of labour mirrors CCARC (ARC-AGI-2): **Claude Code owns the agent
-loop**, and this harness supplies a workspace, a toolkit, and a gate. There is
+The division of labour is deliberately small: **Codex owns the agent loop**, and this harness supplies a workspace, a toolkit, and a gate. There is
 no reviewer and no orchestration — the solver decides what to do next, and the
 harness only refuses the moves that are known to destroy a run.
 
 What a workspace contains:
 
 ===================  ======================================================
-``CLAUDE.md``        how to drive the game and what is available
+``AGENTS.md``        how to drive the game and what is available
 ``DOCTRINE.md``      the measured findings, several counterintuitive
 ``session.py``       a client and gate pre-wired to this game
 ``trace.jsonl``      every action and its frames, written unprompted
@@ -25,16 +24,10 @@ import re
 import shutil
 import subprocess
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..cc_harness.config import (
-    DEFAULT_ALLOWED_TOOLS,
-    DEFAULT_DISALLOWED_TOOLS,
-)
-from ..cc_harness.runner import resolve_permission_mode
 from .client import GameInfo, list_games
 
 __all__ = [
@@ -51,9 +44,8 @@ __all__ = [
 
 ASSETS = Path(__file__).parent / "assets"
 
-# The operator's standing constraint for this project: Opus 5 at effort high,
-# and no other model or effort, so runs stay comparable to one another.
-DEFAULT_MODEL = "claude-opus-5"
+# Pin the Codex model and reasoning effort so runs stay comparable.
+DEFAULT_MODEL = "gpt-5.3-codex"
 DEFAULT_EFFORT = "high"
 
 
@@ -105,22 +97,14 @@ class Ccarc3Config:
     """
 
     wall_clock_timeout_s: float = 7200.0
-    permission_mode: str = "bypassPermissions"
-    allowed_tools: tuple[str, ...] = DEFAULT_ALLOWED_TOOLS
-    """Pre-approved so a headless run never stalls on a permission prompt.
+    sandbox: str = "workspace-write"
+    """Codex sandbox; the ARC proxy is the player's only network path."""
+    network_access: bool = True
+    """Allow loopback access to the ARC proxy from Codex's workspace sandbox.
 
-    ``--allowedTools`` grants permission as well as restricting the surface.
-    Without it, ``acceptEdits`` approves file writes but *not* Bash, so every
-    ``python -c ...`` the solver runs is denied and the run produces nothing.
-    CCARC learned this the expensive way; these are its lists, imported rather
-    than re-derived, because deriving them again is how this bug came back.
-    """
-
-    disallowed_tools: tuple[str, ...] = DEFAULT_DISALLOWED_TOOLS
-    """Denied outright: research, network-by-another-door, escaping the run.
-
-    ARC needs no external knowledge and a network answer would contaminate
-    the benchmark. Everything else Claude Code ships stays available.
+    Codex exposes network access at sandbox scope rather than by destination.
+    The proxy still withholds the ARC credential and rejects non-game routes;
+    ``AGENTS.md`` carries the benchmark-integrity prohibition on other network.
     """
     api_key: str | None = None
     fresh: bool = False
@@ -163,20 +147,7 @@ class Workspace:
     initial_prompt: str = ""
     env: dict[str, str] = field(default_factory=dict)
     resumed: bool = False
-    #: This solver's own Claude Code session id, assigned rather than discovered.
-    #:
-    #: **Every event in a solver's stream carries the *parent's* id.** Measured
-    #: 2026-08-09 on `bp35`: all 5,233 events reported
-    #: `a3375e8f-271e-5133-96a4-a40a6a06a752`, which is the driver's session, and
-    #: the solver's own transcript on disk is literally named after it -- the
-    #: child inherits `CLAUDE_CODE_SESSION_ID` and does not mint its own, so the
-    #: only thing separating one solver's transcript from another's is the
-    #: cwd-keyed directory holding it.
-    #:
-    #: So resuming a solver by an id read out of its stream would resume *the
-    #: driver's own conversation*. Assigning one with `--session-id` removes the
-    #: discovery problem instead of solving it, and is what makes `--resume`
-    #: exact.
+    #: Codex thread id, discovered from its ``thread.started`` JSON event.
     session_id: str = ""
 
     @property
@@ -272,14 +243,15 @@ client.open()
 '''
 
 
-def _claude_binary() -> str:
-    return os.environ.get("CLAUDE_BINARY") or shutil.which("claude") or "claude"
+def _codex_binary() -> str:
+    """Resolve the Codex CLI without requiring it in offline unit tests."""
+    return os.environ.get("CODEX_BINARY") or shutil.which("codex") or "codex"
 
 
 def _supports_flag(flag: str) -> bool:
     try:
         out = subprocess.run(
-            [_claude_binary(), "--help"], capture_output=True, text=True, timeout=30
+            [_codex_binary(), "exec", "--help"], capture_output=True, text=True, timeout=30
         )
         return flag in (out.stdout + out.stderr)
     except (OSError, subprocess.SubprocessError):
@@ -340,7 +312,7 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
         encoding="utf-8",
     )
     shutil.copy(ASSETS / "CCARC3_DOCTRINE.md", root / "DOCTRINE.md")
-    (root / "CLAUDE.md").write_text(_workspace_claude_md(info, budget), encoding="utf-8")
+    (root / "AGENTS.md").write_text(_workspace_agents_md(info, budget), encoding="utf-8")
     redact_self_reference(root, config.game_id)
     (root / "meta.json").write_text(
         json.dumps(
@@ -420,13 +392,13 @@ def build_workspace(config: Ccarc3Config, info: GameInfo | None = None,
         config=config,
         info=info,
         initial_prompt=_initial_prompt(info, budget, resumed=resumed),
-        session_id=str(uuid.uuid4()),
+        session_id="",
         env=env,
         resumed=resumed,
     )
 
 
-def _workspace_claude_md(info: GameInfo, budget: int) -> str:
+def _workspace_agents_md(info: GameInfo, budget: int) -> str:
     return f"""\
 # {info.game_id} — ARC-AGI-3
 
@@ -644,55 +616,16 @@ def redact_self_reference(root: Path, game_id: str) -> int:
 
 
 def build_cli_args(workspace: Workspace) -> list[str]:
+    """Build a non-interactive Codex invocation with a machine-readable stream."""
     config = workspace.config
-    args = [
-        _claude_binary(),
-        "-p",
-        workspace.initial_prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-    ]
-    # **Assigned, so the solver owns an id nothing else shares.** Without it the
-    # child inherits `CLAUDE_CODE_SESSION_ID` from the driver and every solver on
-    # the box reports -- and files its transcript under -- the same id. Nothing
-    # downstream can then tell two solvers apart, and `--resume` on that id would
-    # reach the driver's own conversation rather than the solver's.
-    if workspace.session_id and _supports_flag("--session-id"):
-        args += ["--session-id", workspace.session_id]
+    args = [_codex_binary(), "exec", "--json", "--sandbox", config.sandbox]
+    args += ["-c", f"sandbox_workspace_write.network_access={str(config.network_access).lower()}"]
     if config.model:
         args += ["--model", config.model]
-    if config.effort and _supports_flag("--effort"):
-        args += ["--effort", config.effort]
-    # **Capture the model's reasoning. It costs nothing extra.**
-    #
-    # Thinking is billed inside `output_tokens` -- 73.7% of ours, ~1.58M tokens
-    # across eleven games -- and without this flag every block arrives as
-    # `thinking: ""` with only a signature. We were paying for the reasoning and
-    # discarding the text.
-    #
-    # Not guarded by `_supports_flag`, which greps `--help`, because this option
-    # is undocumented there: `--help` never mentions it and the string does not
-    # appear in the 11 MB bundle. It is nonetheless real --
-    # `--thinking-display bogusvalue` reports *"Allowed choices are summarized,
-    # omitted"* -- and passing it lifted a probe run from 0 to 347 characters of
-    # summarized thinking. An earlier sweep concluded the text was unobtainable
-    # precisely by searching for the mechanism instead of trying the flag.
-    #
-    # Safe to pass blind: this CLI exits 0 on unrecognised options, so a build
-    # without it ignores the flag rather than failing every game at launch.
-    args += ["--thinking-display", "summarized"]
-    if config.permission_mode:
-        # bypassPermissions maps to --dangerously-skip-permissions, which the
-        # CLI refuses under root -- and a containerised harness is usually
-        # root. The refusal arrives as a one-line stderr and an empty run,
-        # which is exactly how the first launch here failed.
-        args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
-    if config.allowed_tools:
-        args += ["--allowedTools", ",".join(config.allowed_tools)]
-    if config.disallowed_tools:
-        args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
+    if config.effort:
+        args += ["-c", f'model_reasoning_effort="{config.effort}"']
     args += list(config.extra_cli_args)
+    args.append(workspace.initial_prompt)
     return args
 
 
@@ -794,30 +727,21 @@ def _nudge_args(ws: Workspace) -> list[str] | None:
     `None` when the CLI cannot do it, which is not a failure: the caller then
     leaves the give-up marked and the driver re-runs the game as before.
 
-    **Resumes an id we assigned, never one read from the stream.** See
-    `Workspace.session_id` — every event a solver emits carries the driver's id,
-    so an id discovered from the stream would resume the wrong conversation.
+    Codex assigns the thread id and reports it in ``thread.started``.  That event
+    is the authoritative resume handle; guessing it from local state can attach
+    a nudge to an unrelated conversation.
     """
     if not ws.session_id:
         return None
-    if not (_supports_flag("--resume") and _supports_flag("--session-id")):
-        return None
     args = [
-        _claude_binary(), "-p", NUDGE_PROMPT,
-        "--resume", ws.session_id,
-        "--output-format", "stream-json", "--verbose",
+        _codex_binary(), "exec", "resume", "--json",
     ]
     config = ws.config
     if config.model:
         args += ["--model", config.model]
-    if config.effort and _supports_flag("--effort"):
-        args += ["--effort", config.effort]
-    if config.permission_mode:
-        args += ["--permission-mode", resolve_permission_mode(config.permission_mode)]
-    if config.allowed_tools:
-        args += ["--allowedTools", ",".join(config.allowed_tools)]
-    if config.disallowed_tools:
-        args += ["--disallowed-tools", ",".join(config.disallowed_tools)]
+    if config.effort:
+        args += ["-c", f'model_reasoning_effort="{config.effort}"']
+    args += [ws.session_id, NUDGE_PROMPT]
     return args
 
 
@@ -843,7 +767,7 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
         stream.rename(ws.root / f"stream.{n}.jsonl")
 
     # **One deadline for the whole run, not one per launch.** A nudged run makes
-    # several `claude` invocations, and giving each a fresh
+    # several Codex invocations, and giving each a fresh
     # `wall_clock_timeout_s` would let a game run for two or three times the
     # limit its caller set -- `clean_rollouts` picks that limit so a run fits
     # inside a container window, so multiplying it silently defeats the choice.
@@ -879,7 +803,7 @@ def run_game(config: Ccarc3Config, info: GameInfo | None = None) -> dict[str, An
 
 
 def _launch(ws: Workspace, args: list[str], deadline: float | None) -> tuple[int, bool]:
-    """Run one `claude` invocation to completion. Returns (exit code, timed out)."""
+    """Run one Codex invocation to completion. Returns (exit code, timed out)."""
     config = ws.config
     stream = ws.root / "stream.jsonl"
     remaining = None if deadline is None else max(1.0, deadline - time.monotonic())
@@ -926,7 +850,28 @@ def _launch(ws: Workspace, args: list[str], deadline: float | None) -> tuple[int
                 code = proc.wait()
             timed_out = True
 
+    # Codex owns thread identifiers. Capture the exact id it emitted so a
+    # give-up nudge can resume this conversation rather than starting over.
+    if not ws.session_id:
+        ws.session_id = _thread_id(stream)
+
     return code, timed_out
+
+
+def _thread_id(stream: Path) -> str:
+    """Return the first valid Codex ``thread.started`` id from a JSONL stream."""
+    if not stream.exists():
+        return ""
+    for line in stream.open(encoding="utf-8", errors="ignore"):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "thread.started":
+            value = event.get("thread_id")
+            if isinstance(value, str):
+                return value
+    return ""
 
 
 def _record_resume_state(ws: Workspace) -> None:
@@ -1031,7 +976,7 @@ def ledger_facts(trace_path: Path | str) -> dict[str, Any]:
 
 
 def run_cost(stream_path: Path | str) -> dict[str, Any]:
-    """Turns, cost and wall time, from the stream's final ``result`` event.
+    """Turns and token use from Codex's ``turn.completed`` events.
 
     The ledger says what a run *did*; this says what it cost to do it, and the
     two came apart in a way worth being able to see. `sb26` won eight levels in
@@ -1046,42 +991,39 @@ def run_cost(stream_path: Path | str) -> dict[str, Any]:
     attempt's turns and cost, understating the bill by whatever the earlier
     attempts spent. `ls20` was resumed once.
 
-    Returns an empty dict when no stream has a result event — a killed run has
-    none, and that is not an error worth raising over.
+    Codex does not report a dollar amount or wall duration in its JSONL protocol,
+    so this port records the auditable token counters instead of manufacturing
+    either value. Returns an empty dict when no completed turn exists.
     """
     path = Path(stream_path)
     attempts = sorted(path.parent.glob("stream.*.jsonl")) + [path]
-    turns = cost = duration = 0
+    turns = input_tokens = cached_input_tokens = output_tokens = 0
     found = False
     for attempt in attempts:
         if not attempt.exists():
             continue
-        final: dict[str, Any] = {}
         for line in attempt.open(encoding="utf-8", errors="ignore"):
-            if '"type":"result"' not in line and '"type": "result"' not in line:
-                continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            # `run_game` merges the solver's stderr into this file, so a line can
-            # be valid JSON without being an object. `.get` on a str is an
-            # AttributeError out of a function whose whole contract is "never
-            # raise over a killed run".
-            if isinstance(record, dict) and record.get("type") == "result":
-                final = record
-        if not final:
-            continue
-        found = True
-        turns += final.get("num_turns") or 0
-        cost += final.get("total_cost_usd") or 0.0
-        duration += final.get("duration_ms") or 0
+            if not isinstance(record, dict) or record.get("type") != "turn.completed":
+                continue
+            usage = record.get("usage") or {}
+            if not isinstance(usage, dict):
+                usage = {}
+            found = True
+            turns += 1
+            input_tokens += usage.get("input_tokens") or 0
+            cached_input_tokens += usage.get("cached_input_tokens") or 0
+            output_tokens += usage.get("output_tokens") or 0
     if not found:
         return {}
     return {
         "turns": turns,
-        "cost_usd": cost,
-        "duration_s": round(duration / 1000) if duration else None,
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "output_tokens": output_tokens,
         "attempts": sum(1 for a in attempts if a.exists()),
     }
 

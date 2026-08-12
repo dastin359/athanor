@@ -26,7 +26,7 @@ def ws(tmp_path):
 
 def test_workspace_has_everything_the_solver_needs(ws):
     names = {p.name for p in ws.root.iterdir()}
-    assert {"CLAUDE.md", "DOCTRINE.md", "session.py", "meta.json", "notes"} <= names
+    assert {"AGENTS.md", "DOCTRINE.md", "session.py", "meta.json", "notes"} <= names
 
 
 def test_the_action_budget_is_derived_from_the_game_not_guessed(ws):
@@ -40,7 +40,7 @@ def test_the_action_budget_is_derived_from_the_game_not_guessed(ws):
     # client through the environment instead, where nothing the solver reads by
     # default will show it.
     budget = str(meta["action_budget"])
-    for name in ("CLAUDE.md", "session.py"):
+    for name in ("AGENTS.md", "session.py"):
         assert budget not in (ws.root / name).read_text(), f"{name} discloses the cap"
     assert budget not in ws.initial_prompt, "the prompt discloses the cap"
     assert ws.env["CCARC3_MAX_ACTIONS"] == budget
@@ -63,28 +63,28 @@ def test_the_generated_files_are_valid_after_template_substitution(ws):
     """Both files come out of `.format()`, so a literal brace must be doubled.
 
     Getting that wrong does not fail loudly -- `session.py` stops importing, or
-    `CLAUDE.md` ships `{{'ACTION6': (0, 31)}}` as the solver's worked example.
+    `AGENTS.md` ships `{{'ACTION6': (0, 31)}}` as the solver's worked example.
     Every run built from the template is affected and no unit test of the
     modules themselves would notice.
     """
     compile((ws.root / "session.py").read_text(), "session.py", "exec")
-    md = (ws.root / "CLAUDE.md").read_text()
+    md = (ws.root / "AGENTS.md").read_text()
     assert "{{" not in md and "}}" not in md
     assert "{'ACTION6': (0, 31)}" in md, "the dict example must survive as a dict"
 
 
 def test_the_worked_examples_name_things_that_exist(ws):
-    """A CLAUDE.md example is API documentation the solver will run verbatim."""
+    """A AGENTS.md example is API documentation the solver will run verbatim."""
     import re
 
     from athanor.ccarc3 import ArcClient
     from athanor.ccarc3 import __all__ as exported
 
-    text = (ws.root / "CLAUDE.md").read_text() + (ws.root / "DOCTRINE.md").read_text()
+    text = (ws.root / "AGENTS.md").read_text() + (ws.root / "DOCTRINE.md").read_text()
     for attr in set(re.findall(r"\bclient\.(\w+)\(", text)):
-        assert hasattr(ArcClient, attr), f"CLAUDE.md calls client.{attr}(), which does not exist"
+        assert hasattr(ArcClient, attr), f"AGENTS.md calls client.{attr}(), which does not exist"
     for name in set(re.findall(r"\barc\.(\w+)\(", text)):
-        assert name in exported, f"CLAUDE.md calls arc.{name}(), which is not exported"
+        assert name in exported, f"AGENTS.md calls arc.{name}(), which is not exported"
 
 
 def test_the_worked_examples_do_not_reference_undefined_variables(ws):
@@ -108,7 +108,7 @@ def test_the_worked_examples_do_not_reference_undefined_variables(ws):
     # endpoints to route between. Every other free name is a defect, and this
     # set is closed on purpose: a new placeholder has to be justified here.
     placeholders = {"step", "start", "goal"}
-    text = (ws.root / "CLAUDE.md").read_text() + "\n" + (ws.root / "DOCTRINE.md").read_text()
+    text = (ws.root / "AGENTS.md").read_text() + "\n" + (ws.root / "DOCTRINE.md").read_text()
     blocks = re.findall(r"```python\n(.*?)```", text, re.DOTALL)
     assert blocks, "the guide is supposed to contain worked examples"
 
@@ -155,8 +155,8 @@ def test_doctrine_carries_the_findings_that_contradict_instinct(ws):
 
 
 def test_the_run_defaults_are_the_ones_the_project_requires():
-    """Opus 5 at high effort, so runs stay comparable across the project."""
-    assert DEFAULT_MODEL == "claude-opus-5"
+    """The Codex model and effort are pinned so runs remain comparable."""
+    assert DEFAULT_MODEL == "gpt-5.3-codex"
     assert DEFAULT_EFFORT == "high"
     cfg = Ccarc3Config("g")
     assert cfg.model == DEFAULT_MODEL and cfg.effort == DEFAULT_EFFORT
@@ -165,8 +165,8 @@ def test_the_run_defaults_are_the_ones_the_project_requires():
 def test_cli_args_carry_model_and_prompt(ws):
     args = build_cli_args(ws)
     assert "--model" in args and DEFAULT_MODEL in args
-    assert "-p" in args
-    assert "--output-format" in args and "stream-json" in args
+    assert args[-1] == ws.initial_prompt
+    assert args[1:3] == ["exec", "--json"]
 
 
 # --------------------------------------------------------------------------- #
@@ -265,17 +265,19 @@ def test_a_run_with_no_full_reset_reports_one_playthrough(ws):
     assert out["trace_rows"] == 2
 
 
-def test_turns_and_cost_are_read_from_the_stream(ws):
-    """The ledger says what a run did; only the stream says what it cost."""
+def test_turns_and_tokens_are_read_from_the_stream(ws):
+    """The ledger says what a run did; the stream says what tokens it used."""
     from athanor.ccarc3.session import run_cost
 
     (ws.root / "stream.jsonl").write_text(
-        json.dumps({"type": "assistant"}) + "\n"
-        + json.dumps({"type": "result", "num_turns": 36,
-                      "total_cost_usd": 3.0381, "duration_ms": 732994}) + "\n"
+        json.dumps({"type": "item.completed"}) + "\n"
+        + json.dumps({"type": "turn.completed", "usage": {
+            "input_tokens": 100, "cached_input_tokens": 40, "output_tokens": 20,
+        }}) + "\n"
     )
     assert run_cost(ws.root / "stream.jsonl") == {
-        "turns": 36, "cost_usd": 3.0381, "duration_s": 733, "attempts": 1,
+        "turns": 1, "input_tokens": 100, "cached_input_tokens": 40,
+        "output_tokens": 20, "attempts": 1,
     }
 
 
@@ -285,15 +287,18 @@ def test_cost_sums_every_attempt_of_a_resumed_run(ws):
     count against the last attempt's bill alone."""
     from athanor.ccarc3.session import run_cost
 
-    def stream(path, turns, cost, ms):
+    def stream(path, input_tokens, cached, output):
         path.write_text(json.dumps({
-            "type": "result", "num_turns": turns,
-            "total_cost_usd": cost, "duration_ms": ms}) + "\n")
+            "type": "turn.completed", "usage": {
+                "input_tokens": input_tokens, "cached_input_tokens": cached,
+                "output_tokens": output,
+            }}) + "\n")
 
-    stream(ws.root / "stream.1.jsonl", 40, 5.00, 600_000)   # the archived attempt
-    stream(ws.root / "stream.jsonl", 36, 3.00, 400_000)     # the one that finished
+    stream(ws.root / "stream.1.jsonl", 100, 40, 20)
+    stream(ws.root / "stream.jsonl", 60, 10, 30)
     assert run_cost(ws.root / "stream.jsonl") == {
-        "turns": 76, "cost_usd": 8.00, "duration_s": 1000, "attempts": 2,
+        "turns": 2, "input_tokens": 160, "cached_input_tokens": 50,
+        "output_tokens": 50, "attempts": 2,
     }
 
 
@@ -303,11 +308,10 @@ def test_a_non_object_line_in_the_stream_is_not_a_crash(ws):
     from athanor.ccarc3.session import run_cost
 
     (ws.root / "stream.jsonl").write_text(
-        '"a bare string mentioning \\"type\\":\\"result\\""\n'
-        + json.dumps({"type": "result", "num_turns": 5,
-                      "total_cost_usd": 1.0, "duration_ms": 1000}) + "\n"
+        '"a bare string mentioning \\"type\\":\\"turn.completed\\""\n'
+        + json.dumps({"type": "turn.completed", "usage": {}}) + "\n"
     )
-    assert run_cost(ws.root / "stream.jsonl")["turns"] == 5
+    assert run_cost(ws.root / "stream.jsonl")["turns"] == 1
 
 
 def test_a_run_with_no_stream_reports_no_cost_rather_than_failing(ws):
@@ -480,29 +484,25 @@ def test_the_rule_book_is_summarised_when_present(ws):
     assert out["refutations_recorded"] == 1
 
 
-def test_bypass_permissions_is_downgraded_under_root(ws, monkeypatch):
-    """--dangerously-skip-permissions is refused as root; the run dies empty."""
-    import athanor.ccarc3.session as sess
-
-    monkeypatch.setattr(sess, "resolve_permission_mode", lambda m: "acceptEdits")
-    args = sess.build_cli_args(ws)
-    assert "acceptEdits" in args
-    assert "bypassPermissions" not in args
-
-
-def test_bash_is_pre_approved_or_the_run_produces_nothing(ws):
-    """acceptEdits grants writes but not Bash; CCARC burned two runs on this."""
+def test_codex_runs_non_interactively_in_the_workspace_sandbox(ws):
     args = build_cli_args(ws)
-    assert "--allowedTools" in args
-    allowed = args[args.index("--allowedTools") + 1].split(",")
-    assert "Bash" in allowed and "Read" in allowed and "Write" in allowed
+    assert args[1:3] == ["exec", "--json"]
+    assert "--sandbox" in args
+    assert args[args.index("--sandbox") + 1] == "workspace-write"
 
 
-def test_network_tools_are_denied_for_benchmark_integrity(ws):
+def test_codex_receives_model_effort_and_prompt(ws):
     args = build_cli_args(ws)
-    assert "--disallowed-tools" in args
-    denied = args[args.index("--disallowed-tools") + 1]
-    assert "WebSearch" in denied or "WebFetch" in denied
+    assert args[-1] == ws.initial_prompt
+    assert f'model_reasoning_effort="{DEFAULT_EFFORT}"' in args
+
+
+def test_the_player_has_no_arc_credential_when_a_proxy_is_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARC_API_KEY", "secret")
+    proxied = build_workspace(Ccarc3Config("ls20-test", out_dir=tmp_path), INFO,
+                              arc_root="http://127.0.0.1:9999")
+    assert "ARC_API_KEY" not in proxied.env
+    assert proxied.env["CCARC3_ARC_ROOT"] == "http://127.0.0.1:9999"
 
 
 def test_the_doctrine_asset_is_declared_as_package_data():
@@ -867,7 +867,7 @@ def test_no_solver_facing_file_frames_actions_as_an_allowance(ws):
     name the thing it is denying.
     """
     text = {name: re.sub(r"\s+", " ", (ws.root / name).read_text())
-            for name in ("DOCTRINE.md", "CLAUDE.md", "session.py")}
+            for name in ("DOCTRINE.md", "AGENTS.md", "session.py")}
     allowed = "a per-environment budget would"      # the ARC quote, in the denial
     for name, body in text.items():
         for phrase in ("budget allows", "budget is tight", "runs out of budget",
@@ -912,7 +912,7 @@ def test_an_unstripped_workspace_leaks_the_baselines_through_meta_json(ws):
     `meta.json` is written by `build_workspace` from the full `GameInfo`, so a
     plain workspace carries every per-level human median *and* the action budget
     the harness treats as a silent guardrail. `test_the_action_budget_is_derived_
-    from_the_game_not_guessed` above asserts the budget stays out of `CLAUDE.md`,
+    from_the_game_not_guessed` above asserts the budget stays out of `AGENTS.md`,
     `session.py` and the prompt -- and never looked at `meta.json`, which is
     exactly where both numbers were sitting.
 

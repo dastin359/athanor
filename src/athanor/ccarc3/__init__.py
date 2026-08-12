@@ -1,4 +1,4 @@
-"""CCARC3 — harness primitives for a Claude-Code-as-agent ARC-AGI-3 solver.
+"""CCARC3 — harness primitives for a Codex-as-agent ARC-AGI-3 solver.
 
 Design: ``docs/ccarc3_design.md``.
 

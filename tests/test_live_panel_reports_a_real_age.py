@@ -135,7 +135,7 @@ def test_the_panel_ages_a_solver_from_its_own_start(tmp_path, monkeypatch):
 
     binv = tmp_path / "bin"
     binv.mkdir()
-    exe = binv / "claude"
+    exe = binv / "codex"
     exe.write_text("#!/bin/bash\nsleep 60\n", encoding="utf-8")
     exe.chmod(0o755)
 

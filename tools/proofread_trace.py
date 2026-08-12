@@ -254,7 +254,27 @@ def blocks(stream_text: str) -> tuple[list[str], list[str], list[str], list[str]
             row = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(row, dict):
+            continue
         kind = row.get("type")
+        # Codex JSONL is item-oriented.  Keep commands and their returned text
+        # separate: the reach check examines what the player requested, while
+        # the inbound check examines what the environment handed back.
+        if kind == "item.completed":
+            item = row.get("item") or {}
+            item_type = item.get("type") if isinstance(item, dict) else None
+            if item_type == "command_execution":
+                cmds.append(str(item.get("command") or ""))
+                results.append(str(item.get("aggregated_output") or ""))
+            elif item_type == "mcp_tool_call":
+                cmds.append(json.dumps(item.get("arguments") or {}))
+                result = item.get("result")
+                results.append(result if isinstance(result, str) else json.dumps(result or {}))
+            elif item_type == "reasoning":
+                think.append(str(item.get("text") or ""))
+            elif item_type == "agent_message":
+                say.append(str(item.get("text") or ""))
+            continue
         content = (row.get("message") or {}).get("content") or []
         if kind == "assistant":
             for b in content:

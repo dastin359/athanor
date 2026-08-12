@@ -37,7 +37,7 @@ def fake_solver(tmp_path: pathlib.Path, monkeypatch):
     scratch = tmp_path / "scratchpad"
     binv = tmp_path / "bin"
     binv.mkdir(parents=True)
-    exe = binv / "claude"
+    exe = binv / "codex"
     exe.write_text("#!/bin/bash\nsleep 120\n", encoding="utf-8")
     exe.chmod(0o755)
     monkeypatch.setenv("CCARC3_SCRATCH", str(scratch))
@@ -117,7 +117,7 @@ def test_a_claude_process_outside_the_scratchpad_is_ignored(fake_solver, tmp_pat
     outside.mkdir()
     (outside / "trace.jsonl").write_text(
         json.dumps({"level": 1, "action": "ACTION1"}) + "\n", encoding="utf-8")
-    exe = tmp_path / "bin" / "claude"
+    exe = tmp_path / "bin" / "codex"
     proc = subprocess.Popen([str(exe)], cwd=str(outside),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(0.4)

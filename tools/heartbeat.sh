@@ -37,7 +37,7 @@ PY_BIN="$REPO/.venv/bin/python"
 # other four did not, so a fixture run or a fresh container silently read the
 # wrong tree. Same defect class as the rest of this file: a value that agrees
 # with the truth only in the environment you happen to test it in.
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 
 # **Watch whatever the supervisor actually launches, not a name from last week.**
 # This matched `ablate_baselines.py` long after `clean_rollouts.py` became the

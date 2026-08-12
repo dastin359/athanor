@@ -64,7 +64,7 @@ import traceback
 # with the truth only in the environment you happen to test it in.
 SP = pathlib.Path(
     os.environ.get("CCARC3_SCRATCH")
-    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    or "/tmp/athanor-ccarc3-codex/scratchpad"
 )
 # **The submission sweep needs its own directory, and that is not cosmetic.**
 # `_run_one` skips any game that already has a `clean_result.json`, so pointing a
@@ -153,7 +153,7 @@ GAMES = [
 
     # **The remaining 17, opened 2026-08-07 once the solver-surface repair
     # landed.** Held closed until then deliberately: the audit's `surface_digest`
-    # keys on `CLAUDE.md`, `DOCTRINE.md`, `session.py` and `meta.json`, and two
+    # keys on `AGENTS.md`, `DOCTRINE.md`, `session.py` and `meta.json`, and two
     # proofread passes were rewriting all four. A run started first would have been
     # marked superseded the moment the fix shipped -- real quota, no result. The
     # repair is `a63232a` and `f66cc91`; these are the first runs under it.

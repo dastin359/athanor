@@ -15,7 +15,7 @@
 # missing file. Anything the loop depends on has to survive a container.
 set -uo pipefail
 
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 # Resolve through symlinks. The standing hourly instruction invokes this by its
 # old scratchpad path, which is now a symlink here; without readlink -f, `dirname`
 # gives the *symlink's* directory, REPO points into the scratchpad, the marker is

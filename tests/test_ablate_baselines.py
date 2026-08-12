@@ -53,7 +53,7 @@ def test_the_strip_removes_every_baseline_a_solver_can_read(workspace):
     root = workspace.root
 
     assert "baseline_actions=()" in (root / "session.py").read_text()
-    assert "17" not in (root / "CLAUDE.md").read_text()
+    assert "17" not in (root / "AGENTS.md").read_text()
     assert "## 6. " not in (root / "DOCTRINE.md").read_text()
 
     meta = json.loads((root / "meta.json").read_text())
@@ -121,7 +121,7 @@ def test_the_strip_still_raises_when_it_finds_nothing_to_strip(workspace):
 def test_the_strip_removes_prose_by_the_paragraph_not_by_the_line(workspace):
     """Line-wise removal on hard-wrapped prose is a shredder, not a redaction.
 
-    `CLAUDE.md`'s baseline paragraph wraps across four lines, two of which
+    `AGENTS.md`'s baseline paragraph wraps across four lines, two of which
     contain the word. Deleting those two left the other two standing as a pair of
     orphaned half-sentences — *"must also discover them, hence the larger
     budget. But if you are several times / wrong — go re-explore rather than
@@ -133,7 +133,7 @@ def test_the_strip_removes_prose_by_the_paragraph_not_by_the_line(workspace):
     paragraph is the smallest unit that reliably contains whole sentences.
     """
     ab.strip_baselines(workspace.root)
-    body = (workspace.root / "CLAUDE.md").read_text()
+    body = (workspace.root / "AGENTS.md").read_text()
 
     for orphan in ("must also discover them", "But if you are several times",
                    "wrong — go re-explore"):
@@ -154,7 +154,7 @@ def test_the_strip_keeps_the_code_examples_it_only_needs_to_edit(workspace):
     has no wrapped sentences, so inside a fence the line is the unit.
     """
     ab.strip_baselines(workspace.root)
-    body = (workspace.root / "CLAUDE.md").read_text()
+    body = (workspace.root / "AGENTS.md").read_text()
 
     assert "client.reset()" in body
     assert "client.act(6, x=10, y=20)" in body

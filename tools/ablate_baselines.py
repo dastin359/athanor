@@ -5,7 +5,7 @@ docs list `game_id` and `title`; the live server also returns `tags` and
 `baseline_actions`. This harness leans on that undocumented field hard: 22
 doctrine references, all of §6, the 1.0x pace warning inside `client.status()`
 (called 256 times across six runs), `client.pace()`, and the workspace
-`CLAUDE.md`, which hands the array to the solver as a table row. If the
+`AGENTS.md`, which hands the array to the solver as a table row. If the
 semi-private set withholds it, every baseline-derived signal goes quiet at once
 and the public-set figure would be measuring a solver with information the real
 evaluation does not supply.
@@ -23,7 +23,7 @@ numbers.
   `baseline_here` returns None, so `status()` drops its pace line and `pace()`
   returns nothing. The signal disappears exactly as it would if ARC stopped
   sending the field.
-- `CLAUDE.md` loses the baseline table row and the paragraphs that read it.
+- `AGENTS.md` loses the baseline table row and the paragraphs that read it.
 - `DOCTRINE.md` loses §6 and §6a, which instruct the solver to steer by a number
   it can no longer see.
 
@@ -66,7 +66,7 @@ from athanor.ccarc3 import session as sess
 # directory that stops existing. See tools/clean_rollouts.py for the full note.
 SP = pathlib.Path(
     os.environ.get("CCARC3_SCRATCH")
-    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    or "/tmp/athanor-ccarc3-codex/scratchpad"
 )
 RUNS = SP / "ablate_nobaseline"
 BUDGET_MULTIPLE = 2.0
@@ -149,7 +149,7 @@ def strip_baselines(root: pathlib.Path) -> None:
 
     # **Drop whole paragraphs, not lines.** The filter used to be line-wise, and
     # on hard-wrapped prose that is not a redaction, it is a shredder. The
-    # baseline paragraph in `CLAUDE.md` wraps across four lines, two of which
+    # baseline paragraph in `AGENTS.md` wraps across four lines, two of which
     # happen to contain the word; deleting those two left the other two standing
     # as a pair of orphaned half-sentences:
     #
@@ -169,7 +169,7 @@ def strip_baselines(root: pathlib.Path) -> None:
     # the whole `client.reset()` / `client.act()` example out over a single
     # trailing comment. Code has no wrapped sentences to shred, so the objection
     # above does not apply inside a fence — each line is already self-contained.
-    cm = root / "CLAUDE.md"
+    cm = root / "AGENTS.md"
     kept, para, fenced = [], [], False
 
     def flush() -> None:
@@ -223,7 +223,7 @@ def strip_baselines(root: pathlib.Path) -> None:
     # **meta.json first, because it is the file that actually leaked.** This
     # used to run last, after four `raise`-capable assertions on DOCTRINE.md. Any
     # wording drift left a workspace on disk with `session.py` blanked and
-    # `CLAUDE.md` rewritten -- so it looks stripped -- while `meta.json` still
+    # `AGENTS.md` rewritten -- so it looks stripped -- while `meta.json` still
     # carried `baseline_actions`. Order the irreversible removals before the
     # brittle checks.
     # **meta.json carries the whole GameInfo, including baseline_actions.**

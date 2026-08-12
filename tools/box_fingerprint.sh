@@ -33,11 +33,11 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 LOG="$REPO/evidence/box_fingerprint.tsv"
 # Overridable via `CCARC3_BRANCH`; a session on another account works on
 # another branch. Not derived from HEAD -- see preserve_evidence.sh.
-BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
+BRANCH="${CCARC3_BRANCH:-codexarc3}"
 # Overridable via `CCARC3_SCRATCH`: the path encodes a session UUID and the
 # container is recycled every 10-50 minutes, so a hard-coded copy points at a
 # directory that stops existing. See tools/clean_rollouts.py for the full note.
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 
 mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] || printf 'utc\tboot_id\tuptime_s\thead\tscratch_dirs\trerun_present\tnote\n' > "$LOG"

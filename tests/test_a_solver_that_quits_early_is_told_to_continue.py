@@ -67,18 +67,16 @@ def harness(tmp_path, monkeypatch):
     ws = types.SimpleNamespace(
         root=tmp_path,
         config=types.SimpleNamespace(
-            wall_clock_timeout_s=0, model=None, effort=None, permission_mode=None,
-            allowed_tools=None, disallowed_tools=None, extra_cli_args=()),
+            wall_clock_timeout_s=0, model=None, effort=None, sandbox="workspace-write",
+            network_access=True, extra_cli_args=()),
         info=types.SimpleNamespace(game_id="zz99-deadbeef"),
         session_id="11111111-2222-3333-4444-555555555555",
         resumed=False,
     )
     monkeypatch.setattr(sess, "build_workspace", lambda c, i=None: ws)
     monkeypatch.setattr(sess, "_record_resume_state", lambda w: None)
-    monkeypatch.setattr(sess, "build_cli_args", lambda w: ["claude", "-p", "first"])
-    monkeypatch.setattr(sess, "_supports_flag", lambda flag: True)
-    monkeypatch.setattr(sess, "_claude_binary", lambda: "claude")
-    monkeypatch.setattr(sess, "resolve_permission_mode", lambda m: m)
+    monkeypatch.setattr(sess, "build_cli_args", lambda w: ["codex", "exec", "first"])
+    monkeypatch.setattr(sess, "_codex_binary", lambda: "codex")
 
     def _launch(w, args, deadline):
         launches.append(list(args))
@@ -122,22 +120,20 @@ def test_the_nudge_resumes_the_assigned_id_not_one_from_the_stream(harness, monk
     sess.run_game(_cfg())
 
     second = launches[1]
-    assert "--resume" in second, f"the second launch did not resume: {second}"
-    assert second[second.index("--resume") + 1] == ws.session_id
+    assert second[1:3] == ["exec", "resume"], f"the second launch did not resume: {second}"
+    assert ws.session_id in second
     assert sess.NUDGE_PROMPT in second, "the nudge prompt was not sent"
 
 
-def test_the_first_launch_claims_the_session_id(monkeypatch, tmp_path):
-    """`--session-id` is what makes the resume above exact."""
-    monkeypatch.setattr(sess, "_supports_flag", lambda flag: True)
-    monkeypatch.setattr(sess, "_claude_binary", lambda: "claude")
+def test_the_first_launch_does_not_invent_a_codex_thread_id(monkeypatch, tmp_path):
+    monkeypatch.setattr(sess, "_codex_binary", lambda: "codex")
     ws = types.SimpleNamespace(
-        root=tmp_path, session_id="abc-123", initial_prompt="go",
-        config=types.SimpleNamespace(
-            model=None, effort=None, permission_mode=None, allowed_tools=None,
-            disallowed_tools=None, extra_cli_args=()))
+        root=tmp_path, session_id="", initial_prompt="go",
+        config=types.SimpleNamespace(model=None, effort=None, sandbox="workspace-write",
+                                     network_access=True, extra_cli_args=()))
     args = sess.build_cli_args(ws)
-    assert "--session-id" in args and args[args.index("--session-id") + 1] == "abc-123"
+    assert args[:3] == ["codex", "exec", "--json"]
+    assert "--session-id" not in args
 
 
 def test_a_run_that_did_not_give_up_is_never_nudged(harness, monkeypatch):
@@ -177,23 +173,23 @@ def test_the_bound_is_honoured_and_the_give_up_survives_it(harness, monkeypatch)
 def test_zero_nudges_restores_the_previous_behaviour_exactly(harness, monkeypatch):
     ws, launches, outcomes = harness
     monkeypatch.setenv("CCARC3_MAX_NUDGES", "0")
-    outcomes.append({"gave_up": True, "error": "quit"})
+    outcomes.extend([{"gave_up": True, "error": "quit"}, {"won": True}])
 
     out = sess.run_game(_cfg())
 
     assert len(launches) == 1 and out["nudges"] == 0 and out["error"]
 
 
-def test_a_cli_that_cannot_resume_falls_back_to_the_old_path(harness, monkeypatch):
+def test_codex_resume_does_not_depend_on_help_text(harness, monkeypatch):
     ws, launches, outcomes = harness
     monkeypatch.setenv("CCARC3_MAX_NUDGES", "3")
     monkeypatch.setattr(sess, "_supports_flag", lambda flag: flag != "--resume")
-    outcomes.append({"gave_up": True, "error": "quit"})
+    outcomes.extend([{"gave_up": True, "error": "quit"}, {"won": True}])
 
     out = sess.run_game(_cfg())
 
-    assert len(launches) == 1, "it resumed on a CLI with no --resume"
-    assert out["error"], "the give-up was lost instead of left for the driver"
+    assert len(launches) == 2
+    assert out["won"] is True
 
 
 def test_the_wall_clock_spans_every_launch(harness, monkeypatch):

@@ -37,7 +37,7 @@ set -u
 # other four did not, so a fixture run or a fresh container silently read the
 # wrong tree. Same defect class as the rest of this file: a value that agrees
 # with the truth only in the environment you happen to test it in.
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 # **Derived, not written.** The hard-coded `/home/user/athanor` is this
 # container's clone location; a fresh container, or the same repo checked out
 # by a different account, gets a different one. `readlink -f` first, so the
@@ -54,7 +54,7 @@ DEST="$REPO/evidence/ccarc3"
 # make the guard vacuous -- it exists precisely to catch "HEAD moved and the
 # push would go somewhere unintended", and a branch read from HEAD always
 # agrees with HEAD.
-BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
+BRANCH="${CCARC3_BRANCH:-codexarc3}"
 TICK=300
 
 # **Source the key rather than inherit it.** `key_is_clean` refuses to commit
@@ -76,7 +76,7 @@ TICK=300
 # superseded by a refactor that changed none of these three bytes. They are
 # small and they compress; the trace is 65x larger and has never been in doubt.
 KEEP=(trace.jsonl trace.state.json result.json scorecard.json rules.json
-      resume_state.json meta.json CLAUDE.md DOCTRINE.md session.py)
+      resume_state.json meta.json AGENTS.md DOCTRINE.md session.py)
 # Copied in from the package, not written by the run: the solver imports these off
 # PYTHONPATH rather than from its workspace, so nothing preserves them unless this
 # does. They are the *runtime* surface -- what `status()` and every refusal say

@@ -1,7 +1,7 @@
 """The orphan sweep must select solvers by argv, never by substring.
 
 `stop_politely` waited on solvers with the argv-element-exact
-`pids_of '.*/claude'`, then killed orphans with `pgrep -f claude` -- the
+`pids_of '.*/codex'`, then killed orphans with `pgrep -f claude` -- the
 substring form, in the same function, eleven lines below the comment explaining
 why it is wrong.
 
@@ -9,7 +9,7 @@ The substring is not marginally looser, it is unrelated: the scratchpad lives at
 `/tmp/claude-0/...`, so ANY process carrying that path in its argv matches.
 Measured on the live box 2026-08-09: `pgrep -f claude` -> 6 pids (the session's
 own CLI, context_watch.py, the environment manager, a shell);
-`pids_of '.*/claude'` -> 0.
+`pids_of '.*/codex'` -> 0.
 
 Only the cwd gate kept those alive, and it is the wrong thing to rely on: it
 admits any process whose cwd sits under the work tree -- a proofread pass, an
@@ -43,7 +43,7 @@ def _orphan_sweep() -> str:
     """The kill loop out of stop_politely, without its two-hour wait.
 
     **Anchored on the kill, not on the loop header.** Both loops in
-    stop_politely now open with `for pid in $(pids_of '.*/claude'); do` -- that
+    stop_politely now open with `for pid in $(pids_of '.*/codex'); do` -- that
     is the fix -- so slicing from the FIRST one swallowed the wait loop and its
     `for _ in $(seq 1 240); do ... sleep 30`. Four cases here then passed
     without the kill loop ever running: the sweep sat in the wait, killed
@@ -85,7 +85,7 @@ def bench(tmp_path: pathlib.Path):
     binv = tmp_path / "bin"
     binv.mkdir()
 
-    solver = binv / "claude"            # argv[0] ends in /claude -> a solver
+    solver = binv / "codex"            # argv[0] ends in /codex -> a solver
     solver.write_text("#!/bin/bash\nsleep 120\n", encoding="utf-8")
     solver.chmod(0o755)
 

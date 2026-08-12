@@ -30,7 +30,7 @@
 # other four did not, so a fixture run or a fresh container silently read the
 # wrong tree. Same defect class as the rest of this file: a value that agrees
 # with the truth only in the environment you happen to test it in.
-SP="${CCARC3_SCRATCH:-/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad}"
+SP="${CCARC3_SCRATCH:-/tmp/athanor-ccarc3-codex/scratchpad}"
 # **The runner is an argument, and it comes from the repo.** It was hardcoded to
 # the scratchpad copy of ablate_baselines.py -- volatile, so a container
 # replacement could leave the supervisor driving whatever the image snapshot
@@ -180,7 +180,7 @@ stop_politely() {
     # A live solver has its cwd inside the work tree. That is the thing itself.
     for _ in $(seq 1 240); do          # up to ~2h
         pending=0
-        for pid in $(pids_of '.*/claude'); do
+        for pid in $(pids_of '.*/codex'); do
             c=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
             case "$c" in "$SP"/"$WORK"/*) pending=1;; esac
         done
@@ -192,7 +192,7 @@ stop_politely() {
     done
     sleep 2
     # **`pgrep -f claude` matched everything on this box, including us.** Eleven
-    # lines above, the wait loop uses the argv-element-exact `pids_of '.*/claude'`
+    # lines above, the wait loop uses the argv-element-exact `pids_of '.*/codex'`
     # for exactly the reason this project has now hit three times -- and this
     # loop, in the same function, used the substring form anyway.
     #
@@ -200,14 +200,14 @@ stop_politely() {
     # lives at `/tmp/claude-0/...`, so ANY process carrying that path in its argv
     # matches. Measured 2026-08-09 on the live box: `pgrep -f claude` -> 6 pids
     # (this session's own CLI, context_watch.py, the environment manager, a
-    # shell), `pids_of '.*/claude'` -> 0.
+    # shell), `pids_of '.*/codex'` -> 0.
     #
     # Only the cwd gate below kept those six alive, and it is the wrong thing to
     # be relying on: it admits any process whose cwd happens to sit under the
     # work tree -- a proofread pass, an analysis script, an operator's shell --
     # and kills it while reporting "orphaned solver", which is also a lie about
-    # what was killed. A solver is a `claude` process; that is the thing itself.
-    for pid in $(pids_of '.*/claude'); do
+    # what was killed. A solver is a `codex` process; that is the thing itself.
+    for pid in $(pids_of '.*/codex'); do
         c=$(readlink "/proc/$pid/cwd" 2>/dev/null)
         case "$c" in
             *"$WORK"/*)

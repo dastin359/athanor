@@ -41,7 +41,7 @@ import traceback
 # directory that stops existing. See tools/clean_rollouts.py for the full note.
 SP = pathlib.Path(
     os.environ.get("CCARC3_SCRATCH")
-    or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+    or "/tmp/athanor-ccarc3-codex/scratchpad"
 )
 # Derived from this file's location (`<repo>/tools/`), not written: the
 # hard-coded path is this container's clone location, and a fresh container

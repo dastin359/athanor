@@ -628,7 +628,7 @@ HARNESS_PATHS = ("src/athanor/ccarc3/", "tools/ablate_baselines.py")
 # Exactly what a solver can see: the four files it reads, and the API surface it
 # is allowed to reach. Everything else in the harness is invisible to it by
 # construction.
-SOLVER_FILES = ("CLAUDE.md", "DOCTRINE.md", "session.py", "meta.json")
+SOLVER_FILES = ("AGENTS.md", "DOCTRINE.md", "session.py", "meta.json")
 
 
 def surface_digest(root: pathlib.Path) -> str:
@@ -935,7 +935,7 @@ def _scratchpad() -> pathlib.Path:
     """Where runs live. Overridable, because the path encodes a session UUID."""
     return pathlib.Path(
         os.environ.get("CCARC3_SCRATCH")
-        or "/tmp/claude-0/-home-user-athanor/a3375e8f-271e-5133-96a4-a40a6a06a752/scratchpad"
+        or "/tmp/athanor-ccarc3-codex/scratchpad"
     )
 
 
@@ -1004,7 +1004,7 @@ def live_games() -> list[dict]:
             cwd = (entry / "cwd").resolve()
         except (OSError, PermissionError):
             continue
-        if not any(a.endswith("/claude") for a in argv):
+        if not any(a.endswith("/codex") for a in argv):
             continue
         # **The arm names were a stale allowlist.** This read
         # `"clean_rollouts" not in cwd and "scratchpad/runs" not in cwd`, so a

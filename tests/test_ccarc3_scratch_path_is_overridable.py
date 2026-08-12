@@ -309,7 +309,7 @@ BRANCH_TOOLS = [
     "rehydrate_bootstrap.sh",
     "rehydrate_box.sh",
 ]
-DEFAULT_BRANCH = "claude/athanor-cc-harness-variant-jpqw7t"
+DEFAULT_BRANCH = "codexarc3"
 
 
 def _branch_line(tool: str) -> str:

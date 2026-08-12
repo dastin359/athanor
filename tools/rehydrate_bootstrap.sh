@@ -30,7 +30,7 @@ set -uo pipefail
 REPO="${CCARC3_REPO:-/home/user/athanor}"
 # Overridable via `CCARC3_BRANCH`; a session on another account works on
 # another branch. Not derived from HEAD -- see preserve_evidence.sh.
-BRANCH="${CCARC3_BRANCH:-claude/athanor-cc-harness-variant-jpqw7t}"
+BRANCH="${CCARC3_BRANCH:-codexarc3}"
 cd "$REPO" || exit 1
 for delay in 0 2 4 8 16; do
   [ "$delay" = 0 ] || sleep "$delay"
