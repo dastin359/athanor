@@ -12,9 +12,11 @@ branch.
 |---|---|
 | Repository | `https://github.com/dastin359/athanor.git` |
 | Branch | `codex/port-arc-agi-3-harness-logic` |
-| Last verified code commit | `bfcfdcfcfb5d95ed73248aa68c31591c3cba6e61` |
+| Last verified code commit | `b33a05fb215292efb6b89a4a9e58cde90add1e1b` |
 | Port commit | `4b38ed97f0d708d548a7d79ac5a0ab502898c0d6` |
-| Tests | `1522 passed, 40 skipped, 1 xfailed` |
+| Prior macOS suite | `1522 passed, 40 skipped, 1 xfailed` |
+| Clean-command focused suite | `68 passed` |
+| Linux full suite | `1563 passed, 11 skipped, 1 xfailed, 4 host-specific failures` |
 | Live verification | `cd82-fb555c5d`, won `6/6`, full 5x budget available |
 | Live usage | 294 billed actions over three winning plays: 124, 85, 85 |
 | Running processes | None belonging to this handoff |
@@ -23,6 +25,14 @@ The requested work is complete and pushed: the newer CC harness safeguards are
 ported to the Codex runtime, the unit/smoke suite is green, and a strict clean
 live run won the game. Do not spend another live run merely to recreate that
 proof.
+
+The follow-up clean single-game command is implemented in `b33a05f`. On the
+Linux continuation host its focused suite passes. The full suite has four
+pre-existing host discrepancies: detached children reparent to PID 2992
+(`Relay`) rather than PID 1 in three process-orphan tests, and the virtualenv's
+interpreter symlink resolves into `/home/dastin/anaconda3` in one contamination
+scan test. No clean-command test fails. These are not speculative fixes to fold
+into the ARC boundary change.
 
 The old checkout `/Users/dastin/dev/Agentic-ARC-Solver` belongs to the Cursor
 agent. It was not modified. On another machine, use a fresh clone with a
@@ -148,10 +158,22 @@ The archive contains the workspace, `result.json`, `scorecard.json`,
 
 ## Live-run safety boundary
 
-Do not use plain `athanor ccarc3 run` as a benchmark-clean entrypoint yet. It
-runs the game, but a diagnostic attempt showed that this direct path does not
-install the baseline-stripping and credential-withholding proxy. The attempt
-was aborted after its opening RESET and performed no gameplay.
+Do not use plain `athanor ccarc3 run` as a benchmark-clean entrypoint. It runs
+the game, but a diagnostic attempt showed that this direct path does not install
+the baseline-stripping and credential-withholding proxy. The attempt was
+aborted after its opening RESET and performed no gameplay. The plain command is
+intentionally unchanged for existing callers.
+
+For one benchmark-clean game, use the explicit command below, and only with
+authorization to spend ARC actions:
+
+```bash
+athanor ccarc3 clean-run --game cd82-fb555c5d
+```
+
+It writes outside the repository by default, installs and asserts the proxy,
+and refuses every initial or resumed/nudged Codex launch unless the credential,
+baseline, action-cap, routing, and host-context isolation invariants all hold.
 
 The supported clean driver calls `ablate_baselines.install()` and
 `assert_installed()` before opening a game. A narrowly scoped live validation
@@ -175,12 +197,11 @@ repository or user instructions.
 
 ## Best next work
 
-No code change is required to satisfy the original port request. If continuing
-development, the highest-value follow-up is to make the clean boundary harder
-to misuse: add a first-class single-game clean command (or a `--clean` mode)
-that installs and verifies the proxy, keeps the credential out of the child,
-and refuses to launch if those invariants are false. Do not silently change the
-existing plain command without tests for callers that rely on it.
+No code change is required to satisfy the original port request. The
+highest-value follow-up from the original handoff is now implemented as
+`athanor ccarc3 clean-run`; its boundary and both initial/resume launch paths
+have unit coverage, while the existing plain command retains its prior
+behaviour.
 
 Other low-priority cleanup: avoid attempting the replay gate acknowledgement
 when no gate is pending, while preserving the current no-action-spent
