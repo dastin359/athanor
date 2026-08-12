@@ -1,5 +1,11 @@
 # START HERE — read the handoff in full before acting
 
+**Codex branch:** if you are on
+`codex/port-arc-agi-3-harness-logic`, start with
+`docs/ccarc3_codex_handoff_20260812.md`. The material below is the older Claude
+Code deployment's routing table; its design history remains useful, but its
+branch, runtime, quota, and process status are not current Codex instructions.
+
 **`docs/ccarc3_handoff_0809b.md`** (in this repo, ~25 KB / ~6k tokens) — open it
 NOW, in full, before acting on anything else. It is the CURRENT handoff, written
 for a session whose only context is this repository. This index is a **routing

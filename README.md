@@ -167,6 +167,7 @@ a proxy for it, and the signature is that it passes by not running.
 - [docs/cc_harness_results.md](docs/cc_harness_results.md) — the variant's experiment log: round-by-round results, every harness defect found and fixed, and the negative results
 - [docs/zero_solve_subset.md](docs/zero_solve_subset.md) — frozen 2026-04-12 snapshot methodology and reproduction queries
 - [docs/ccarc3_port_guide.md](docs/ccarc3_port_guide.md) — ARC-AGI-3 harness: what ports, the scoring invariants, the audit method, and what is *not* established
+- [docs/ccarc3_codex_handoff_20260812.md](docs/ccarc3_codex_handoff_20260812.md) — current Codex-port state, new-machine setup, verified live result, evidence transfer, and safe continuation boundary
 - [docs/ccarc3_design.md](docs/ccarc3_design.md) — ARC-AGI-3 design note and open questions
 - [docs/ccarc3_open_findings.md](docs/ccarc3_open_findings.md) — every ARC-AGI-3 audit finding, with the argument for each
 

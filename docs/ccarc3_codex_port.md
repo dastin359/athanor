@@ -1,5 +1,10 @@
 # CCARC3 Codex port
 
+**Current continuation handoff:**
+[`docs/ccarc3_codex_handoff_20260812.md`](ccarc3_codex_handoff_20260812.md).
+It records the verified branch state, setup commands, strict live-run result,
+evidence archive, and the clean-run safety boundary.
+
 This branch runs the ARC-AGI-3 harness with `codex exec`; it is not an
 ARC-AGI-2 port.
 
