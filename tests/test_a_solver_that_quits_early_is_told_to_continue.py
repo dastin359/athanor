@@ -123,6 +123,12 @@ def test_the_nudge_resumes_the_assigned_id_not_one_from_the_stream(harness, monk
     assert second[1:3] == ["exec", "resume"], f"the second launch did not resume: {second}"
     assert ws.session_id in second
     assert sess.NUDGE_PROMPT in second, "the nudge prompt was not sent"
+    assert "--ignore-user-config" in second
+    assert "--ignore-rules" in second
+    assert "--skip-git-repo-check" in second
+    assert ["--disable", "memories"] == second[
+        second.index("--disable"):second.index("--disable") + 2
+    ]
 
 
 def test_the_first_launch_does_not_invent_a_codex_thread_id(monkeypatch, tmp_path):

@@ -169,6 +169,16 @@ def test_cli_args_carry_model_and_prompt(ws):
     assert args[1:3] == ["exec", "--json"]
 
 
+def test_codex_run_is_isolated_from_host_configuration_and_memory(ws):
+    args = build_cli_args(ws)
+    assert "--ignore-user-config" in args
+    assert "--ignore-rules" in args
+    assert "--skip-git-repo-check" in args
+    assert ["--disable", "memories"] == args[
+        args.index("--disable"):args.index("--disable") + 2
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # outcome collection
 # --------------------------------------------------------------------------- #

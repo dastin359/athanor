@@ -626,7 +626,26 @@ def redact_self_reference(root: Path, game_id: str) -> int:
 def build_cli_args(workspace: Workspace) -> list[str]:
     """Build a non-interactive Codex invocation with a machine-readable stream."""
     config = workspace.config
-    args = [_codex_binary(), "exec", "--json", "--sandbox", config.sandbox]
+    # **A benchmark run must not inherit the operator's Codex context.**
+    # `config.toml` can enable memories, plugins, hooks and MCP servers that have
+    # nothing to do with the game.  This became observable on the first full
+    # Codex run: before playing, the child obeyed the host memory instructions
+    # and read ~/.codex/memories/MEMORY.md.  The file held repository history,
+    # not a solution, but the run had still reached outside its workspace and
+    # the proofreader correctly rejected it as submission evidence.
+    #
+    # Ignore user configuration and rules for reproducibility, and disable the
+    # memory feature explicitly so a future default change cannot silently turn
+    # it back on.  `--skip-git-repo-check` is also required because `out_dir` is
+    # deliberately arbitrary: without it an otherwise valid workspace outside
+    # the source checkout exits before its first action.
+    args = [
+        _codex_binary(), "exec", "--json",
+        "--ignore-user-config", "--ignore-rules",
+        "--disable", "memories",
+        "--skip-git-repo-check",
+        "--sandbox", config.sandbox,
+    ]
     args += ["-c", f"sandbox_workspace_write.network_access={str(config.network_access).lower()}"]
     if config.model:
         args += ["--model", config.model]
@@ -773,6 +792,9 @@ def _nudge_args(ws: Workspace) -> list[str] | None:
         return None
     args = [
         _codex_binary(), "exec", "resume", "--json",
+        "--ignore-user-config", "--ignore-rules",
+        "--disable", "memories",
+        "--skip-git-repo-check",
     ]
     config = ws.config
     if config.model:
