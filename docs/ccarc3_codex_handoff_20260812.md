@@ -12,11 +12,11 @@ branch.
 |---|---|
 | Repository | `https://github.com/dastin359/athanor.git` |
 | Branch | `codex/port-arc-agi-3-harness-logic` |
-| Last verified code commit | `b33a05fb215292efb6b89a4a9e58cde90add1e1b` |
+| Last verified code commit | `fc20ece7cc58501b4b2d6ee8e567312ed66b4e17` |
 | Port commit | `4b38ed97f0d708d548a7d79ac5a0ab502898c0d6` |
 | Prior macOS suite | `1522 passed, 40 skipped, 1 xfailed` |
 | Clean-command focused suite | `68 passed` |
-| Linux full suite | `1563 passed, 11 skipped, 1 xfailed, 4 host-specific failures` |
+| Linux full suite | `1613 passed, 9 skipped, 1 xfailed, 1 warning` |
 | Live verification | `cd82-fb555c5d`, won `6/6`, full 5x budget available |
 | Live usage | 294 billed actions over three winning plays: 124, 85, 85 |
 | Running processes | None belonging to this handoff |
@@ -26,13 +26,12 @@ ported to the Codex runtime, the unit/smoke suite is green, and a strict clean
 live run won the game. Do not spend another live run merely to recreate that
 proof.
 
-The follow-up clean single-game command is implemented in `b33a05f`. On the
-Linux continuation host its focused suite passes. The full suite has four
-pre-existing host discrepancies: detached children reparent to PID 2992
-(`Relay`) rather than PID 1 in three process-orphan tests, and the virtualenv's
-interpreter symlink resolves into `/home/dastin/anaconda3` in one contamination
-scan test. No clean-command test fails. These are not speculative fixes to fold
-into the ARC boundary change.
+The follow-up clean single-game command is implemented in `b33a05f`. Commit
+`fc20ece` then ports all eight substantive CC operational commits that followed
+the original snapshot. Portable ancestry-based orphan detection and lexical
+venv-path handling close the four former Linux discrepancies. The remaining
+warning is Python 3.12's existing multiprocessing/fork deprecation in the driver
+lock test.
 
 The old checkout `/Users/dastin/dev/Agentic-ARC-Solver` belongs to the Cursor
 agent. It was not modified. On another machine, use a fresh clone with a
@@ -63,7 +62,8 @@ python -m pytest -q
 ```
 
 Expected history includes `bfcfdcf Isolate Codex ARC runs from host context`
-and `4b38ed9 Port latest CC ARC-AGI-3 harness safeguards to Codex`. Use the
+and `4b38ed9 Port latest CC ARC-AGI-3 harness safeguards to Codex`, followed by
+`fc20ece Port latest CC ARC-AGI-3 operations safeguards to Codex`. Use the
 virtual environment's `python`; a random system interpreter may not have
 `athanor` or NumPy installed.
 
@@ -95,6 +95,15 @@ Two Codex-specific bugs were found during live verification and fixed:
 The first inherited-memory win is not the final proof. It was replaced by the
 strict isolated run below, which also won. This is what references to the
 "replacement run" mean.
+
+The later CC operations sync adds fail-closed scorecard completeness checks,
+durable-card accounting that excludes discarded attempts, cwd-independent test
+and tool imports, Python 3.12 f-string leak scanning, portable orphan ownership,
+single-instance supervisor/preserver locks whose children cannot inherit the
+lock descriptor, watchdog self-repair, a real outbound preflight, and guarded
+desktop/WSL recovery scripts. Codex adaptations use exact resolved driver paths
+so another agent's checkout cannot satisfy this checkout's liveness checks, and
+never search the operator's home directory for an ARC key implicitly.
 
 ## Strict live-run result
 
@@ -206,6 +215,10 @@ behaviour.
 Other low-priority cleanup: avoid attempting the replay gate acknowledgement
 when no gate is pending, while preserving the current no-action-spent
 behaviour.
+
+All substantive CC changes through remote CC tip `5d23563d` were reviewed. Its
+48 later commits are evidence-only; no newer `src/athanor/ccarc3` or
+`tools/ablate_baselines.py` mechanism remained to port at verification time.
 
 For a fresh Codex session, use this prompt:
 

@@ -31,7 +31,13 @@ semantics remain the source of truth. None of those five files changed.
   remain in force.
 
 Operational scripts now default to this branch, a Codex-specific temporary run
-root, `codex` process matching, and the `AGENTS.md` evidence surface.
+root, `codex` process matching, and the `AGENTS.md` evidence surface. The latest
+CC operations sync additionally provides portable process-ancestry cleanup,
+fail-closed shared-card verification, crash-safe supervisor/preserver locks,
+watchdog repair, real ARC reachability preflight, cwd-independent tooling, and
+guarded desktop/WSL bootstrap and resume paths. Driver detection is scoped to
+the exact resolved path, avoiding interference from another checkout with the
+same script basename.
 
 ## Benchmark-clean single game
 
@@ -71,3 +77,7 @@ does not transfer: a session id cannot be assigned before launch. Codex emits
 the authoritative thread id after launch, so the port captures that event
 before attempting a nudge. This changes session mechanics, not any scoring
 invariant.
+
+All substantive CC changes through remote tip `5d23563d` have been reviewed
+and ported. The later CC commits are evidence-only; no newer ARC domain,
+baseline-ablation, or runtime mechanism remained at verification time.
