@@ -1,5 +1,10 @@
 # Codex ARC-AGI-3 handoff — 2026-08-12
 
+> **New coding-agent entry point:** read
+> [`codex_arc3_takeover_notebook_20260812.md`](codex_arc3_takeover_notebook_20260812.md)
+> first. It consolidates the current snapshot, operations port, safety boundary,
+> test baseline, credentials policy, and takeover checklist.
+
 This is the current continuation document for the Codex port. Read it before
 the older CCARC3 handoffs: those documents preserve useful design and audit
 history, but their branch, runtime, process, quota, and "what is running" notes
@@ -217,7 +222,7 @@ when no gate is pending, while preserving the current no-action-spent
 behaviour.
 
 All substantive CC changes through remote CC tip `5d23563d` were reviewed. Its
-48 later commits are evidence-only; no newer `src/athanor/ccarc3` or
+38 commits after `3268b9a3` are evidence-only; no newer `src/athanor/ccarc3` or
 `tools/ablate_baselines.py` mechanism remained to port at verification time.
 
 For a fresh Codex session, use this prompt:
