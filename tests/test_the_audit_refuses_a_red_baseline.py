@@ -24,12 +24,13 @@ audited against.
 from __future__ import annotations
 
 import subprocess
+import pathlib
 import sys
 import textwrap
 
 import pytest
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import mutation_check as mc
 
 

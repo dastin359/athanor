@@ -25,7 +25,7 @@ import tempfile
 
 import pytest
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 
 from athanor.ccarc3.client import ArcClient
 from athanor.ccarc3.session import Ccarc3Config, GameInfo, build_workspace

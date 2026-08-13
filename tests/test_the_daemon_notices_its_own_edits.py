@@ -185,7 +185,8 @@ def test_the_lock_is_keyed_on_the_repository(tmp_path):
     the live daemon — `test_no_tool_is_pinned_to_this_container.py` does exactly
     that. Two different repos, two different locks."""
     text = PRESERVER.read_text(encoding="utf-8")
-    assert 'LOCK="/tmp/ccarc3-preserve-$(printf' in text and '"$REPO"' in text, (
+    assert 'LOCK_ROOT="${TMPDIR:-/tmp}"' in text
+    assert 'LOCK="$LOCK_ROOT/ccarc3-preserve-$(printf' in text and '"$REPO"' in text, (
         "the lock is no longer derived from $REPO; a clone would now collide "
         "with the live daemon")
 
@@ -195,7 +196,7 @@ def test_the_lock_fails_open(tmp_path):
     anyway. A duplicate costs a noisy cycle; refusing to start costs evidence on
     a disk that has been rolled back six times."""
     text = PRESERVER.read_text(encoding="utf-8")
-    i = text.index('LOCK="/tmp/ccarc3-preserve-')
+    i = text.index('LOCK_ROOT="${TMPDIR:-/tmp}"')
     block = text[i:i + 1800]
     assert "running anyway" in block, "the lock no longer fails open"
     assert "exit 0" in block, "contention must exit cleanly, not error"

@@ -221,15 +221,16 @@ def _start_body() -> str:
     return body[:body.index("\n}\n") + 3]
 
 
-@pytest.mark.parametrize("guard", ["refresh_proxy", "key_ok"])
+@pytest.mark.parametrize("guard", ["outbound_ok", "key_ok"])
 def test_start_refuses_when_a_precondition_fails(guard):
     """Both guards must be able to stop the launch.
 
-    Dropping `refresh_proxy` passed the suite. The proxy is what confines the
-    solver's network reach, so launching without refreshing it starts a real
-    game with the gate in whatever state the last run left it.
+    Dropping the outbound guard passed the suite. Without it the supervisor
+    launches a driver that cannot reach ARC -- which on the cloud box meant a
+    dead proxy port and seven games churning on Connection refused, and on any
+    box means a relaunch every ten minutes writing a traceback nobody reads.
     """
-    other = "key_ok" if guard == "refresh_proxy" else "refresh_proxy"
+    other = "key_ok" if guard == "outbound_ok" else "outbound_ok"
     # **The launch writes to $LOG, not to stdout.** The first draft stubbed
     # `setsid` to echo and pointed LOG at /dev/null, so the evidence went
     # straight to the bit bucket and the test passed against the very mutant it
@@ -257,7 +258,7 @@ def test_start_launches_when_both_preconditions_pass():
     test above would pass for the wrong reason."""
     marker = Path(_tmp_marker())
     script = "\n".join([
-        "refresh_proxy() { return 0; }",
+        "outbound_ok() { return 0; }",
         "key_ok() { return 0; }",
         'setsid() { echo "LAUNCHED"; }',
         'nohup() { echo "LAUNCHED"; }',

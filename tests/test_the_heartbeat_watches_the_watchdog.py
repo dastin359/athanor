@@ -129,8 +129,26 @@ def test_a_daemon_that_is_running_is_not_reported(tmp_path):
 
 def test_the_real_watch_list_is_all_running_right_now(tmp_path):
     """A live check of the box, not of the code: every daemon the heartbeat
-    watches should be up while this session is working."""
-    if os.environ.get("CCARC3_LIVE_DAEMON_CHECK") != "1":
-        pytest.skip("set CCARC3_LIVE_DAEMON_CHECK=1 inside the managed runner")
+    watches should be up while a sweep is sanctioned.
+
+    The configured scratch directory is the source of truth: a positive
+    concurrency brake authorizes a sweep and therefore requires its daemons.
+    The explicit flag remains available for managed runners that keep their
+    brake elsewhere.  No implicit home-directory lookup is used in the Codex
+    path, so an ordinary test run cannot reach host ARC state by accident.
+    """
+    sanctioned = os.environ.get("CCARC3_LIVE_DAEMON_CHECK") == "1"
+    scratch = os.environ.get("CCARC3_SCRATCH")
+    brake = Path(scratch) / "concurrency" if scratch else None
+    if not sanctioned and brake and brake.is_file():
+        try:
+            sanctioned = int(brake.read_text().strip() or "0") > 0
+        except ValueError:
+            sanctioned = False
+    if not sanctioned:
+        pytest.skip(
+            f"no sweep is sanctioned (brake {brake} is absent or 0), so the "
+            "daemons are correctly down; nothing to assert about a parked box"
+        )
     report = _daemon_check(_watched(), tmp_path)
     assert "DAEMON DOWN" not in report, report

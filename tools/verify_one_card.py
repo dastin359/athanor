@@ -83,19 +83,29 @@ def cards_in(sweep: pathlib.Path) -> dict[str, list[str]]:
     return found
 
 
-def _expected_games() -> int:
+def _expected_games() -> int | None:
     """How many games the sweep is supposed to contain.
 
     Read from the driver's own queue rather than passed in, so the two cannot
-    drift. Returns 0 if it cannot be imported, which falls back to counting only
-    what banked -- the old behaviour, and the reason this exists.
+    drift. Returns ``None`` -- never 0 -- when the list cannot be read, because
+    the caller must be able to tell "no games are required" from "I do not know
+    how many are required", and 0 collapses those into the answer that passes.
     """
     try:
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
         import clean_rollouts                      # noqa: PLC0415
-        return len(clean_rollouts.GAMES)
-    except Exception:                              # noqa: BLE001
-        return 0
+    except Exception as exc:                       # noqa: BLE001
+        # **"Cannot tell" is not "no requirement".** This returned 0, and `main`
+        # gates the completeness check on `if expected and ...` -- so an import
+        # failure here silently DISABLED the one check this file exists for, and
+        # a card holding 5 of 25 games printed "submittable as a single
+        # scorecard_url". Same shape as the hole in the docstring above, one
+        # layer down: the gate that reports OK by not looking.
+        print("could not read the sweep's game list (%s: %s) -- completeness "
+              "cannot be checked from here; pass --games N or --partial"
+              % (type(exc).__name__, exc))
+        return None
+    return len(clean_rollouts.GAMES)
 
 
 def main() -> int:
@@ -134,7 +144,19 @@ def main() -> int:
     # "submittable". Written the same evening as the note about guards that
     # report OK by not looking.
     ok = True
-    expected = 0 if args.partial else (args.games or _expected_games())
+    if args.partial:
+        expected = 0                       # the operator said this is unfinished
+    elif args.games:
+        expected = args.games
+    else:
+        expected = _expected_games()
+        if expected is None:
+            # Refusing, not passing. The reason is printed by _expected_games.
+            print("\nUNVERIFIABLE: cannot establish how many games this sweep "
+                  "should hold, so completeness was not checked. Re-run with "
+                  "--games N, or --partial if the sweep is knowingly unfinished.")
+            ok = False
+            expected = 0
     if expected and total < expected:
         print("\nINCOMPLETE: %d of %d games banked a result. The other %d are not "
               "on this card or any other — a submission built from it is missing "

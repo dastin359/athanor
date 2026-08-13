@@ -22,9 +22,10 @@ equivalence is how a suite acquires tests that assert coincidences.
 """
 from __future__ import annotations
 
+import pathlib
 import sys
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import mutation_check as mc  # noqa: E402
 
 # Mutants that cannot change behaviour. Argued in docs/ccarc3_open_findings.md.

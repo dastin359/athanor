@@ -179,6 +179,7 @@ class TestOutOfWorkspacePaths:
         """The workspace tells the agent to run this interpreter; it is benign."""
         import sys
         from athanor.cc_harness.scoring import contamination_scan
+        assert sys.executable.startswith("/"), "need an absolute interpreter path"
         ws = tmp_path / "workspace"
         (ws / "task").mkdir(parents=True)
         stream = self._stream(tmp_path, f"{sys.executable} explore/probe.py")

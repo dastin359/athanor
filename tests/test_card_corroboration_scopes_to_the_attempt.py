@@ -18,6 +18,7 @@ from __future__ import annotations
 import gzip
 import json
 import pathlib
+import pytest
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
@@ -76,9 +77,16 @@ def test_a_card_holding_fewer_plays_than_the_run_is_a_disagreement():
 def test_a_real_multi_play_attempt_still_corroborates(tmp_path):
     """The control, from preserved evidence: `su15` attempt_3 ran three plays and
     its card holds exactly those three. Nothing here may reject it."""
-    ev = pathlib.Path("evidence/ccarc3/clean_rollouts/su15-1944f8ab/attempt_3/su15-1944f8ab")
+    # **Repo-derived, and a skip rather than a silent return.** This read
+    # `pathlib.Path("evidence/...")` -- relative, so from any cwd but the repo
+    # root the `exists()` guard was false and the function returned having
+    # asserted nothing, reporting green. The one test standing between the
+    # corroboration check and a rejected legitimate 3-play attempt was, outside
+    # the repo root, not a test. Passing by not running, again.
+    ev = (pathlib.Path(__file__).resolve().parents[1]
+          / "evidence/ccarc3/clean_rollouts/su15-1944f8ab/attempt_3/su15-1944f8ab")
     if not (ev / "scorecard.json.gz").exists():
-        return                            # evidence not checked out in this tree
+        pytest.skip(f"preserved evidence not in this checkout: {ev}")
     card = json.loads(gzip.open(ev / "scorecard.json.gz").read())
     result = json.loads(gzip.open(ev / "result.json.gz").read())
     assert result["playthroughs"] == 3 and result["levels_reached"] == 9

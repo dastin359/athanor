@@ -24,9 +24,10 @@ heading for the same false positive; the wrong multiple merely got there first.
 from __future__ import annotations
 
 import re
+import pathlib
 import sys
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import proofread_trace as pt
 
 

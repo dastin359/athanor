@@ -56,12 +56,41 @@ def _find(stub: pathlib.Path) -> int | None:
     return None
 
 
+def _stat_fields(pid: int) -> list[str]:
+    """`/proc/<pid>/stat` after the last `)`.
+
+    `comm` is field 2 and is arbitrary bytes, so one space in a process name
+    shifts every later field right -- splitting the whole line then reads a
+    fragment of the name as the ppid. The same misparse has already been fixed in
+    `clean_rollouts.kill_orphan_solvers` and `build_trace_audit`; it was still
+    here.
+    """
+    raw = pathlib.Path(f"/proc/{pid}/stat").read_text()
+    return raw[raw.rindex(")") + 2:].split()
+
+
 def _ppid(pid: int) -> int:
-    return int(pathlib.Path(f"/proc/{pid}/stat").read_text().split()[3])
+    return int(_stat_fields(pid)[1])
 
 
 def _sid(pid: int) -> int:
-    return int(pathlib.Path(f"/proc/{pid}/stat").read_text().split()[5])
+    return int(_stat_fields(pid)[3])
+
+
+def _is_descendant_of(pid: int, ancestor: int) -> bool:
+    """Walk the parent chain, so an intermediate subshell still counts as
+    'hanging off the launcher' while it lives."""
+    seen: set[int] = set()
+    cur = pid
+    while cur and cur not in seen:
+        seen.add(cur)
+        try:
+            cur = _ppid(cur)
+        except (OSError, ValueError):
+            return False
+        if cur == ancestor:
+            return True
+    return False
 
 
 def test_the_relaunch_orphans_the_heartbeat(tmp_path: pathlib.Path) -> None:
@@ -103,18 +132,32 @@ def test_the_relaunch_orphans_the_heartbeat(tmp_path: pathlib.Path) -> None:
                 time.sleep(0.1)
         assert pid is not None, "the launch line started nothing"
 
-        # Wait for the parent to settle rather than reading it once.
+        # Wait for reparenting to settle rather than reading it once.
         settle = time.time() + 5
-        parent = _ppid(pid)
-        while time.time() < settle and parent not in (1, launcher.pid):
+        while time.time() < settle and _is_descendant_of(pid, launcher.pid):
             time.sleep(0.1)
-            parent = _ppid(pid)
 
-        assert parent == 1, (
-            f"the relaunched heartbeat has ppid {parent} (the launcher is "
-            f"{launcher.pid}, still running) -- it is a live child of whatever "
-            f"launched it, so a descendant sweep of the Monitor task takes it "
-            f"down on every timeout"
+        # **"Orphaned" is not spelled `ppid == 1` on every box.** pid 1 reaps
+        # orphans only where it is the sole reaper. Under a user `systemd`, a
+        # container init shim, or WSL -- where `/sbin/init` is pid 1 but a
+        # separate `/init` process is the subreaper -- a correctly detached
+        # process reparents to that reaper instead, and this assertion failed on
+        # a launch line that had behaved exactly as designed. Measured on the
+        # desktop box 2026-08-12: ppid 28233, launcher alive, double fork
+        # working.
+        #
+        # The number was never the property. What the bug was about is that the
+        # heartbeat must NOT be a live descendant of its launcher, so a sweep of
+        # the Monitor task's descendants cannot take it down -- so assert that,
+        # and keep the launcher-alive precondition that makes it discriminating.
+        assert launcher.poll() is None, (
+            "the launcher exited, so the child would be orphaned either way and "
+            "this test cannot tell a double fork from a bare background job"
+        )
+        assert not _is_descendant_of(pid, launcher.pid), (
+            f"the relaunched heartbeat (pid {pid}, ppid {_ppid(pid)}) is still a "
+            f"descendant of its launcher {launcher.pid}, which is running -- so a "
+            f"descendant sweep of the Monitor task takes it down on every timeout"
         )
         assert _sid(pid) == pid, (
             f"pid {pid} is not a session leader -- setsid did not take effect"

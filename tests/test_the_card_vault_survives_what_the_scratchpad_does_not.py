@@ -27,7 +27,8 @@ import sys
 
 import pytest
 
-sys.path.insert(0, "tools")
+REPO = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "tools"))
 import card_vault as cv
 
 
@@ -356,7 +357,7 @@ def test_the_preserver_hands_the_key_to_the_vault(tmp_path):
     _env_fixture(sp)
     (sp / "shared_card.json").write_text(json.dumps(COOKIES))
 
-    block = _shell_slice(pathlib.Path("tools/preserve_evidence.sh"),
+    block = _shell_slice(REPO / "tools" / "preserve_evidence.sh",
                          "    vpy=", "    # **Drain a push backlog")
     assert "card_vault.py" in block, "extraction missed the vault call"
     script = "\n".join([
@@ -391,7 +392,7 @@ def test_rehydrate_hands_the_key_to_the_vault(tmp_path):
 
     (sp / "shared_card.json").unlink()          # the replacement
 
-    block = _shell_slice(pathlib.Path("tools/rehydrate_box.sh"),
+    block = _shell_slice(REPO / "tools" / "rehydrate_box.sh",
                          'if [ -f "$SP/arc3/.env" ]; then', "\nfi\n")
     script = "\n".join([f'REPO="{repo}"', f'SP="{sp}"', block, "fi"])
     run = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=120)

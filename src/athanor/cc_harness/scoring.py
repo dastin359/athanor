@@ -12,6 +12,7 @@ contaminated and the score is worthless.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -164,10 +165,18 @@ def contamination_scan(
         # so. It was established by hand. That is the wrong division of labour.
         for match in set(_OUT_OF_WORKSPACE.findall(stream_text)):
             resolved = match.replace("\\", "/")
+            lexical = os.path.abspath(resolved)
             canonical = str(Path(resolved).resolve())
             if canonical.startswith(str(workspace_root)):
                 continue
-            if any(canonical.startswith(prefix) for prefix in _BENIGN_PATH_PREFIXES):
+            # A venv's interpreter may be a symlink to the host Python. The
+            # solver invokes the explicit venv path the harness gave it; resolving
+            # that symlink first made the benign path look like an unrelated host
+            # read (for example, into a Conda installation). Preserve both views:
+            # lexical containment proves the command used the allowed venv path,
+            # while canonical containment handles ordinary installed packages.
+            if any(lexical.startswith(prefix) or canonical.startswith(prefix)
+                   for prefix in _BENIGN_PATH_PREFIXES):
                 continue
             # Claude Code spills large tool results to a project directory whose
             # name is the workspace path with separators replaced. A reference

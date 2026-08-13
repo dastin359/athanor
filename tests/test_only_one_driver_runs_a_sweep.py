@@ -18,11 +18,12 @@ the holder dies.
 from __future__ import annotations
 
 import multiprocessing
+import pathlib
 import sys
 
 import pytest
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 
 
 def _grab_driver_lock(path, out):

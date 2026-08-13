@@ -66,10 +66,35 @@ def test_an_empty_override_falls_back_to_the_default():
 
 
 def _announcement(env: dict[str, str]) -> str:
-    """The real announcement block, run against the real assignments."""
+    """The real announcement block, run against the real assignments.
+
+    **Sliced to the `if` it is about, not to the next landmark far below it.**
+    The end marker used to be `ceiling_stopped=0`, which sat directly after the
+    announcement when this was written. `51d5955` then added the single-instance
+    flock in between, so the slice silently grew to include
+    `exec 9>"$_LOCK" || { ...; exit 2; }` -- with `SP` and `RUNNER` unset in this
+    deliberately-empty environment, that resolves to `/supervisor..lock` and the
+    body exits 2 before reaching anything this test is about.
+
+    It survived on the box it was written on only because tests there run as
+    root, where `/` is writable: the slice quietly created a junk lock file at
+    the filesystem root and carried on. As an ordinary user it is
+    `Permission denied`. A range that depends on nothing being inserted into it
+    is the same defect this project keeps meeting -- a value that agrees with the
+    truth only in the environment anyone exercises it in.
+
+    The slice now ends at the block's own `fi`, and the assertions below prove it
+    covers the announcement and nothing else.
+    """
     start = TEXT.index('# Say the ceiling out loud')
-    end = TEXT.index("ceiling_stopped=0")
-    body = _assignments() + "\n" + TEXT[start:end]
+    end = TEXT.index("\nfi\n", start) + len("\nfi\n")
+    block = TEXT[start:end]
+    assert "CEILING RAISED" in block, "the slice no longer holds the announcement"
+    for stray in ("exec 9>", "flock", "setsid"):
+        assert stray not in block, (
+            f"the announcement slice has grown to include {stray!r}; it must "
+            f"cover only the ceiling `if` block")
+    body = _assignments() + "\n" + block
     proc = subprocess.run(["bash", "-c", body], capture_output=True, text=True,
                           check=True, env={"PATH": "/usr/bin:/bin", "TZ": "UTC", **env})
     return proc.stdout

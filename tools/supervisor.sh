@@ -44,7 +44,7 @@ REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 RUNNER="${1:-$REPO/tools/clean_rollouts.py}"
 case "$RUNNER" in /*) ;; *) RUNNER="$REPO/$RUNNER" ;; esac
 [ -f "$RUNNER" ] || { echo "supervisor: no such runner: $RUNNER" >&2; exit 2; }
-RUNNER_RE=".*/$(basename "$RUNNER" | sed 's/\./\\./g')"
+RUNNER_PATH="$(readlink -f "$RUNNER")"
 # Where that runner puts its game workspaces. The politeness check and the
 # orphan sweep both walk it, and both were hardcoded to the arm's directory --
 # so pointed at any other runner the supervisor would have seen nothing
@@ -111,6 +111,15 @@ pids_of() {
     done
 }
 
+pids_of_exact() {
+    local d
+    for d in /proc/[0-9]*; do
+        [ -r "$d/cmdline" ] || continue
+        { tr '\0' '\n' < "$d/cmdline"; } 2>/dev/null | grep -Fqx -- "$1" \
+            && echo "${d#/proc/}"
+    done
+}
+
 # **A VOID window reads as 0, not as its last utilization.**
 #
 # quota.sh derives its readings from `rate_limit_event` lines in solver
@@ -139,7 +148,7 @@ pids_of() {
 # A `rejected` status on EITHER window is a stop regardless of utilization,
 # because a window can refuse before its own number reaches the ceiling.
 util_now() {
-    bash "$QUOTA" 2>/dev/null | awk '
+    bash "$QUOTA" 2>/dev/null 9>&- | awk '
         # `exit` still runs END, so printing here emitted the refusal AND the
         # accumulated worst -- two lines into a variable every caller treats as
         # one number. Flag it and let END decide.
@@ -185,12 +194,12 @@ stop_politely() {
             case "$c" in "$SP"/"$WORK"/*) pending=1;; esac
         done
         [ "$pending" -eq 0 ] && break
-        sleep 30
+        sleep 30 9>&-
     done
-    for p in $(pids_of "$RUNNER_RE"); do
+    for p in $(pids_of_exact "$RUNNER_PATH"); do
         kill "$p" 2>/dev/null && echo "  stopped runner $p"
     done
-    sleep 2
+    sleep 2 9>&-
     # **`pgrep -f claude` matched everything on this box, including us.** Eleven
     # lines above, the wait loop uses the argv-element-exact `pids_of '.*/codex'`
     # for exactly the reason this project has now hit three times -- and this
@@ -218,31 +227,42 @@ stop_politely() {
     done
 }
 
-# **Refresh the outbound proxy before every launch, and refuse to launch without
-# one that answers.** Outbound HTTPS leaves this box through an agent proxy on a
-# loopback port, and that port CHANGES when the session worker restarts. A daemon
-# keeps whatever it inherited: on 2026-08-07 this supervisor, started hours
-# earlier, still exported 127.0.0.1:37827 while the live proxy had moved to
-# :41751 -- so every driver it spawned inherited a dead proxy and died on its
-# first `list_games()` with [Errno 111] Connection refused. Retrospectively that
-# is also the unexplained incident earlier the same day, where seven games churned
-# on Connection refused and the cause was never found.
-#
-# The session is the only thing that can see the current value, so it writes
-# `$SP/proxy_env` and this reads it back. The validation matters as much as the
-# refresh: without it a stale proxy produces a driver that starts, fails, exits,
-# and is restarted ten minutes later forever, with each cycle writing a fresh
-# traceback nobody reads. A launch that cannot possibly work should be a loud
-# skip, not a quiet retry.
-refresh_proxy() {
+# **Check the driver's real first outbound operation, not a proxy for it.**
+# A configured agent proxy is still probed diagnostically, but direct desktop
+# connectivity is valid too.  The authoritative gate is list_games() through
+# the same interpreter, environment, credentials, DNS, TLS, and endpoint the
+# rollout driver will use.
+outbound_ok() {
     [ -f "$SP/proxy_env" ] && . "$SP/proxy_env"
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-           "${HTTPS_PROXY:-http://127.0.0.1:1}/__agentproxy/status" 2>/dev/null)
-    if [ "$code" != "200" ]; then
-        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SKIPPING LAUNCH — proxy ${HTTPS_PROXY:-unset} did not"\
-             "answer (got '${code:-no response}'). Every outbound call would fail."\
-             "Refresh $SP/proxy_env from a live session."
+
+    if [ -n "${HTTPS_PROXY:-}" ]; then
+        local code
+        code=$(exec 9>&-; curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+               "$HTTPS_PROXY/__agentproxy/status" 2>/dev/null)
+        [ "$code" = "200" ] || \
+            echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') note: HTTPS_PROXY=$HTTPS_PROXY did not"\
+                 " answer /__agentproxy/status (got '${code:-no response}'); the live check decides."
+    fi
+
+    local out rc
+    out=$(exec 9>&-; cd "$REPO" && .venv/bin/python - <<'PYEOF' 2>&1
+import os, sys
+from athanor.ccarc3.client import list_games
+try:
+    games = list_games(api_key=os.environ.get("ARC_API_KEY", ""))
+except Exception as exc:
+    print(f"{type(exc).__name__}: {exc}")
+    sys.exit(1)
+if not games:
+    print("ARC answered, but with zero games")
+    sys.exit(1)
+print(f"{len(games)} games")
+PYEOF
+)
+    rc=$?
+    if [ "$rc" != 0 ]; then
+        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') SKIPPING LAUNCH — this box cannot reach"\
+             " ARC, so every call the driver makes would fail: $out"
         return 1
     fi
     return 0
@@ -286,11 +306,12 @@ key_ok() {
 }
 
 start() {
-    refresh_proxy || return 1
+    # key_ok exports the key needed by outbound_ok's live, read-only preflight.
     key_ok || return 1
+    outbound_ok || return 1
     echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') util=$1 < $RESUME — starting $(basename "$RUNNER")"
     cd "$REPO" || return
-    setsid nohup .venv/bin/python "$RUNNER" >> "$LOG" 2>&1 < /dev/null &
+    setsid nohup .venv/bin/python "$RUNNER" >> "$LOG" 2>&1 < /dev/null 9>&- &
 }
 
 # Say the ceiling out loud, once, at start. A raised ceiling must not be
@@ -301,12 +322,56 @@ if [ "$LIMIT" != "0.98" ] || [ "$RESUME" != "0.90" ]; then
          "API's own rate limiting, which does not stop politely."
 fi
 
+# **Nothing relaunched the watchdog, so its death was permanent.** The daemon
+# cycle closed for DETECTION and not for repair: `daemon_watchdog.sh` relaunches
+# supervisor/heartbeat/preserver, and `heartbeat.sh` notices when the watchdog
+# itself dies -- but only by printing `DAEMON DOWN`, into a Monitor that expires
+# roughly every 30 minutes and does not exist at all after a container
+# replacement. Measured 2026-08-12: the watchdog died with the 08:18 replacement
+# and was still down at 10:25, two hours later, with the heartbeat running the
+# whole time and reporting it to nobody. The session's own container-recovery
+# block had omitted it too, so the one agent that could have noticed was not
+# looking.
+#
+# So the supervisor watches the watchdog, and the watchdog watches the
+# supervisor. A redundant relaunch is safe by construction: `already_watching()`
+# makes a second watchdog over the same daemon set exit immediately, and that
+# guard has its own tests. If BOTH are down nothing here recovers -- that is what
+# `rehydrate_box.sh` and the session keepalive are for, and it is a different
+# failure from the one this closes.
+#
+# Set CCARC3_SUPERVISOR_WATCHES_WATCHDOG=0 to disable (tests, and any run that
+# deliberately wants no watchdog).
+# **One supervisor per runner.** Bash descriptors are inheritable, so every
+# long-lived child below closes fd 9; otherwise a child would keep the flock
+# alive after the supervisor itself was killed.
+if [ "${CCARC3_SUPERVISOR_LOCK:-1}" != "0" ]; then
+    mkdir -p "$SP"
+    _RUNNER_KEY="$(printf '%s' "$RUNNER_PATH" | cksum | awk '{print $1}')"
+    _LOCK="$SP/supervisor.$(basename "$RUNNER" .py).$_RUNNER_KEY.lock"
+    exec 9>"$_LOCK" || { echo "supervisor: cannot open $_LOCK" >&2; exit 2; }
+    if ! flock -n 9; then
+        echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') another supervisor holds $_LOCK; exiting"
+        exit 0
+    fi
+fi
+
+revive_watchdog() {
+    [ "${CCARC3_SUPERVISOR_WATCHES_WATCHDOG:-1}" = "0" ] && return 0
+    local wd="$REPO/tools/daemon_watchdog.sh"
+    [ -f "$wd" ] || return 0
+    [ -n "$(pids_of ".*/daemon_watchdog\\.sh")" ] && return 0
+    echo "$(TZ=America/Los_Angeles date '+%H:%M %Z') watchdog is down — relaunching it"
+    setsid nohup bash "$wd" >> "$SP/daemon_watchdog.log" 2>&1 < /dev/null 9>&- &
+}
+
 ceiling_stopped=0
 
 quiet_since=0
 while true; do
+    revive_watchdog
     u=$(util_now)
-    running=$(pids_of "$RUNNER_RE")
+    running=$(pids_of_exact "$RUNNER_PATH")
 
     # A non-numeric reading ("<threshold") is not a reason to act either way.
     #
@@ -346,5 +411,5 @@ while true; do
             fi
         fi
     fi
-    sleep 600
+    sleep 600 9>&-
 done

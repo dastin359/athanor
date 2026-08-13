@@ -26,11 +26,12 @@ the solver must never see, and this repository is on its `PYTHONPATH`.
 from __future__ import annotations
 
 import json
+import pathlib
 import sys
 
 import pytest
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 
 
 def _trace(tmp_path, rows):

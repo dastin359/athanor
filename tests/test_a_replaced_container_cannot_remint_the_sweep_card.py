@@ -192,7 +192,12 @@ def test_the_suite_cannot_write_fixture_cards_into_the_evidence_tree():
     non-card id there, whichever test that is.
     """
     if not DURABLE.exists():
-        return                                    # no sweep has opened a card yet
+        # A skip, not a bare `return`. Absence here is a legitimate state -- no
+        # sweep has opened a card yet -- but a silent return makes "the file is
+        # gone" indistinguishable from "the file is clean", and this assertion
+        # is the only thing standing between a fixture id and the committed
+        # history that gates card minting.
+        pytest.skip(f"no card has been opened yet: {DURABLE} does not exist")
     bad = [line for line in DURABLE.read_text(encoding="utf-8").splitlines()
            if line.strip() and not UUID_RE.match(json.loads(line).get("card_id", ""))]
     assert bad == [], (

@@ -476,7 +476,16 @@ ONCE=0
 # contention, this runs anyway: a duplicate costs a noisy cycle, while refusing
 # to start costs evidence on a disk that has been rolled back six times. The
 # asymmetry decides it.
-LOCK="/tmp/ccarc3-preserve-$(printf '%s' "$REPO" | md5sum | cut -c1-12).lock"
+LOCK_ROOT="${TMPDIR:-/tmp}"
+LOCK="$LOCK_ROOT/ccarc3-preserve-$(printf '%s' "$REPO" | md5sum | cut -c1-12).lock"
+pause_preserver() {
+    # Bash does not mark exec-opened descriptors close-on-exec.  The sleeper
+    # must drop fd 9 or it can keep the flock alive after this daemon is killed.
+    sleep "$1" 9>&- &
+    PAUSE_PID=$!
+    wait "$PAUSE_PID"
+    PAUSE_PID=
+}
 if command -v flock >/dev/null 2>&1 && exec 9>"$LOCK" 2>/dev/null; then
     if ! flock -n 9; then
         log "another preserver already holds $LOCK — exiting rather than racing its git index"
@@ -492,12 +501,6 @@ elif command -v shlock >/dev/null 2>&1; then
         exit 0
     fi
     cleanup_preserver_lock() { rm -f "$LOCK"; }
-    pause_preserver() {
-        sleep "$1" &
-        PAUSE_PID=$!
-        wait "$PAUSE_PID"
-        PAUSE_PID=
-    }
     stop_preserver() {
         [ -n "${PAUSE_PID:-}" ] && kill "$PAUSE_PID" 2>/dev/null || true
         exit 0
@@ -628,8 +631,8 @@ while true; do
     if [ "${ahead:-0}" -gt 0 ] 2>/dev/null; then
         drained=0
         for i in 1 2 3 4; do
-            git push -q origin "$BRANCH" 2>/dev/null && { drained=1; break; }
-            sleep $((2**i))
+            git push -q origin "$BRANCH" 2>/dev/null 9>&- && { drained=1; break; }
+            sleep $((2**i)) 9>&-
         done
         if [ "$drained" = 1 ]; then
             log "drained a backlog of $ahead unpushed commit(s)"
@@ -693,10 +696,10 @@ live API key appears anywhere under evidence/." -- evidence || {
             }
             pushed=0
             for i in 1 2 3 4; do
-                if git push -q origin "$BRANCH" 2>/dev/null; then
+                if git push -q origin "$BRANCH" 2>/dev/null 9>&-; then
                     log "pushed $n files"; pushed=1; break
                 fi
-                sleep $((2**i))
+                sleep $((2**i)) 9>&-
             done
             # **Say so when the push fails.** It used to retry four times and
             # fall through in silence, so a daemon that could not reach the

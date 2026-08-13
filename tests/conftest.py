@@ -12,6 +12,21 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+# **`tools/` goes on the path from here, absolutely, once.** Eight test modules
+# reached it with `sys.path.insert(0, "tools")` -- a *relative* path, resolved
+# against the process cwd rather than the repo. That works when pytest is
+# invoked from the repo root, which is every way the suite gets run by hand, and
+# fails from anywhere else: run from `/`, collection died on
+# `ModuleNotFoundError: No module named 'proofread_trace'`. Found while checking
+# whether this repo could be stood up on hardware we own.
+#
+# Same shape as the defect class this project keeps meeting: the check agreed
+# with the truth in the one environment it was ever exercised in. "The tests are
+# green" was a claim about the operator's working directory.
+TOOLS = Path(__file__).resolve().parents[1] / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
 from athanor.cc_harness.config import CCRunConfig  # noqa: E402
 from athanor.cc_harness.workspace import build_workspace  # noqa: E402
 

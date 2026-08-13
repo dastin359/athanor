@@ -97,10 +97,13 @@ def _runner_name_block() -> str:
 
 
 def _daemon_check_fn() -> str:
-    return _extract(
+    """Return the watch list and functions it uses as one runnable snippet."""
+    watched = _extract(r"^WATCHED_DAEMONS=\([^)]*\)$", "WATCHED_DAEMONS")
+    functions = _extract(
         r"^daemon_alive\(\) \{.*?^\}\n\n^daemon_check\(\) \{.*?^\}$",
         "daemon_alive() and daemon_check()",
     )
+    return watched + "\n" + functions
 
 
 def _work_pending_fn() -> str:

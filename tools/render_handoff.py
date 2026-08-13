@@ -22,7 +22,9 @@ import pathlib
 import re
 import sys
 
-SRC = pathlib.Path("docs/ccarc3_handoff_0809b.md")
+# Repo-derived: this used a cwd-relative path and only found the note when
+# invoked from the repository root.
+SRC = pathlib.Path(__file__).resolve().parents[1] / "docs" / "ccarc3_handoff_0809b.md"
 OUT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "handoff.html")
 
 

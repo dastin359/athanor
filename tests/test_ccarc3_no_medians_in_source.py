@@ -84,15 +84,64 @@ def prose(path: pathlib.Path) -> str:
     Every leak found here was in prose, which is the natural home for "and the
     baseline was N". Code that needed a median would have to have been handed
     one, and none of this code is.
+
+    **f-strings are prose too, and under Python 3.12 they stopped being
+    `STRING`.** PEP 701 re-tokenised them: an f-string now arrives as
+    `FSTRING_START` / `FSTRING_MIDDLE` / `FSTRING_END`, and only the literal
+    text between the braces is `FSTRING_MIDDLE`. Collecting `STRING` alone
+    therefore captured `"the baseline was 651"` and silently dropped
+    `f"the baseline was {n} (651)"`.
+
+    Nothing announced the change: the scan kept returning text, the tests kept
+    passing, and the coverage simply shrank when the interpreter moved. That is
+    this project's recurring shape reached through a dependency upgrade rather
+    than an edit -- a check that names one thing (prose) and reads a proxy for
+    it (one token type that used to mean prose). The `.venv` here is 3.12.7, so
+    it is live, not hypothetical.
+
+    **An f-string is put back together from the source, not concatenated from
+    its tokens.** Appending the `FSTRING_*` pieces individually looked like the
+    obvious fix and quietly broke `windows()`: `FORMAT_SPEC` strips `{...}` as a
+    unit, and the tokeniser hands back the braces as separate `OP` tokens that
+    prose never collects. So `f"{'game':24} {'levels':>14}"` arrived as the bare
+    text `24 … 14`, and column widths in a table header were reported as leaked
+    medians for `tu93` and `lp85`. Slicing the original source between
+    `FSTRING_START` and `FSTRING_END` keeps the braces, so the existing
+    suppression works unchanged and only the literal prose is examined.
+
+    The names are looked up rather than referenced directly so this still runs
+    on an interpreter that predates them.
     """
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+
+    def off(pos) -> int:
+        row, col = pos
+        return starts[row - 1] + col if 0 < row <= len(lines) else len(text)
+
+    f_start = getattr(tokenize, "FSTRING_START", None)
+    f_end = getattr(tokenize, "FSTRING_END", None)
+
     out: list[str] = []
+    depth, begin = 0, 0
     with path.open("rb") as fh:
         try:
             for tok in tokenize.tokenize(fh.readline):
-                if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                if f_start is not None and tok.type == f_start:
+                    if depth == 0:
+                        begin = off(tok.start)
+                    depth += 1
+                elif f_end is not None and tok.type == f_end and depth:
+                    depth -= 1
+                    if depth == 0:
+                        out.append(text[begin:off(tok.end)])
+                elif depth == 0 and tok.type in (tokenize.COMMENT, tokenize.STRING):
                     out.append(tok.string)
         except (tokenize.TokenError, IndentationError, SyntaxError):
-            return path.read_text(encoding="utf-8")   # unparseable: check it all
+            return text                               # unparseable: check it all
     return "\n".join(out)
 
 
@@ -132,8 +181,69 @@ def test_no_large_number_beside_baseline_vocabulary(path):
     )
 
 
-@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
-                    reason="needs the API key to know what the real medians are")
+# --------------------------------------------------------------------------- #
+# The key: found where it LIVES, not only where a shell happened to export it.
+# --------------------------------------------------------------------------- #
+#: **These four checks were skipping on every box that has the key.**
+#:
+#: They gate on `os.environ["ARC_API_KEY"]`, which is exported by
+#: `desktop_bootstrap.sh`, by `supervisor.sh`'s `key_ok`, by the driver and by
+#: `ccarc3_resume.sh` -- by every launcher except the one that runs the tests.
+#: `pytest` is started from an ordinary shell, so the variable is absent and all
+#: four skipped, on a box where the key is sitting at mode 600 two directories
+#: away. `pytest -rs` reported it every run and a skip reads like a decision.
+#:
+#: These are the value-based half of the withholding audit: the half that knows
+#: what the real medians ARE and can therefore find one that leaked. The
+#: structural half cannot substitute for it. So this is the single most costly
+#: instance of the defect this file exists to guard against -- a check that names
+#: one thing (no published median in solver-reachable source) and reads a proxy
+#: for it (an environment variable), passing by not running.
+#:
+#: The key's real home is `$CCARC3_SCRATCH/arc3/.env`, deliberately outside the
+#: repo because `evidence/` is public. Read it only when that scratch root was
+#: explicitly configured. The Codex path never searches the operator's home
+#: directory implicitly; an ordinary offline test run must not acquire a live
+#: credential merely because one exists elsewhere on the host.
+def _arc_key() -> str:
+    key = os.environ.get("ARC_API_KEY", "").strip()
+    if key:
+        return key
+    scratch = os.environ.get("CCARC3_SCRATCH", "").strip()
+    if not scratch:
+        return ""
+    envf = pathlib.Path(scratch) / "arc3" / ".env"
+    try:
+        for line in envf.read_text(encoding="utf-8").splitlines():
+            name, sep, value = line.partition("=")
+            if sep and name.strip() == "ARC_API_KEY":
+                key = value.strip()
+                if key:
+                    # **Export it, exactly as every launcher does.** `.env` carries
+                    # no `export`, and `client._auth()` reads `os.environ` rather
+                    # than taking the key from here -- so finding the file is not
+                    # the same as the call working. Sourcing it into the process is
+                    # the whole of what `set -a; . "$ENVF"` does in
+                    # `supervisor.sh`'s `key_ok` and in `desktop_bootstrap.sh`;
+                    # that exact gap ("a SHELL variable a python child cannot
+                    # see") is already recorded in the bootstrap, and it reappeared
+                    # here the moment these tests stopped skipping.
+                    os.environ["ARC_API_KEY"] = key
+                return key
+    except OSError:
+        pass
+    return ""
+
+
+#: Resolved once, at import: `skipif` is evaluated at collection time.
+ARC_KEY = _arc_key()
+_NO_KEY_REASON = (
+    "no ARC_API_KEY in the environment and none at $CCARC3_SCRATCH/arc3/.env, "
+    "so the real medians are unknowable here"
+)
+
+
+@pytest.mark.skipif(not ARC_KEY, reason=_NO_KEY_REASON)
 def test_no_published_median_sits_beside_baseline_vocabulary():
     """The exact check, narrowed to the window so it can be believed.
 
@@ -195,8 +305,7 @@ def numeric(text: str) -> str:
     return THOUSANDS.sub("", text)
 
 
-@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
-                    reason="needs the API key to know what the real medians are")
+@pytest.mark.skipif(not ARC_KEY, reason=_NO_KEY_REASON)
 def test_no_action_cap_appears_in_importable_prose():
     """`52 actions of a 1040 budget` is `ft09`'s median total, times five.
 
@@ -270,8 +379,7 @@ def test_no_level_score_appears_in_importable_prose(path):
     )
 
 
-@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
-                    reason="needs the API key to know what the real medians are")
+@pytest.mark.skipif(not ARC_KEY, reason=_NO_KEY_REASON)
 def test_the_unstripped_doctrine_asset_carries_no_published_median():
     """The master doctrine is reachable, and §6 held two games' medians.
 
@@ -304,8 +412,7 @@ def test_the_unstripped_doctrine_asset_carries_no_published_median():
                        + "; ".join(leaks))
 
 
-@pytest.mark.skipif(not os.environ.get("ARC_API_KEY"),
-                    reason="needs the API key to know what the real medians are")
+@pytest.mark.skipif(not ARC_KEY, reason=_NO_KEY_REASON)
 def test_no_published_array_appears_anywhere_in_importable_source():
     """Every other check here reads `prose()`, which is comments and strings only.
 

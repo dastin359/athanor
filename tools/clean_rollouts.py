@@ -235,11 +235,54 @@ BUDGET_MULTIPLE = 5.0
 WALL_CLOCK_S = 6 * 3600
 
 
+def _proc_ppids() -> dict[int, int]:
+    """Return pid -> ppid for every readable process."""
+    out: dict[int, int] = {}
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text()
+            out[int(entry.name)] = int(raw[raw.rindex(")") + 2:].split()[1])
+        except (OSError, PermissionError, ValueError, IndexError):
+            continue
+    return out
+
+
+def _live_driver_pids() -> set[int]:
+    """Return every live clean-rollout driver that may own a solver."""
+    owners = {os.getpid()}
+    suffix = "/" + pathlib.Path(__file__).name
+    for entry in pathlib.Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except (OSError, PermissionError):
+            continue
+        if any(a.decode("utf-8", "replace").endswith(suffix) for a in argv if a):
+            owners.add(int(entry.name))
+    return owners
+
+
+def _has_live_owner(pid: int, ppids: dict[int, int], owners: set[int]) -> bool:
+    """Return whether a live rollout driver appears in ``pid``'s ancestry."""
+    seen: set[int] = set()
+    current = ppids.get(pid)
+    while current and current not in seen:
+        if current in owners:
+            return True
+        seen.add(current)
+        current = ppids.get(current)
+    return False
+
+
 def kill_orphan_solvers() -> int:
     """Kill solvers left running by a previous driver, before starting work.
 
     **Stopping this driver does not stop its solver.** `run_game` waits on a
-    `claude` subprocess; kill the parent and the child is reparented to init and
+    `codex` subprocess; kill the parent and the child is reparented to a system
+    reaper and
     keeps going -- still acting on the game, still spending quota, and now
     uncollectable, because `collect_outcome` runs in the parent that just died.
     Its `result.json` will never be written no matter how the run ends.
@@ -251,11 +294,14 @@ def kill_orphan_solvers() -> int:
     scorecards for no benefit.
 
     Identified by working directory rather than by name: a solver's cwd is its
-    workspace under `clean_rollouts`, and only trees reparented to init qualify,
-    so the driver can never match its own live child.
+    workspace under `clean_rollouts`, and only trees with no live driver in
+    their ancestry qualify. Testing for PPID 1 is not portable: systemd, WSL,
+    containers, and the Codex relay may install a different subreaper.
     """
     killed = 0
     root = OUT.resolve()
+    ppids = _proc_ppids()
+    owners = _live_driver_pids()
     for entry in pathlib.Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
@@ -281,8 +327,10 @@ def kill_orphan_solvers() -> int:
         # Same defect as `build_trace_audit._process_started` carried until today,
         # and here the neighbouring field is the pgid handed to `killpg`.
         fields = raw[raw.rindex(")") + 2:].split()
-        ppid, pgid = fields[1], fields[2]
-        if ppid != "1" or entry.name == str(os.getpid()):
+        pgid = fields[2]
+        if entry.name == str(os.getpid()):
+            continue
+        if _has_live_owner(int(entry.name), ppids, owners):
             continue
         try:
             os.killpg(int(pgid), signal.SIGTERM)
@@ -772,9 +820,9 @@ def enable_nudging() -> None:
 # locks the sweep out forever, while a flock is released by the kernel when the
 # holder dies however it dies.
 def _only_driver() -> "object | None":
-    """Hold the sweep's lock, or return None if another driver already has it."""
+    """Hold the sweep's adjacent lock, or return if another driver has it."""
     import fcntl
-    lock = SP / f"{OUT.name}.driver.lock"
+    lock = OUT.parent / f"{OUT.name}.driver.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
     fh = lock.open("w")
     try:
@@ -1146,6 +1194,30 @@ def _cards_seen() -> dict[str, list[str]]:
     import gzip
     durable = DURABLE_CARD_DIR.parent / OUT.name
     for state in sorted(durable.rglob("trace.state.json.gz")):
+        # **The same "a result, not merely a trace" rule as the live loop below,
+        # which is where it was applied and where it stopped.**
+        #
+        # `trace.state.json` is written by `open()` before a single action, and
+        # `preserve_evidence.sh` gzips it into the evidence tree on its next tick
+        # -- so an attempt that is interrupted and correctly discarded still
+        # leaves a durable state file naming the card. Counting that made
+        # `sweep_card` refuse to open a fresh card over work that was never
+        # banked, which is the exact inflation the comment below already forbids,
+        # surviving in the sibling loop it was never applied to.
+        #
+        # Measured 2026-08-12. The WSL VM was terminated 13 minutes into a bp35
+        # run; the attempt produced no `result.json`, the preserver had already
+        # archived its `trace.state.json.gz`, and the card was 404 by the time
+        # the driver came back. `sweep_card` then hard-stopped the sweep --
+        # "1 game(s) were scored on it (bp35)" -- over a discarded attempt with
+        # nothing on the card to lose. On a box where an interruption is the
+        # ordinary case, that is a sweep that cannot restart itself.
+        #
+        # The durable tree holds gzipped copies, so accept either spelling; the
+        # preserver compresses, and a hand-placed file may not be.
+        if not any((state.parent / n).exists()
+                   for n in ("result.json", "result.json.gz")):
+            continue
         try:
             cid = json.loads(gzip.decompress(state.read_bytes())).get("card_id", "")
         except (OSError, ValueError, EOFError):
